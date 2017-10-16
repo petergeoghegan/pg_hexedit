@@ -1,0 +1,86 @@
+#!/bin/bash
+usage() {
+    cat <<EOM
+    Usage:
+    $(basename $0) relname
+
+EOM
+    exit 0
+}
+
+[ -z $1 ] && { usage; }
+
+source ./hexedit.cfg
+
+relname=$1
+
+# Spoof home director, to avoid clobbering real /.wxHexEditor file
+export HOME=`pwd`
+wxconfig="$HOME/.wxHexEditor"
+
+psql -c "CHECKPOINT" &> /dev/null
+if [ ! $? -eq 0 ]; then
+   echo "CHECKPOINT failed"
+   exit
+fi
+psql -c "CREATE EXTENSION IF NOT EXISTS pageinspect" &> /dev/null
+if [ ! $? -eq 0 ]; then
+   echo "creating pageinspect extension failed"
+   exit
+fi
+
+RFN=$(psql --no-psqlrc -tA -c "SELECT pg_relation_filepath('$relname')")
+if [ ! $? -eq 0 ]; then
+   echo "invoking pg_relation_filepath() failed"
+   exit
+fi
+
+# Put minimal .wxHexEditor registry style config file in place, so old tags are
+# forgotten.  This is also where we generate convenience "Go to Offset" dialog
+# offsets in the registry/cache.
+#
+# For tables, generate 9 points that divide 10 deciles in "Go to Offset" dialog
+# cache
+#
+# Note that the query will return NULL for very small tables, which leaves us
+# without any such cached offsets.
+TRUE_ROOT_OFFSET=$(psql --no-psqlrc -tA -c "SELECT root * 2^13 FROM bt_metap('$relname')")
+ROOT_CHILD_OFFSETS=$(psql --no-psqlrc -tA -c "WITH offset_strings(string) AS (
+    SELECT 'GoToOffset' || ROW_NUMBER() OVER() || '=' || (substring(ctid::text from '([0-9]+)')::int8 * (2^13))
+    FROM bt_page_items('$relname', (SELECT root::int4 FROM bt_metap('$relname')))
+)
+SELECT string_agg(string, chr(10)) FROM offset_strings;")
+
+echo "Replacing $wxconfig with pg_hexedit optimized settings..."
+cat > $wxconfig <<- EOM
+UpdateCheck=0
+UseCustomHexFormat=0
+CustomHexFormat=xx
+UseBytesPerLineLimit=1
+BytesPerLineLimit=32
+CharacterEncodingFamily=DOS
+CharacterEncoding=OEM - IBM PC/DOS CP437 - MS-DOS Latin US
+ScreenFullScreen=1
+AutoShowTagPanel=0
+GoToOptions=7
+GotoOffset0=$TRUE_ROOT_OFFSET
+$ROOT_CHILD_OFFSETS
+EOM
+
+PGDATA=$(psql --no-psqlrc -tA -c "SELECT setting FROM pg_settings WHERE name = 'data_directory'")
+echo "Determined that data directory is $PGDATA"
+FULLPATH="$PGDATA/$RFN"
+echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
+echo "Note: Leaf pages will have single tag to keep overhead low (-l flag does this)"
+echo "Note: Only blocks 0 - $BLOCK_TAGS will be annotated, to keep overhead low"
+./pg_hexedit -R 0 $BLOCK_TAGS -l $FULLPATH > $FULLPATH.tags
+
+if [ ! $? -eq 0 ]; then
+   echo "invoking pg_hexedit failed"
+   exit
+fi
+
+echo "Opening $FULLPATH with $HEXEDITOR..."
+echo "Tip: 'Go to Offset' dialog (shortcut: Ctrl + G) has children of root and root offsets cached"
+# Output from wxHexEditor is verbose, and not terribly useful, so we redirect:
+$HEXEDITOR $FULLPATH &> /dev/null

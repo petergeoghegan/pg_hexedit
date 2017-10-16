@@ -1,0 +1,90 @@
+#!/bin/bash
+usage() {
+    cat <<EOM
+    Usage:
+    $(basename $0) relname
+
+EOM
+    exit 0
+}
+
+[ -z $1 ] && { usage; }
+
+source ./hexedit.cfg
+
+relname=$1
+
+# Spoof home director, to avoid clobbering real /.wxHexEditor file
+export HOME=`pwd`
+wxconfig="$HOME/.wxHexEditor"
+
+psql -c "CHECKPOINT" &> /dev/null
+if [ ! $? -eq 0 ]; then
+   echo "CHECKPOINT failed"
+   exit
+fi
+psql -c "CREATE EXTENSION IF NOT EXISTS pageinspect" &> /dev/null
+if [ ! $? -eq 0 ]; then
+   echo "creating pageinspect extension failed"
+   exit
+fi
+
+RFN=$(psql --no-psqlrc -tA -c "SELECT pg_relation_filepath('$relname')")
+if [ ! $? -eq 0 ]; then
+   echo "invoking pg_relation_filepath() failed"
+   exit
+fi
+
+# Put minimal .wxHexEditor registry style config file in place, so old tags are
+# forgotten.  This is also where we generate convenience "Go to offset" dialog
+# offsets in the registry/cache.
+#
+# For tables, generate 9 points that divide 10 deciles in Go to offsets dialog
+# cache
+#
+# Note that the query will return NULL for very small tables, which leaves us
+# without any such cached offsets.
+DECILE_SPLITS=$(psql --no-psqlrc -tA -c "WITH offsets (block_offset) AS (
+    SELECT unnest(percentile_cont(array[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) WITHIN GROUP (ORDER BY i))::int8 * (2^13)
+    FROM
+    (SELECT i FROM generate_series(1, (SELECT (pg_relation_size('$relname'::regclass) / (2^13))::int4) - 1) i ) s
+),
+nums (num, bb_offset) AS (
+    SELECT (ROW_NUMBER() OVER()) - 1, block_offset
+    FROM
+    offsets ORDER BY BLOCK_OFFSET
+)
+SELECT string_agg('GoToOffset' || num || '=' || bb_offset, chr(10)) FROM nums;")
+
+echo "Replacing $wxconfig with pg_hexedit optimized settings..."
+cat > $wxconfig <<- EOM
+UpdateCheck=0
+UseCustomHexFormat=0
+CustomHexFormat=xx
+UseBytesPerLineLimit=1
+BytesPerLineLimit=32
+CharacterEncodingFamily=DOS
+CharacterEncoding=OEM - IBM PC/DOS CP437 - MS-DOS Latin US
+ScreenFullScreen=1
+AutoShowTagPanel=0
+GoToOptions=7
+$DECILE_SPLITS
+EOM
+
+PGDATA=$(psql --no-psqlrc -tA -c "SELECT setting FROM pg_settings WHERE name = 'data_directory'")
+echo "Determined that data directory is $PGDATA"
+FULLPATH="$PGDATA/$RFN"
+echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
+./pg_hexedit $FULLPATH > $FULLPATH.tags
+echo "Note: Only blocks 0 - $BLOCK_TAGS will be annotated, to keep overhead low"
+./pg_hexedit -R 0 $BLOCK_TAGS $FULLPATH > $FULLPATH.tags
+
+if [ ! $? -eq 0 ]; then
+   echo "invoking pg_hexedit failed"
+   exit
+fi
+
+echo "Opening $FULLPATH with $HEXEDITOR..."
+echo "Tip: 'Go to Offset' dialog (shortcut: Ctrl + G) has decile splitter block start positions cached"
+# Output from wxHexEditor is verbose, and not terribly useful, so we redirect:
+$HEXEDITOR $FULLPATH &> /dev/null
