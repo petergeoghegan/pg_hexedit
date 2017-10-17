@@ -24,7 +24,8 @@ editing PostgreSQL relation files *significantly* easier.
 
 __CAUTION:__ Do not use pg_hexedit with a PostgreSQL data directory if you are
 not prepared to have it __corrupt data__! pg_hexedit is made available for
-educational purposes only.  It is an *experimental* tool.
+educational purposes only.  It is an *experimental* tool, originally used for
+simulating corruption/corruption analysis.
 
 The type of file (heap/index) is determined automatically by the content of the
 blocks within the file, using pg_filedump-style hueristics.  The default is to
@@ -100,12 +101,14 @@ server is queried to locate the relevant relation files. The scripts also take
 care of adding convenience offsets to the wxHexEditor cache, which can be used
 to quickly locate internal pages of a B-Tree, for example.
 
-A `psql` installation should be within your $PATH when the
-scripts are invoked; psql environment variables like $PGDATABASE can be set, to control what
-database is opened by wxHexEditor, and other such standard details.
-Like pg_filedump, pg_hexeditor is actually perfectly capable of running without a
-running server.  It is often more convenient to invoke the script this way,
-though.
+`psql` should be within your $PATH when the scripts are invoked. libpq
+environment variables like $PGDATABASE can be set within the `hexedit.cfg`
+file.  These control what database is opened by wxHexEditor, and other such
+standard details.  Note that just like pg_filedump, pg_hexeditor has no
+dependency on a running server, and is generally safer to use offline, despite
+the fact that it is typically used online.  It is convenient to invoke
+wxHexEditor using the scripts provided during analysis of *in situ* issues, or
+when learning about PostgreSQL internals.
 
 Having a PostgreSQL relfilenode file open in a hex editor __risks data
 corruption__, especially when the PostgreSQL server is actually running
