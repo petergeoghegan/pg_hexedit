@@ -1022,6 +1022,8 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 		 *
 		 * Make it COLOR_PINK, so that it sticks out like a sore thumb.
 		 */
+		StaticAssertStmt(sizeof(CommandId) == sizeof(TransactionId),
+						 "t_cid width must match t_xvac");
 		relfileOffNext += sizeof(TransactionId);
 		EmitXmlTupleTag(blkno, offset, "t_xvac", COLOR_PINK, relfileOff,
 						relfileOffNext - 1);
