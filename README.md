@@ -15,8 +15,8 @@ Supported platforms: Linux + libwxgtk (though MacOS probably also works)
 
 ## Overview
 
-pg_hexedit is an experimental toolkit to format PostgreSQL heap/index/control
-files when opened within the open source GUI hex editor
+pg_hexedit is an experimental toolkit to format PostgreSQL heap and index files
+(B-Trees indexes only) when opened within the open source GUI hex editor
 [wxHexEditor](https://github.com/EUA/wxHexEditor).  It makes viewing and
 editing PostgreSQL relation files *significantly* easier.
 
