@@ -5,7 +5,7 @@ Copyright (c) 2002-2010 Red Hat, Inc.
 Copyright (c) 2011-2016, PostgreSQL Global Development Group
 
 Author: Peter Geoghegan [`<pg@bowt.ie>`](mailto:pg@bowt.ie)
-pg_filedump author: Patrick Macdonald [`<pg@bowt.ie>`](mailto:patrickm@redhat.com)
+pg_filedump author: Patrick Macdonald [`<patrickm@redhat.com>`](mailto:patrickm@redhat.com)
 
 License: [GNU General Public License version 2](https://opensource.org/licenses/GPL-2.0)
 
