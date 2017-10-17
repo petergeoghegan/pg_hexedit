@@ -771,8 +771,10 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 		strcat(flagString, " )");
 	}
 
-	/* As t_bits is a variable length array, determine the length of */
-	/* the header proper */
+	/*
+	 * As t_bits is a variable length array, and may contain an Oid field,
+	 * determine the length of the header proper as a sanity check.
+	 */
 	if (htup->t_infomask & HEAP_HASNULL)
 		bitmapLength = BITMAPLEN(HeapTupleHeaderGetNatts(htup));
 	else
@@ -1047,7 +1049,18 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	relfileOffNext += sizeof(uint8);
 	EmitXmlTupleTag(blkno, offset, "t_hoff", COLOR_YELLOW_DARK, relfileOff,
 					relfileOffNext - 1);
-	/* whatever follows must be null bitmap */
+	/*
+	 * Whatever follows must be null bitmap
+	 *
+	 * Note that an Oid field will appear as the final 4 bytes of t_bits when
+	 * (t_infomask & HEAP_HASOID).  This seems like the most faithful
+	 * representation, because there is never any distinct field to t_hoff in
+	 * the heap tuple struct: macros like HeapTupleHeaderGetOid() are built
+	 * around working backwards from t_hoff knowing that the last sizeof(Oid)/4
+	 * bytes must be an Oid when Oids are in use (just like this code).  Oid is
+	 * a fixed size field that hides at the end of the variable sized t_bits
+	 * array.
+	 */
 	relfileOff = relfileOffNext;
 	relfileOffNext = relfileOffOrig + htup->t_hoff;
 	EmitXmlTupleTag(blkno, offset, "t_bits", COLOR_YELLOW_DARK, relfileOff,
