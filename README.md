@@ -169,7 +169,7 @@ relation files.
 
 While wxHexEditor compares favorably with other hex editors when tasked with
 editing very large files, it appears to be far more likely to become
-unresponsive when there are many tags.  It may necessary to work around this
+unresponsive when there are many tags.  It may be necessary to work around this
 limitation at some point.
 
 Generalize from the example of the convenience scripts for guidance on this.
