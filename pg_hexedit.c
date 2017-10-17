@@ -990,8 +990,7 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	 * The choice of colors here is not completely arbitrary, or based on
 	 * aesthetic preferences.  There is some attempt at analogy in the choice
 	 * of colors.  For example, xmin and xmax are symmetric, and so are both
-	 * COLOR_RED_LIGHT.  t_cid is COLOR_RED_DARK in order to signal that it's
-	 * associated with though somewhat different to xmin and xmax.
+	 * COLOR_RED_LIGHT.
 	 */
 	relfileOffNext = relfileOff + sizeof(TransactionId);
 	EmitXmlTupleTag(blkno, offset, "xmin", COLOR_RED_LIGHT, relfileOff,
@@ -1001,9 +1000,32 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	EmitXmlTupleTag(blkno, offset, "xmax", COLOR_RED_LIGHT, relfileOff,
 					relfileOffNext - 1);
 	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(CommandId);
-	EmitXmlTupleTag(blkno, offset, "t_cid", COLOR_RED_DARK, relfileOff,
-					relfileOffNext - 1);
+
+	if (!(htup->t_infomask & HEAP_MOVED))
+	{
+		/*
+		 * t_cid is COLOR_RED_DARK in order to signal that it's associated with
+		 * though somewhat different to xmin and xmax.
+		 */
+		relfileOffNext += sizeof(CommandId);
+		EmitXmlTupleTag(blkno, offset, "t_cid", COLOR_RED_DARK, relfileOff,
+						relfileOffNext - 1);
+	}
+	else
+	{
+		/*
+		 * This must be a rare case where pg_upgrade has been run, and we're
+		 * left with a tuple with a t_xvac field instead of a t_cid field,
+		 * because at some point old-style VACUUM FULL was run. (This would
+		 * have had to have been on or before version 9.0, which has been out
+		 * of support for some time.)
+		 *
+		 * Make it COLOR_PINK, so that it sticks out like a sore thumb.
+		 */
+		relfileOffNext += sizeof(TransactionId);
+		EmitXmlTupleTag(blkno, offset, "t_xvac", COLOR_PINK, relfileOff,
+						relfileOffNext - 1);
+	}
 
 	/*
 	 * Don't use ItemPointerData directly, to avoid having
@@ -1023,6 +1045,10 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	relfileOffNext += sizeof(uint16);
 	EmitXmlTupleTag(blkno, offset, "t_ctid->bi_lo", COLOR_BLUE_LIGHT, relfileOff,
 					relfileOffNext - 1);
+	/*
+	 * Note: offsetNumber could be SpecTokenOffsetNumber, but we don't annotate
+	 * that
+	 */
 	relfileOff = relfileOffNext;
 	relfileOffNext += sizeof(uint16);
 	EmitXmlTupleTag(blkno, offset, "t_ctid->offsetNumber", COLOR_BLUE_DARK,
