@@ -118,7 +118,10 @@ mind, where __the database should only contain disposable test data__.
 Convenience script dependencies:
 
 * The convenience scripts rely on `CREATE EXTENSION IF NOT EXISTS pageinspect`
-  running.  `contrib/pageinspect` must be installed.
+  running.
+
+[`contrib/pageinspect`](https://www.postgresql.org/docs/current/static/pageinspect.html)
+must be installed.
 
 * The scripts are built on the assumption that they're invoked by a user that
   has the operating system level permissions needed to open PostgreSQL relation
@@ -192,6 +195,103 @@ Invoking it directly might be more useful when you want to work on a copy of
 the database that is not under the control of a running PostgreSQL server.
 
 See `pg_hexedit -h` for full details.
+
+### Interpreting tuple contents with pageinspect
+
+Because the pg_hexedit executable is a frontend utility that doesn't have
+direct access to catalog metadata, tuple contents are not broken up into
+multiple attribute/column tags.  The frontend utility has no way of determining
+what the "shape" of tuples ought to be.
+
+[`contrib/pageinspect`](https://www.postgresql.org/docs/current/static/pageinspect.html)
+provides a solution -- it can split up the contents of the tuple further.
+
+Suppose that you want to interpret the contents of the tuple for the `pg_type`
+`int4` type's entry. This tuple (most columns omitted for brevity):
+
+```sql
+postgres=# select ctid, oid from  pg_type where typname = 'int4';
+ ctid  | oid
+-------+-----
+ (0,8) |  23
+(1 row)
+```
+
+We need to build a set of arguments to the pageinspect function
+`tuple_data_split()`.  There are some subtleties that we go over now.
+
+Copy all 140 bytes of the tuple contents within wxHexEditor into the system
+clipboard (Ctrl + C). These are colored off-white or light gray.  Do not copy
+header bytes, and do not copy the NUL bytes between the next tuple (alignment
+padding), if any, which are *plain* white.
+
+You should now be able to paste something close to the raw tuple contents
+into a scratch buffer in your text editor.
+
+`69 6E 74 34 00 00 ...` (Truncated for brevity.)
+
+Copy and paste the "DataInterpreter" values for both `t_infomask2` and
+`t_infomask` in plain decimal in the same scratch buffer file (N.B.: the
+physical order of fields on the page *is* `t_infomask2` followed by
+`t_infomask`, the opposite order to the order of corresponding
+`tuple_data_split()` arguments).
+
+You're probably using a little-endian machine (x86 is little-endian), and
+that's what "DataInterpreter" will show as decimal by default.  Don't bother
+trying to use bitstrings and integer casts (e.g. `SELECT x'1E00'::int4`),
+because Postgres interprets that as having big-endian byte order, regardless of
+the system's actual byte order.  It's best to just use interpreted decimal
+values everywhere that an int4 argument is required.
+
+Finally, we'll need to figure out a `t_bits` argument to give to
+`tuple_data_split()`, which is a bit tricky.  This needs to be a text argument
+that looks like a bit field.  The actual t_bits field is 9 bytes (it may
+include alignment overhead), and looks like this in our case:
+
+`FF FF FF 07 00 17 00 00 00`
+
+Because this is a catalog table, we know that the last 4 bytes are the Oid of
+the entry (the pg_type oid for text is 23, as seen already -- `17 00 00 00` is
+23 as a little-endian integer).  That being the case, we can chop off the last
+4 bytes, leaving us with:
+
+`FF FF FF 07 00`
+
+`tuple_data_split()` expects 32-bits (and will complain if that's not the
+number of 0/1 characters in the `t_bits` argument), and so clearly the last
+byte is just padding.  What we really want is:
+
+`FF FF FF 07`
+
+In binary:
+
+```sql
+postgres=# select x'FFFFFF07';
+             ?column?
+----------------------------------
+ 11111111111111111111111100000111
+(1 row)
+```
+
+Unfortunately, the pageinspect functions unaccountably expect low bits to be
+high, and high bits to be low within each byte.  (This is probably a bug --
+there is no such thing as endianness when it comes to *bit* order).  So,
+putting it all together, we can do this to split the tuple contents (last
+`t_bits` byte is complement'd here):
+
+```sql
+postgres=# SELECT tuple_data_split(
+    rel_oid => 'pg_type'::regclass,
+    t_data => E'\\x69 6E 74 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0B 00 00 00 0A 00 00 00 04 00 01 62 4E 00 01 2C 00 00 00 00 00 00 00 00 EF 03 00 00 2A 00 00 00 2B 00 00 00 66 09 00 00 67 09 00 00 00 00 00 00 00 00 00 00 00 00 00 00 69 70 00 00 00 00 00 00 FF FF FF FF 00 00 00 00 00 00 00 00',
+    t_infomask2 => 30,
+    t_infomask => 2313,
+    t_bits => '11111111111111111111111111100000');
+```
+
+This will return a bytea array, with one elemnent per tuple.  Note that this
+doesn't count the Oid value as an attribute, because it's a system column.
+The first element returned in our `bytea` array is the name of the type,
+`int4`.
 
 ## Areas that might be improved someday
 
