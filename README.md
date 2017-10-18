@@ -244,40 +244,8 @@ the system's actual byte order.  It's best to just use interpreted decimal
 values everywhere that an int4 argument is required.
 
 Finally, we'll need to figure out a `t_bits` argument to give to
-`tuple_data_split()`, which is a bit tricky.  This needs to be a text argument
-that looks like a bit field.  The actual t_bits field is 9 bytes (it may
-include alignment overhead), and looks like this in our case:
-
-`FF FF FF 07 00 17 00 00 00`
-
-Because this is a catalog table, we know that the last 4 bytes are the Oid of
-the entry (the pg_type oid for text is 23, as seen already -- `17 00 00 00` is
-23 as a little-endian integer).  That being the case, we can chop off the last
-4 bytes, leaving us with:
-
-`FF FF FF 07 00`
-
-`tuple_data_split()` expects 32-bits (and will complain if that's not the
-number of 0/1 characters in the `t_bits` argument), and so clearly the last
-byte is just padding.  What we really want is:
-
-`FF FF FF 07`
-
-In binary:
-
-```sql
-postgres=# select x'FFFFFF07';
-             ?column?
-----------------------------------
- 11111111111111111111111100000111
-(1 row)
-```
-
-Unfortunately, the pageinspect functions unaccountably expect low bits to be
-high, and high bits to be low within each byte.  (This is probably a bug --
-there is no such thing as endianness when it comes to *bit* order).  So,
-putting it all together, we can do this to split the tuple contents (last
-`t_bits` byte is complement'd here):
+`tuple_data_split()`, which is a bit tricky with alignment considerations.
+Putting it all together:
 
 ```sql
 postgres=# SELECT tuple_data_split(
