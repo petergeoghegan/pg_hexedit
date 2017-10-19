@@ -29,10 +29,9 @@ simulating corruption/corruption analysis.
 
 The type of file (heap/index) is determined automatically by the content of the
 blocks within the file, using pg_filedump-style hueristics.  The default is to
-format the entire file using the block size listed in block 0 and display block
-relative addresses.  These defaults can be modified using run-time options.
-However, pg_hexedit is typically invoked using the packaged convenience
-scripts.
+format the entire file using the block size listed in block 0 as wxHexEdit tag
+XML.  These defaults can be modified using run-time options.  However,
+pg_hexedit is typically invoked using the packaged convenience scripts.
 
 
 ## Initial setup
@@ -196,7 +195,7 @@ the database that is not under the control of a running PostgreSQL server.
 
 See `pg_hexedit -h` for full details.
 
-### Interpreting tuple contents with pageinspect
+## Interpreting tuple contents with pageinspect
 
 Because the pg_hexedit executable is a frontend utility that doesn't have
 direct access to catalog metadata, tuple contents are not broken up into

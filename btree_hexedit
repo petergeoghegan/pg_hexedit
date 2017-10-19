@@ -39,8 +39,8 @@ fi
 # forgotten.  This is also where we generate convenience "Go to Offset" dialog
 # offsets in the registry/cache.
 #
-# For tables, generate 9 points that divide 10 deciles in "Go to Offset" dialog
-# cache
+# For B-Tree indexes, generate offsets to all child of the root pages in "Go to
+# Offset" dialog cache.  The root page is also added as a separate offset.
 #
 # Note that the query will return NULL for very small tables, which leaves us
 # without any such cached offsets.
