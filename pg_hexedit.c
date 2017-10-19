@@ -53,7 +53,6 @@
 #define EOF_ENCOUNTERED 		(-1)	/* Indicator for partial read */
 
 #define COLOR_FONT_STANDARD		"#313739"
-#define COLOR_NOTE_STANDARD		"#85C1E9"
 
 #define COLOR_BLACK				"#515A5A"
 #define COLOR_BLUE_DARK			"#2980B9"
@@ -1163,7 +1162,7 @@ EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
 	printf("      <tag_text>(%u,%d) lp_len: %u, lp_off: %u, lp_flags: %s </tag_text>\n",
 		   blkno, offset, ItemIdGetLength(itemId), ItemIdGetOffset(itemId), textFlags);
 	printf("      <font_colour>" COLOR_FONT_STANDARD "</font_colour>\n");
-	printf("      <note_colour>" COLOR_NOTE_STANDARD "</note_colour>\n");
+	printf("      <note_colour>" COLOR_BLUE_LIGHT "</note_colour>\n");
 	printf("    </TAG>\n");
 }
 
