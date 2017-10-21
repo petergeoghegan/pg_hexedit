@@ -26,13 +26,16 @@
  * Original pg_filedump Author: Patrick Macdonald <patrickm@redhat.com>
  * pg_hexedit author:           Peter Geoghegan <pg@bowt.ie>
  */
+#define FRONTEND 1
 #include "postgres.h"
 
-#include <time.h>
+/*
+ * We must #undef frontend because certain headers are not really supposed to
+ * be included in frontend utilities because they include atomics.h.
+ */
+#undef FRONTEND
 
-/*	checksum_impl.h uses Assert, which doesn't work outside the server */
-#undef Assert
-#define Assert(X)
+#include <time.h>
 
 #include "access/gin_private.h"
 #include "access/gist.h"
@@ -1213,7 +1216,7 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 		EmitXmlTag(blkno, level, "LSN", COLOR_YELLOW_LIGHT,
 				   pageOffset,
 				   (pageOffset + sizeof(PageXLogRecPtr)) - 1);
-		EmitXmlTag(blkno, level, "checksum", COLOR_BLUE_DARK,
+		EmitXmlTag(blkno, level, "checksum", COLOR_GREEN_BRIGHT,
 				   pageOffset + offsetof(PageHeaderData, pd_checksum),
 				   (pageOffset + offsetof(PageHeaderData, pd_flags)) - 1);
 
