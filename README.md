@@ -33,7 +33,6 @@ format the entire file using the block size listed in block 0 as wxHexEdit tag
 XML.  These defaults can be modified using run-time options.  However,
 pg_hexedit is typically invoked using the packaged convenience scripts.
 
-
 ## Initial setup
 
 ### Building pg_hexedit
@@ -74,7 +73,7 @@ It is recommended that you build wxHexEditor's master branch from source.
 There are general stability issues with wxHexEditor, especially with the tag
 feature that pg_hexedit targets.  It's worth having all recent bug fixes. See:
 
-https://github.com/EUA/wxHexEditor
+[https://github.com/EUA/wxHexEditor](https://github.com/EUA/wxHexEditor)
 
 It's generally only mildly inconvenient to do this on a modern desktop Linux
 system.
@@ -91,7 +90,7 @@ Window that is highlighted within your desktop environment.
 
 ## Quickstart guide - Using the convenience scripts
 
-### Overview
+### Requirements
 
 pg_hexedit and wxHexEditor can be invoked using convenience scripts that take
 care of everything.  These are designed to be run on a PostgreSQL backend
@@ -140,11 +139,7 @@ To open the Postgres table `pg_type` with tags and annotations:
   # Invoke script:
   $ ./table_hexedit pg_type
 Replacing /home/pg/code/pg_hexedit/.wxHexEditor with pg_hexedit optimized settings...
-Determined that data directory is /home/pg/pgbuild/data/root
-Running pg_hexedit against /home/pg/pgbuild/data/root/base/13042/1247, the first segment in relation pg_type...
-Note: Only blocks 0 - 500 will be annotated, to keep overhead low
-Opening /home/pg/pgbuild/data/root/base/13042/1247 with ../wxHexEditor/wxHexEditor...
-Tip: 'Go to Offset' dialog (shortcut: Ctrl + G) has decile splitter block start positions cached
+...
 ```
 
 To open the Postgres B-Tree `pg_type_typname_nsp_index` with tags and annotations:
@@ -152,12 +147,7 @@ To open the Postgres B-Tree `pg_type_typname_nsp_index` with tags and annotation
 ```shell
   $ ./btree_hexedit pg_type_typname_nsp_index
 Replacing /home/pg/code/pg_hexedit/.wxHexEditor with pg_hexedit optimized settings...
-Determined that data directory is /home/pg/pgbuild/data/root
-Running pg_hexedit against /home/pg/pgbuild/data/root/base/13042/2704, the first segment in relation pg_type_typname_nsp_index...
-Note: Leaf pages will have single tag to keep overhead low (-l flag does this)
-Note: Only blocks 0 - 500 will be annotated, to keep overhead low
-Opening /home/pg/pgbuild/data/root/base/13042/2704 with ../wxHexEditor/wxHexEditor...
-Tip: 'Go to Offset' dialog (shortcut: Ctrl + G) has children of root and root offsets cached
+...
 ```
 
 The scripts will only open the first 1GB segment file in the relation.  Note
@@ -249,7 +239,12 @@ Putting it all together:
 ```sql
 postgres=# SELECT tuple_data_split(
     rel_oid => 'pg_type'::regclass,
-    t_data => E'\\x69 6E 74 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0B 00 00 00 0A 00 00 00 04 00 01 62 4E 00 01 2C 00 00 00 00 00 00 00 00 EF 03 00 00 2A 00 00 00 2B 00 00 00 66 09 00 00 67 09 00 00 00 00 00 00 00 00 00 00 00 00 00 00 69 70 00 00 00 00 00 00 FF FF FF FF 00 00 00 00 00 00 00 00',
+    t_data => E'\\x69 6E 74 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0B 00 00 00 0A 00 00 00
+04 00 01 62 4E 00 01 2C 00 00 00 00 00 00 00 00 EF 03 00 00 2A 00 00 00 2B 00
+00 00 66 09 00 00 67 09 00 00 00 00 00 00 00 00 00 00 00 00 00 00 69 70 00 00
+00 00 00 00 FF FF FF FF 00 00 00 00 00 00 00 00',
     t_infomask2 => 30,
     t_infomask => 2313,
     t_bits => '11111111111111111111111111100000');
