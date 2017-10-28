@@ -9,7 +9,7 @@ pg_filedump author: Patrick Macdonald [`<patrickm@redhat.com>`](mailto:patrickm@
 
 License: [GNU General Public License version 2](https://opensource.org/licenses/GPL-2.0)
 
-Supported versions: PostgreSQL 11 (earlier versions are untested)
+Supported versions: PostgreSQL 9.4+
 
 Supported platforms: Linux + libwxgtk (though MacOS probably also works)
 
