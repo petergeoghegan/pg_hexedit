@@ -250,7 +250,7 @@ postgres=# SELECT tuple_data_split(
     t_bits => '11111111111111111111111111100000');
 ```
 
-This will return a bytea array, with one elemnent per tuple.  Note that this
+This will return a bytea array, with one element per tuple.  Note that this
 doesn't count the Oid value as an attribute, because it's a system column.
 The first element returned in our `bytea` array is the name of the type,
 `int4`.
