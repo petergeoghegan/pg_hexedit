@@ -81,10 +81,14 @@ build dependencies quickly should be straightforward:
 
 ```shell
   $ sudo apt-get build-dep wxhexeditor
+  $ # (Install dependencies)
+  $ sudo apt-get install libtool
 ```
 
-Note that this doesn't actually install any wxHexEditor package, which isn't
-useful; just the dependencies to build wxHexEditor from source.
+Note that this doesn't actually install any wxHexEditor package, because we're
+building wxHexEditor from source. It just installs the dependencies to build
+the wxHexEditor source package, which, along with libtool, should be all we
+need to build wxHexEditor from git tip.
 
 See wxHexEditor docs for further instructions.
 
