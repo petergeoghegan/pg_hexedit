@@ -76,7 +76,17 @@ feature that pg_hexedit targets.  It's worth having all recent bug fixes. See:
 [https://github.com/EUA/wxHexEditor](https://github.com/EUA/wxHexEditor)
 
 It's generally only mildly inconvenient to do this on a modern desktop Linux
-system.
+system.  On Debian-based systems with source repositories setup, obtaining all
+build dependencies quickly should be straightforward:
+
+```shell
+  $ sudo apt-get build-dep wxhexeditor
+```
+
+Note that this doesn't actually install any wxHexEditor package, which isn't
+useful; just the dependencies to build wxHexEditor from source.
+
+See wxHexEditor docs for further instructions.
 
 While wxHexEditor does have noticeable stability issues, these seem to be worth
 working around, given the lack of any better alternative that is open source
