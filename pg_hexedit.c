@@ -831,17 +831,22 @@ GetIndexTupleFlags(IndexTuple itup)
 	 * that the string can not expand beyond 128 bytes.
 	 */
 	flagString[0] = '\0';
-	sprintf(flagString, "t_info IndexTupleSize(): %zu, (",
+	sprintf(flagString, "t_info IndexTupleSize(): %zu",
 			IndexTupleSize(itup));
+
+	if (itup->t_info & (INDEX_VAR_MASK | INDEX_NULL_MASK))
+		strcat(flagString, ", (");
 
 	if (itup->t_info & INDEX_VAR_MASK)
 		strcat(flagString, "INDEX_VAR_MASK|");
 	if (itup->t_info & INDEX_NULL_MASK)
 		strcat(flagString, "INDEX_NULL_MASK|");
 
-	if (strlen(flagString))
+	if (itup->t_info & (INDEX_VAR_MASK | INDEX_NULL_MASK))
+	{
 		flagString[strlen(flagString) - 1] = '\0';
-	strcat(flagString, " )");
+		strcat(flagString, " )");
+	}
 
 	return flagString;
 }
@@ -1184,14 +1189,30 @@ EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
 	relfileOff = relfileOffNext;
 	relfileOffNext += sizeof(unsigned short);
 	flagString = GetIndexTupleFlags(tuple);
-	EmitXmlTupleTag(blkno, offset, flagString , COLOR_YELLOW_DARK, relfileOff,
+	EmitXmlTupleTag(blkno, offset, flagString, COLOR_YELLOW_DARK, relfileOff,
 					relfileOffNext - 1);
 	free(flagString);
-
-	/* tuple contents -- "minus infinity" items have none */
 	relfileOff = relfileOffNext;
 
 	/*
+	 * NULL bitmap, if any, is counted as a separate tag, and not an extension
+	 * of t_info.  This is a little arbitrary, but makes more sense overall.
+	 * This matches heap tuple header tags.
+	 */
+	if (IndexTupleHasNulls(tuple))
+	{
+		relfileOffNext +=
+			(IndexInfoFindDataOffset(tuple->t_info) - (relfileOff - relfileOffOrig));
+
+		EmitXmlTupleTag(blkno, offset, "IndexAttributeBitMapData array",
+						COLOR_YELLOW_DARK, relfileOff, relfileOffNext - 1);
+		relfileOff = relfileOffNext;
+	}
+
+	/*
+	 * Tuple contents -- "minus infinity" items have none, and so require
+	 * special care.
+	 *
 	 * We don't get length using lp_len arithmetic here, though we could.  The
 	 * lp_len field is redundant for B-Tree indexes.
 	 */
