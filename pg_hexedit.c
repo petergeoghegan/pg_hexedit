@@ -192,6 +192,7 @@ static int GetOptionValue(char *optionString);
 static unsigned int GetBlockSize(void);
 static unsigned int GetSpecialSectionType(Page page);
 static char *GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2);
+static char *GetIndexTupleFlags(IndexTuple itup);
 static bool IsBtreeMetaPage(Page page);
 static void EmitXmlDocHeader(int numOptions, char **options);
 static void EmitXmlPage(BlockNumber blkno);
@@ -799,7 +800,48 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 			 localHoff);
 
 		exitCode = 1;
+		exit(exitCode);
 	}
+
+	return flagString;
+}
+
+/*
+ * Given IndexTuple, return string buffer with t_info reported tuple length,
+ * and flags.
+ *
+ * Note:  Caller is responsible for free()ing returned buffer.
+ */
+static char *
+GetIndexTupleFlags(IndexTuple itup)
+{
+	char		   *flagString = NULL;
+
+	flagString = malloc(128);
+
+	if (!flagString)
+	{
+		printf("\nError: Unable to create buffer of size <512>.\n");
+		exitCode = 1;
+		exit(exitCode);
+	}
+
+	/*
+	 * Place readable versions of the tuple info mask into a buffer.  Assume
+	 * that the string can not expand beyond 128 bytes.
+	 */
+	flagString[0] = '\0';
+	sprintf(flagString, "t_info IndexTupleSize(): %zu, (",
+			IndexTupleSize(itup));
+
+	if (itup->t_info & INDEX_VAR_MASK)
+		strcat(flagString, "INDEX_VAR_MASK|");
+	if (itup->t_info & INDEX_NULL_MASK)
+		strcat(flagString, "INDEX_NULL_MASK|");
+
+	if (strlen(flagString))
+		flagString[strlen(flagString) - 1] = '\0';
+	strcat(flagString, " )");
 
 	return flagString;
 }
@@ -1120,6 +1162,7 @@ EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
 {
 	uint32		relfileOffNext = 0;
 	uint32		relfileOffOrig = relfileOff;
+	char	   *flagString;
 
 	/* TID style matches EmitXmlHeapTuple() */
 	relfileOffNext = relfileOff + sizeof(uint16);
@@ -1140,11 +1183,18 @@ EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
 	 */
 	relfileOff = relfileOffNext;
 	relfileOffNext += sizeof(unsigned short);
-	EmitXmlTupleTag(blkno, offset, "t_info", COLOR_YELLOW_DARK, relfileOff,
+	flagString = GetIndexTupleFlags(tuple);
+	EmitXmlTupleTag(blkno, offset, flagString , COLOR_YELLOW_DARK, relfileOff,
 					relfileOffNext - 1);
+	free(flagString);
 
 	/* tuple contents -- "minus infinity" items have none */
 	relfileOff = relfileOffNext;
+
+	/*
+	 * We don't get length using lp_len arithmetic here, though we could.  The
+	 * lp_len field is redundant for B-Tree indexes.
+	 */
 	relfileOffNext = relfileOffOrig + IndexTupleSize(tuple);
 	if (relfileOff < relfileOffNext)
 		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
