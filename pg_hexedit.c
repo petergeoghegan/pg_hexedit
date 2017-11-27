@@ -719,7 +719,7 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 	flagString[0] = '\0';
 	if (!isInfomask2)
 	{
-		strcat(flagString, "t_infomask ( ");
+		strcat(flagString, "t_infomask (");
 
 		if (htup->t_infomask & HEAP_HASNULL)
 			strcat(flagString, "HEAP_HASNULL|");
@@ -756,12 +756,16 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 
 		if (strlen(flagString))
 			flagString[strlen(flagString) - 1] = '\0';
-		strcat(flagString, " )");
+		strcat(flagString, ")");
 	}
 	else
 	{
-		sprintf(flagString, "t_infomask2 (HeapTupleHeaderGetNatts(): %d",
+		sprintf(flagString, "t_infomask2 HeapTupleHeaderGetNatts(): %d ",
 				HeapTupleHeaderGetNatts(htup));
+
+		if (htup->t_infomask2 & ~HEAP_NATTS_MASK)
+			strcat(flagString, "(");
+
 
 		if (htup->t_infomask2 & HEAP_KEYS_UPDATED)
 			strcat(flagString, "HEAP_KEYS_UPDATED|");
@@ -772,7 +776,8 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 
 		if (strlen(flagString))
 			flagString[strlen(flagString) - 1] = '\0';
-		strcat(flagString, " )");
+		if (htup->t_infomask2 & ~HEAP_NATTS_MASK)
+			strcat(flagString, ")");
 	}
 
 	/*
