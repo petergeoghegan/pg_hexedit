@@ -760,7 +760,8 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 	}
 	else
 	{
-		strcat(flagString, "t_infomask2 ( ");
+		sprintf(flagString, "t_infomask2 (HeapTupleHeaderGetNatts(): %d",
+				HeapTupleHeaderGetNatts(htup));
 
 		if (htup->t_infomask2 & HEAP_KEYS_UPDATED)
 			strcat(flagString, "HEAP_KEYS_UPDATED|");
