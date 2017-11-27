@@ -76,7 +76,8 @@ typedef enum blockSwitches
 {
 	BLOCK_RANGE = 0x00000020,	/* -R: Specific block range to dump */
 	BLOCK_CHECKSUMS = 0x00000040,	/* -k: verify block checksums */
-	BLOCK_SKIP_LEAF = 0x00000080	/* -l: Skip leaf pages (use whole page tag) */
+	BLOCK_SKIP_LEAF = 0x00000080,	/* -l: Skip leaf pages (use whole page tag) */
+	BLOCK_SKIP_LSN = 0x00000010		/* -x: Skip pages before LSN */
 } blockSwitches;
 
 typedef enum segmentSwitches
@@ -90,6 +91,9 @@ static int	blockStart = -1;
 
 /* -R[end]:Block range end */
 static int	blockEnd = -1;
+
+/* -x:Skip pages whose LSN is before point */
+static XLogRecPtr afterThreshold = 0;
 
 /* Possible value types for the Special Section */
 typedef enum specialSectionTypes
@@ -189,8 +193,10 @@ static void DisplayOptions(unsigned int validOptions);
 static unsigned int GetSegmentNumberFromFileName(const char *fileName);
 static unsigned int ConsumeOptions(int numOptions, char **options);
 static int GetOptionValue(char *optionString);
+static XLogRecPtr GetOptionXlogRecPtr(char *optionString);
 static unsigned int GetBlockSize(void);
 static unsigned int GetSpecialSectionType(Page page);
+static XLogRecPtr GetPageLsn(Page page);
 static char *GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2);
 static char *GetIndexTupleFlags(IndexTuple itup);
 static bool IsBtreeMetaPage(Page page);
@@ -239,6 +245,7 @@ DisplayOptions(unsigned int validOptions)
 		 "  -h  Display this information\n"
 		 "  -k  Verify block checksums\n"
 		 "  -l  Skip non-root B-Tree leaf pages\n"
+		 "  -x  Skip pages whose LSN is before point\n"
 		 "  -R  Display specific block ranges within the file (Blocks are\n"
 		 "      indexed from 0)\n" "        [startblock]: block to start at\n"
 		 "        [endblock]: block to end at\n"
@@ -357,6 +364,41 @@ ConsumeOptions(int numOptions, char **options)
 						break;
 					}
 				}
+			}
+		}
+
+		/*
+		 * Check for the special case where the user only requires tags for
+		 * pages whose LSN equals or exceeds a supplied threshold.
+		 */
+		else if ((optionStringLength == 2) && (strcmp(optionString, "-x") == 0))
+		{
+			SET_OPTION(blockOptions, BLOCK_SKIP_LSN , 'x');
+			/* Only accept the LSN option once */
+			if (rc == OPT_RC_DUPLICATE)
+				break;
+
+			/* Make sure that there is an LSN option */
+			if (x >= (numOptions - 2))
+			{
+				rc = OPT_RC_INVALID;
+				printf("Error: Missing LSN.\n");
+				exitCode = 1;
+				break;
+			}
+
+			/*
+			 * Mark that we have the LSN and advance the option to what should
+			 * be the LSN argument. Check the value of the next parameter.
+			 */
+			optionString = options[++x];
+			if ((afterThreshold = GetOptionXlogRecPtr(optionString)) == InvalidXLogRecPtr)
+			{
+				rc = OPT_RC_INVALID;
+				printf("Error: Invalid LSN identifier <%s>.\n",
+					   optionString);
+				exitCode = 1;
+				break;
 			}
 		}
 		/* Check for the special case where the user forces a segment size. */
@@ -551,6 +593,23 @@ GetOptionValue(char *optionString)
 }
 
 /*
+ * Given an alphanumeric LSN, convert and return it to an XLogRecPtr if
+ * possible
+ */
+static XLogRecPtr
+GetOptionXlogRecPtr(char *optionString)
+{
+	uint32		xlogid;
+	uint32		xrecoff;
+	XLogRecPtr	value = InvalidXLogRecPtr;
+
+	if (sscanf(optionString, "%X/%X", &xlogid, &xrecoff) == 2)
+		value = (uint64) xlogid << 32 | xrecoff;
+
+	return value;
+}
+
+/*
  * Read the page header off of block 0 to determine the block size used in this
  * file.  Can be overridden using the -S option.  The returned value is the
  * block size of block 0 on disk.
@@ -580,7 +639,18 @@ GetBlockSize(void)
 }
 
 /*
- * Determine the contents of the special section on the block and	return this
+ * Determine the LSN of page as an XLogRecPtr
+ */
+static XLogRecPtr
+GetPageLsn(Page page)
+{
+	PageHeader	pageHeader = (PageHeader) page;
+
+	return PageXLogRecPtrGet(pageHeader->pd_lsn);
+}
+
+/*
+ * Determine the contents of the special section on the block and return this
  * enum value
  */
 static unsigned int
@@ -925,6 +995,22 @@ EmitXmlPage(BlockNumber blkno)
 	int			rc;
 
 	pageOffset = blockSize * currentBlock;
+
+	/*
+	 * Check to see if we must skip this block due to it falling behind
+	 * LSN threshold.
+	 */
+	if ((blockOptions & BLOCK_SKIP_LSN))
+	{
+		XLogRecPtr pageLSN = GetPageLsn(page);
+
+		if (pageLSN < afterThreshold)
+		{
+			rc = 0;
+			return;
+		}
+	}
+
 	specialType = GetSpecialSectionType(page);
 
 	/*
