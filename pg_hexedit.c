@@ -1239,7 +1239,7 @@ EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
 	printf("    <TAG id=\"%u\">\n", tagNumber++);
 	printf("      <start_offset>%u</start_offset>\n", relfileOff);
 	printf("      <end_offset>%lu</end_offset>\n", (relfileOff + sizeof(ItemIdData)) - 1);
-	printf("      <tag_text>(%u,%d) lp_len: %u, lp_off: %u, lp_flags: %s </tag_text>\n",
+	printf("      <tag_text>(%u,%d) lp_len: %u, lp_off: %u, lp_flags: %s</tag_text>\n",
 		   blkno, offset, ItemIdGetLength(itemId), ItemIdGetOffset(itemId), textFlags);
 	printf("      <font_colour>" COLOR_FONT_STANDARD "</font_colour>\n");
 	printf("      <note_colour>" COLOR_BLUE_LIGHT "</note_colour>\n");
