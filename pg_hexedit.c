@@ -1405,7 +1405,7 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 		 * case, we choose to make LSN a single field here, because we don't
 		 * want to have two tooltips with the format value for each field.
 		 */
-		sprintf(flagString, "LSN: %X/%X", (uint32) (pageLSN >> 32), (uint32) pageLSN);
+		sprintf(flagString, "LSN: %X/%08X", (uint32) (pageLSN >> 32), (uint32) pageLSN);
 		EmitXmlTag(blkno, level, flagString, COLOR_YELLOW_LIGHT, pageOffset,
 				   (pageOffset + sizeof(PageXLogRecPtr)) - 1);
 		EmitXmlTag(blkno, level, "checksum", COLOR_GREEN_BRIGHT,
