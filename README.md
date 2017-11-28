@@ -23,9 +23,9 @@ editing PostgreSQL relation files *significantly* easier.
 ![Image of wxHexEditor with pg_hexedit tags](./screenshot1.png)
 
 __CAUTION:__ Do not use pg_hexedit with a PostgreSQL data directory if you are
-not prepared to have it __corrupt data__! pg_hexedit is made available for
-educational purposes only.  It is an *experimental* tool, originally used for
-simulating corruption/corruption analysis.
+not prepared to have it __corrupt data__! pg_hexedit is primarily made
+available for educational purposes.  It is an *experimental* tool, originally
+used for simulating corruption/corruption analysis.
 
 The type of file (heap/index) is determined automatically by the content of the
 blocks within the file, using pg_filedump-style hueristics.  The default is to
