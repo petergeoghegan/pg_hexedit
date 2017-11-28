@@ -1356,7 +1356,9 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 	}
 	else
 	{
+		/* Interpret the content of the header */
 		PageHeader	pageHeader = (PageHeader) page;
+		XLogRecPtr	pageLSN = GetPageLsn(page);
 		int			maxOffset = PageGetMaxOffsetNumber(page);
 		char		flagString[100];
 
@@ -1375,9 +1377,19 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 			}
 		}
 
-		/* Interpret the content of the header */
-		EmitXmlTag(blkno, level, "LSN", COLOR_YELLOW_LIGHT,
-				   pageOffset,
+		/*
+		 * For historical reasons, the 64-bit page header LSN value is stored
+		 * as two 32-bit values.  This makes interpreting what is really just a
+		 * 64-bit unsigned int confusing on little-endian systems, because the
+		 * bytes are "in big endian order" across its two 32-bit halfs, but are
+		 * in the expected little-endian order *within* each half.
+		 *
+		 * This is rather similar to the situation with t_ctid.  Unlike in that
+		 * case, we choose to make LSN a single field here, because we don't
+		 * want to have two tooltips with the format value for each field.
+		 */
+		sprintf(flagString, "LSN: %X/%X", (uint32) (pageLSN >> 32), (uint32) pageLSN);
+		EmitXmlTag(blkno, level, flagString, COLOR_YELLOW_LIGHT, pageOffset,
 				   (pageOffset + sizeof(PageXLogRecPtr)) - 1);
 		EmitXmlTag(blkno, level, "checksum", COLOR_GREEN_BRIGHT,
 				   pageOffset + offsetof(PageHeaderData, pd_checksum),
