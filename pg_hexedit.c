@@ -1219,7 +1219,7 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	EmitXmlTupleTag(blkno, offset, "t_hoff", COLOR_YELLOW_DARK, relfileOff,
 					relfileOffNext - 1);
 	/*
-	 * Whatever follows must be null bitmap
+	 * Whatever follows must be null bitmap (until t_hoff).
 	 *
 	 * Note that an Oid field will appear as the final 4 bytes of t_bits when
 	 * (t_infomask & HEAP_HASOID).  This seems like the most faithful
@@ -1234,6 +1234,19 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	relfileOffNext = relfileOffOrig + htup->t_hoff;
 	EmitXmlTupleTag(blkno, offset, "t_bits", COLOR_YELLOW_DARK, relfileOff,
 					relfileOffNext - 1);
+
+	/*
+	 * Handle rare edge case where tuple has no contents because it consists
+	 * entirely of NULL attributes.  We trust lp_len to handle this, which is
+	 * what caller passed us.
+	 */
+	if (itemSize == (relfileOffNext - relfileOffOrig))
+		return;
+	else if (itemSize < (relfileOffNext - relfileOffOrig))
+	{
+		exitCode = 1;
+		exit(exitCode);
+	}
 
 	/*
 	 * Tuple contents (all attributes/columns) is slightly off-white, to
