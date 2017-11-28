@@ -1319,11 +1319,18 @@ EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
 	}
 
 	/*
-	 * Tuple contents -- "minus infinity" items have none, and so require
-	 * special care.
+	 * Tuple contents
 	 *
-	 * We don't get length using lp_len arithmetic here, though we could.  The
-	 * lp_len field is redundant for B-Tree indexes.
+	 * All-attributes-NULL IndexTuples will not have any contents here, so we
+	 * avoid creating a tuple content tag entirely.  The same applies to "minus
+	 * infinity" items from internal pages (though they don't have a NULL
+	 * bitmap).
+	 *
+	 * We don't use the lp_len value here, though we could do it that way
+	 * instead (we do use lp_len at the same point within EmitXmlHeapTuple()).
+	 * The lp_len field is redundant for B-Tree indexes, and somebody might
+	 * take advantage of that fact in the future, so this seems more
+	 * future-proof.
 	 */
 	relfileOffNext = relfileOffOrig + IndexTupleSize(tuple);
 	if (relfileOff < relfileOffNext)
