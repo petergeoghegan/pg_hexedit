@@ -23,7 +23,7 @@ editing PostgreSQL relation files *significantly* easier.
 ![Image of wxHexEditor with pg_hexedit tags](./screenshot1.png)
 
 __CAUTION:__ Do not use pg_hexedit with a PostgreSQL data directory if you are
-not prepared to have it __corrupt data__! pg_hexedit is primarily made
+not prepared to have it __corrupt data__!  pg_hexedit is primarily made
 available for educational purposes.  It is an *experimental* tool, originally
 used for simulating corruption/corruption analysis.
 
@@ -53,7 +53,7 @@ was untarred in the contrib directory of a PostgreSQL build tree:
 
 ```shell
   $ make
-  $ # if using Makefile.contrib:
+  $ # if using Makefile.contrib (install not required by convenience scripts):
   $ make install
 ```
 
@@ -189,8 +189,10 @@ should not have tags emitted.  This is another option to reduce the overhead of
 tags within wxHexEditor by avoiding generating tags for non-interesting
 blocks/pages in the first place.  It can be useful during debugging to specify
 an LSN that is only a few checkpoints old, to limit annotations to recently
-modified blocks.  This advanced option isn't currently used by the convenience
-scripts.
+modified blocks.  This advanced option isn't used by the convenience scripts.
+[pg_waldump](https://www.postgresql.org/docs/current/static/pgwaldump.html) may
+be used to find a relevant cutoff point's LSN value (e.g., based on a commit
+WAL record's timestamp value).
 
 pg_hexedit's `-l` flag can be used when the target is an nbtree relation.  This
 will have pg_hexedit emit all-green, single-page tags for leaf pages, which are
@@ -204,7 +206,7 @@ convenience scripts.
 pg_hexedit retains a minority of the flags that appear in pg_filedump:
 
 ```shell
-  pg_hexedit [-hkl] [-R startblock [endblock]] [-s segsize] [-n segnumber] file
+  pg_hexedit [-hkl] [-R startblock [endblock]] [-s segsize] [-n segnumber] [-x lsn] file
 ```
 
 Two new flags, `-x` and `-l`, have been added.
