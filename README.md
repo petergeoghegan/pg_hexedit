@@ -150,8 +150,8 @@ To open the Postgres table `pg_type` with tags and annotations:
   /home/pg/code/pg_hexedit
   # Confirm configuration:
   $ $EDITOR hexedit.cfg
-  # Invoke script:
-  $ ./table_hexedit pg_type
+  # Invoke generic script (works on tables and indexes):
+  $ ./relation_hexedit pg_type
 Replacing /home/pg/code/pg_hexedit/.wxHexEditor with pg_hexedit optimized settings...
 ...
 ```

@@ -39,11 +39,10 @@ fi
 # forgotten.  This is also where we generate convenience "Go to offset" dialog
 # offsets in the registry/cache.
 #
-# For tables, generate 9 points that divide 10 deciles in Go to offsets dialog
-# cache
+# Generate 9 points that divide 10 deciles in Go to offsets dialog cache
 #
-# Note that the query will return NULL for very small tables, which leaves us
-# without any such cached offsets.
+# Note that the query will return NULL for very small relations, which leaves
+# us without any such cached offsets.
 DECILE_SPLITS=$(psql --no-psqlrc -tA -c "WITH offsets (block_offset) AS (
     SELECT unnest(percentile_cont(array[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) WITHIN GROUP (ORDER BY i))::int8 * (2^13)
     FROM
