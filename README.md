@@ -182,7 +182,22 @@ unresponsive when there are many tags.  It may be necessary to work around this
 limitation at some point.
 
 Generalize from the example of the convenience scripts for guidance on this.
-Limiting the range that is summarized can be very effective.
+Limiting the range that is summarized can be very effective in simple cases.
+
+pg_hexedit's `-x` flag can be used to specify a page LSN before which pages
+should not have tags emitted.  This is another option to reduce the overhead of
+tags within wxHexEditor by avoiding generating tags for non-interesting
+blocks/pages in the first place.  It can be useful during debugging to specify
+an LSN that is only a few checkpoints old, to limit annotations to recently
+modified blocks.  This advanced option isn't currently used by the convenience
+scripts.
+
+pg_hexedit's `-l` flag can be used when the target is an nbtree relation.  This
+will have pg_hexedit emit all-green, single-page tags for leaf pages, which are
+less interesting than internal pages in some debugging scenarios.  This is yet
+another option for limiting the number of tags generated to control overhead
+within wxHexEditor.  This advanced option isn't currently used by the
+convenience scripts.
 
 ## Direct invocation
 
@@ -192,7 +207,7 @@ pg_hexedit retains a minority of the flags that appear in pg_filedump:
   pg_hexedit [-hkl] [-R startblock [endblock]] [-s segsize] [-n segnumber] file
 ```
 
-Two new flags, `-l` and '-x', have been added.
+Two new flags, `-x` and '-l', have been added.
 
 Invoking it directly might be more useful when you want to work on a copy of
 the database that is not under the control of a running PostgreSQL server.
