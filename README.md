@@ -164,6 +164,11 @@ Replacing /home/pg/code/pg_hexedit/.wxHexEditor with pg_hexedit optimized settin
 ...
 ```
 
+The advantage of using the btree_hexedit script for B-Tree indexes over the
+generic relation_hexedit script is that btree_hexedit sets offsets for every
+block that is a direct child of the root page.  The wxHexEditor shortcut for
+accessing the offsets is Ctrl + G.
+
 The scripts will only open the first 1GB segment file in the relation.  Note
 also that these convenience scripts limit the range of blocks that are
 summarized, to keep the overhead acceptable.  (This can be changed by modifying
