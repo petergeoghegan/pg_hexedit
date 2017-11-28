@@ -45,11 +45,19 @@ fi
 # Note that the query will return NULL for very small tables, which leaves us
 # without any such cached offsets.
 TRUE_ROOT_OFFSET=$(psql --no-psqlrc -tA -c "SELECT root * 2^13 FROM bt_metap('$relname')")
+if [ ! $? -eq 0 ]; then
+   echo "obtaining true root block for offset dialog failed; is $relname a btree?"
+   exit
+fi
 ROOT_CHILD_OFFSETS=$(psql --no-psqlrc -tA -c "WITH offset_strings(string) AS (
     SELECT 'GoToOffset' || ROW_NUMBER() OVER() || '=' || (substring(ctid::text from '([0-9]+)')::int8 * (2^13))
     FROM bt_page_items('$relname', (SELECT root::int4 FROM bt_metap('$relname')))
 )
 SELECT string_agg(string, chr(10)) FROM offset_strings;")
+if [ ! $? -eq 0 ]; then
+   echo "obtaining children of root block for offset dialog failed"
+   exit
+fi
 
 echo "Replacing $wxconfig with pg_hexedit optimized settings..."
 cat > $wxconfig <<- EOM
