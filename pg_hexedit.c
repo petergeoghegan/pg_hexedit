@@ -316,7 +316,7 @@ ConsumeOptions(int numOptions, char **options)
 			if (x >= (numOptions - 2))
 			{
 				rc = OPT_RC_INVALID;
-				printf("Error: Missing range start identifier.\n");
+				fprintf(stderr, "pg_hexedit error: missing range start identifier.\n");
 				exitCode = 1;
 				break;
 			}
@@ -330,7 +330,8 @@ ConsumeOptions(int numOptions, char **options)
 			if ((range = GetOptionValue(optionString)) < 0)
 			{
 				rc = OPT_RC_INVALID;
-				printf("Error: Invalid range start identifier <%s>.\n",
+				fprintf(stderr,
+						"pg_hexedit error: invalid range start identifier <%s>.\n",
 					   optionString);
 				exitCode = 1;
 				break;
@@ -358,7 +359,7 @@ ConsumeOptions(int numOptions, char **options)
 					else
 					{
 						rc = OPT_RC_INVALID;
-						printf("Error: Requested block range start <%d> is "
+						fprintf(stderr, "pg_hexedit error: requested block range start <%d> is "
 							   "greater than end <%d>.\n", blockStart, range);
 						exitCode = 1;
 						break;
@@ -382,7 +383,7 @@ ConsumeOptions(int numOptions, char **options)
 			if (x >= (numOptions - 2))
 			{
 				rc = OPT_RC_INVALID;
-				printf("Error: Missing LSN.\n");
+				fprintf(stderr, "pg_hexedit error: missing lsn.\n");
 				exitCode = 1;
 				break;
 			}
@@ -395,7 +396,7 @@ ConsumeOptions(int numOptions, char **options)
 			if ((afterThreshold = GetOptionXlogRecPtr(optionString)) == InvalidXLogRecPtr)
 			{
 				rc = OPT_RC_INVALID;
-				printf("Error: Invalid LSN identifier <%s>.\n",
+				fprintf(stderr, "pg_hexedit error: invalid lsn identifier <%s>.\n",
 					   optionString);
 				exitCode = 1;
 				break;
@@ -416,7 +417,7 @@ ConsumeOptions(int numOptions, char **options)
 			if (x >= (numOptions - 2))
 			{
 				rc = OPT_RC_INVALID;
-				printf("Error: Missing segment size identifier.\n");
+				fprintf(stderr, "pg_hexedit error: missing segment size identifier.\n");
 				exitCode = 1;
 				break;
 			}
@@ -428,7 +429,7 @@ ConsumeOptions(int numOptions, char **options)
 			else
 			{
 				rc = OPT_RC_INVALID;
-				printf("Error: Invalid segment size requested <%s>.\n",
+				fprintf(stderr, "pg_hexedit error: invalid segment size requested <%s>.\n",
 					   optionString);
 				exitCode = 1;
 				break;
@@ -453,7 +454,7 @@ ConsumeOptions(int numOptions, char **options)
 			if (x >= (numOptions - 2))
 			{
 				rc = OPT_RC_INVALID;
-				printf("Error: Missing segment number identifier.\n");
+				fprintf(stderr, "pg_hexedit error: missing segment number identifier.\n");
 				exitCode = 1;
 				break;
 			}
@@ -465,7 +466,7 @@ ConsumeOptions(int numOptions, char **options)
 			else
 			{
 				rc = OPT_RC_INVALID;
-				printf("Error: Invalid segment number requested <%s>.\n",
+				fprintf(stderr, "pg_hexedit error: invalid segment number requested <%s>.\n",
 					   optionString);
 				exitCode = 1;
 				break;
@@ -487,7 +488,7 @@ ConsumeOptions(int numOptions, char **options)
 				else
 				{
 					rc = OPT_RC_FILE;
-					printf("Error: Could not open file <%s>.\n", optionString);
+					fprintf(stderr, "pg_hexedit error: could not open file <%s>.\n", optionString);
 					exitCode = 1;
 					break;
 				}
@@ -503,7 +504,7 @@ ConsumeOptions(int numOptions, char **options)
 				else
 				{
 					rc = OPT_RC_FILE;
-					printf("Error: Missing file name to dump.\n");
+					fprintf(stderr, "pg_hexedit error: missing file name to dump.\n");
 					exitCode = 1;
 				}
 				break;
@@ -517,7 +518,7 @@ ConsumeOptions(int numOptions, char **options)
 			if (optionString[0] != '-')
 			{
 				rc = OPT_RC_INVALID;
-				printf("Error: Invalid option string <%s>.\n", optionString);
+				fprintf(stderr, "pg_hexedit error: invalid option string <%s>.\n", optionString);
 				exitCode = 1;
 				break;
 			}
@@ -547,7 +548,7 @@ ConsumeOptions(int numOptions, char **options)
 
 					default:
 						rc = OPT_RC_INVALID;
-						printf("Error: Unknown option <%c>.\n", optionString[y]);
+						fprintf(stderr, "pg_hexedit error: unknown option <%c>.\n", optionString[y]);
 						exitCode = 1;
 						break;
 				}
@@ -560,7 +561,7 @@ ConsumeOptions(int numOptions, char **options)
 
 	if (rc == OPT_RC_DUPLICATE)
 	{
-		printf("Error: Duplicate option listed <%c>.\n", duplicateSwitch);
+		fprintf(stderr, "pg_hexedit error: duplicate option listed <%c>.\n", duplicateSwitch);
 		exitCode = 1;
 	}
 
@@ -630,8 +631,8 @@ GetBlockSize(void)
 		localSize = (unsigned int) PageGetPageSize(&localCache);
 	else
 	{
-		printf("Error: Unable to read full page header from block 0.\n"
-			   "  ===> Read %u bytes\n", bytesRead);
+		fprintf(stderr, "pg_hexedit error: unable to read full page header from block 0\n"
+			   "read %u bytes\n", bytesRead);
 		exitCode = 1;
 	}
 
@@ -774,7 +775,7 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 
 	if (!flagString)
 	{
-		printf("\nError: Unable to create buffer of size <512>.\n");
+		fprintf(stderr, "pg_hexedit error: unable to create buffer of size <512>.\n");
 		exitCode = 1;
 		exit(exitCode);
 	}
@@ -870,9 +871,10 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 	 */
 	if (computedLength != localHoff)
 	{
-		printf
-			("  Error: Computed header length not equal to header size.\n"
-			 "         Computed <%u>  Header: <%d>\n", computedLength,
+		fprintf
+			(stderr,
+			 "pg_hexedit error: computed header length not equal to header size.\n"
+			 "computed <%u>  header: <%d>\n", computedLength,
 			 localHoff);
 
 		exitCode = 1;
@@ -897,7 +899,7 @@ GetIndexTupleFlags(IndexTuple itup)
 
 	if (!flagString)
 	{
-		printf("\nError: Unable to create buffer of size <512>.\n");
+		fprintf(stderr, "pg_hexedit error: unable to create buffer of size <512>.\n");
 		exitCode = 1;
 		exit(exitCode);
 	}
@@ -1244,6 +1246,8 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 		return;
 	else if (itemSize < (relfileOffNext - relfileOffOrig))
 	{
+		fprintf(stderr, "pg_hexedit error: lp_len %d from (%u,%u) is undersized.\n", itemSize,
+			   blkno, offset);
 		exitCode = 1;
 		exit(exitCode);
 	}
@@ -1528,7 +1532,7 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 			|| (pageHeader->pd_upper < pageHeader->pd_lower)
 			|| (pageHeader->pd_special > blockSize))
 		{
-			printf(" Error: Invalid header information.\n\n");
+			fprintf(stderr, "pg_hexedit error: invalid header information.\n\n");
 			exitCode = 1;
 		}
 
@@ -1542,7 +1546,7 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 
 			if (calc_checksum != pageHeader->pd_checksum)
 			{
-				printf(" Error: checksum failure: calculated 0x%04x.\n\n",
+				fprintf(stderr, "pg_hexedit error: checksum failure: calculated 0x%04x.\n\n",
 					   calc_checksum);
 				exitCode = 1;
 			}
@@ -1555,9 +1559,10 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 	 */
 	if (rc == EOF_ENCOUNTERED)
 	{
-		printf
-			(" Error: End of block encountered within the header."
-			 " Bytes read: %4u.\n\n", bytesToFormat);
+		fprintf
+			(stderr,
+			 "pg_hexedit error: end of block encountered within the header."
+			 "bytes read: %4u.\n\n", bytesToFormat);
 		exitCode = 1;
 	}
 
@@ -1589,13 +1594,13 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 	 */
 	if (maxOffset == 0)
 	{
-		printf("Empty block - no items listed \n");
+		fprintf(stderr, "pg_hexedit error: empty block - no items listed \n");
 		exitCode = 1;
 		exit(exitCode);
 	}
 	else if ((maxOffset < 0) || (maxOffset > blockSize))
 	{
-		printf("Error: Item index corrupt on block. Offset: <%d>\n",
+		fprintf(stderr, "pg_hexedit error: item index corrupt on block. offset: <%d>\n",
 			   maxOffset);
 		exitCode = 1;
 		exit(exitCode);
@@ -1607,19 +1612,21 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 		/* Use the special section to determine the format style */
 		switch (specialType)
 		{
+#ifdef DISABLED
 			case SPEC_SECT_INDEX_HASH:
 			case SPEC_SECT_INDEX_GIST:
 			case SPEC_SECT_INDEX_GIN:
-			case SPEC_SECT_INDEX_SPGIST:
-				exitCode = 1;
-				exit(exitCode);
-				break;
+#endif
 			case SPEC_SECT_INDEX_BTREE:
 				formatAs = ITEM_INDEX;
 				break;
-			default:
+			case SPEC_SECT_NONE:
 				formatAs = ITEM_HEAP;
 				break;
+			default:
+				fprintf(stderr, "pg_hexedit error: unsupported special section type. type: <%u>.\n", specialType);
+				exitCode = 1;
+				exit(exitCode);
 		}
 
 		for (offset = FirstOffsetNumber;
@@ -1640,8 +1647,8 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 				((itemOffset + itemSize > blockSize) ||
 				 (itemOffset + itemSize > bytesToFormat)))
 			{
-				printf("  Error: Item contents extend beyond block.\n"
-					   "         BlockSize<%d> Bytes Read<%d> Item Start<%d>.\n",
+				fprintf(stderr, "pg_hexedit error: item contents extend beyond block.\n"
+					   "blocksize<%d> bytes read<%d> item start<%d>.\n",
 					   blockSize, bytesToFormat, itemOffset + itemSize);
 				exitCode = 1;
 				exit(exitCode);
@@ -1687,7 +1694,7 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 	{
 		case SPEC_SECT_ERROR_UNKNOWN:
 		case SPEC_SECT_ERROR_BOUNDARY:
-			printf(" Error: Invalid special section encountered.\n");
+			fprintf(stderr, "pg_hexedit error: invalid special section encountered.\n");
 			exitCode = 1;
 			break;
 
@@ -1735,13 +1742,10 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 			}
 			break;
 
-		case SPEC_SECT_SEQUENCE:
-		case SPEC_SECT_INDEX_HASH:
-		case SPEC_SECT_INDEX_GIST:
-		case SPEC_SECT_INDEX_GIN:
-		case SPEC_SECT_INDEX_SPGIST:
-			printf(" Unsupported special section type. Type: <%u>.\n", specialType);
+		default:
+			fprintf(stderr, "pg_hexedit error: unsupported special section type. type: <%u>.\n", specialType);
 			exitCode = 1;
+			exit(exitCode);
 			break;
 	}
 }
@@ -1765,7 +1769,7 @@ EmitXmlFile(void)
 
 		if (fseek(fp, position, SEEK_SET) != 0)
 		{
-			printf("Error: Seek error encountered before requested "
+			fprintf(stderr, "pg_hexedit error: seek error encountered before requested "
 				   "start block <%d>.\n", blockStart);
 			contentsToDump = 0;
 			exitCode = 1;
@@ -1789,8 +1793,10 @@ EmitXmlFile(void)
 			 * subsequent read gets the error.
 			 */
 			if (initialRead)
-				printf("Error: Premature end of file encountered.\n");
-
+			{
+				fprintf(stderr, "pg_hexedit error: premature end of file encountered.\n");
+				exitCode = 1;
+			}
 			contentsToDump = 0;
 		}
 		else
@@ -1845,7 +1851,7 @@ main(int argv, char **argc)
 				EmitXmlFile();
 			else
 			{
-				printf("\nError: Unable to create buffer of size <%d>.\n",
+				fprintf(stderr, "pg_hexedit error: unable to create buffer of size <%d>.\n",
 					   blockSize);
 				exitCode = 1;
 			}

@@ -76,7 +76,6 @@ echo "Note: Only blocks 0 - $BLOCK_TAGS will be annotated, to keep overhead low"
 ./pg_hexedit -R 0 $BLOCK_TAGS $FULLPATH > $FULLPATH.tags
 
 if [ ! $? -eq 0 ]; then
-   echo "invoking pg_hexedit failed"
    exit
 fi
 
