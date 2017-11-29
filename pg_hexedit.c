@@ -234,6 +234,7 @@ DisplayOptions(unsigned int validOptions)
 	if (validOptions == OPT_RC_COPYRIGHT)
 		printf
 			("\npg_hexedit (for %s)"
+			 "\nCopyright (c) 2017, VMware, Inc."
 			 "\nCopyright (c) 2002-2010 Red Hat, Inc."
 			 "\nCopyright (c) 2011-2016, PostgreSQL Global Development Group\n",
 			 PG_VERSION);
