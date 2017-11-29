@@ -37,6 +37,9 @@
 
 #include <time.h>
 
+#if PG_VERSION_NUM >= 90500
+#include "access/brin_page.h"
+#endif
 #include "access/gin_private.h"
 #include "access/gist.h"
 #include "access/hash.h"
@@ -49,9 +52,6 @@
 #include "storage/checksum_impl.h"
 #include "utils/pg_crc.h"
 
-#define FD_VERSION				"11.0"	/* version ID of pg_hexedit */
-#define FD_PG_VERSION			"PostgreSQL 11.x"	/* PG version it works
-													 * with */
 #define SEQUENCE_MAGIC			0x1717	/* PostgreSQL defined magic number */
 #define EOF_ENCOUNTERED 		(-1)	/* Indicator for partial read */
 
@@ -105,6 +105,7 @@ typedef enum specialSectionTypes
 	SPEC_SECT_INDEX_GIST,		/* GIST index info in special section */
 	SPEC_SECT_INDEX_GIN,		/* GIN index info in special section */
 	SPEC_SECT_INDEX_SPGIST,		/* SP - GIST index info in special section */
+	SPEC_SECT_INDEX_BRIN,		/* BRIN index info in special section */
 	SPEC_SECT_ERROR_UNKNOWN,	/* Unknown error */
 	SPEC_SECT_ERROR_BOUNDARY	/* Boundary error */
 } specialSectionTypes;
@@ -200,6 +201,7 @@ static XLogRecPtr GetPageLsn(Page page);
 static char *GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2);
 static char *GetIndexTupleFlags(IndexTuple itup);
 static bool IsBtreeMetaPage(Page page);
+static bool IsBrinMetaPage(Page page);
 static void EmitXmlDocHeader(int numOptions, char **options);
 static void EmitXmlPage(BlockNumber blkno);
 static void EmitXmlFooter(void);
@@ -231,10 +233,10 @@ DisplayOptions(unsigned int validOptions)
 {
 	if (validOptions == OPT_RC_COPYRIGHT)
 		printf
-			("\npg_hexedit Version %s (for %s)"
+			("\npg_hexedit (for %s)"
 			 "\nCopyright (c) 2002-2010 Red Hat, Inc."
 			 "\nCopyright (c) 2011-2016, PostgreSQL Global Development Group\n",
-			 FD_VERSION, FD_PG_VERSION);
+			 PG_VERSION);
 
 	printf
 		("\nUsage: pg_hexedit [-hkl] [-R startblock [endblock]] [-s segsize] [-n segnumber] file\n\n"
@@ -245,7 +247,7 @@ DisplayOptions(unsigned int validOptions)
 		 "  -h  Display this information\n"
 		 "  -k  Verify block checksums\n"
 		 "  -l  Skip non-root B-Tree leaf pages\n"
-		 "  -x  Skip pages whose LSN is before point\n"
+		 "  -x  Skip pages whose LSN is before [lsn]\n"
 		 "  -R  Display specific block ranges within the file (Blocks are\n"
 		 "      indexed from 0)\n" "        [startblock]: block to start at\n"
 		 "        [endblock]: block to end at\n"
@@ -707,6 +709,9 @@ GetSpecialSectionType(Page page)
 					else if (specialSize == MAXALIGN(sizeof(SpGistPageOpaqueData)) &&
 							 *ptype == SPGIST_PAGE_ID)
 						rc = SPEC_SECT_INDEX_SPGIST;
+					else if (specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
+							 IsBrinMetaPage(page))
+						rc = SPEC_SECT_INDEX_BRIN;
 					else if (specialSize == MAXALIGN(sizeof(GinPageOpaqueData)))
 						rc = SPEC_SECT_INDEX_GIN;
 					else
@@ -947,6 +952,24 @@ IsBtreeMetaPage(Page page)
 			return true;
 	}
 
+	return false;
+}
+
+/*	Check whether page is a BRIN meta page */
+static bool
+IsBrinMetaPage(Page page)
+{
+#if PG_VERSION_NUM >= 90500
+	 BrinMetaPageData   *meta;
+
+	if (bytesToFormat != blockSize || !BRIN_IS_META_PAGE(page))
+		return false;
+
+	 meta = ((BrinMetaPageData *) PageGetContents(page));
+
+	 if (meta->brinMagic == BRIN_META_MAGIC)
+		 return true;
+#endif
 	return false;
 }
 
@@ -1588,10 +1611,7 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 	ItemId		itemId;
 	int			maxOffset = PageGetMaxOffsetNumber(page);
 
-	/*
-	 * If it's a btree meta page, the meta block is where items would normally
-	 * be; don't print garbage.
-	 */
+	/* If it's a btree meta page, the meta block will have no items */
 	if (IsBtreeMetaPage(page))
 		return;
 
@@ -1623,6 +1643,8 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 			case SPEC_SECT_INDEX_HASH:
 			case SPEC_SECT_INDEX_GIST:
 			case SPEC_SECT_INDEX_GIN:
+			case SPEC_SECT_INDEX_SPGIST:
+			case SPEC_SECT_INDEX_BRIN:
 #endif
 			case SPEC_SECT_INDEX_BTREE:
 				formatAs = ITEM_INDEX;
