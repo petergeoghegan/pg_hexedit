@@ -214,7 +214,7 @@ static void EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset,
 static void EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 							 HeapTupleHeader htup, uint32 relfileOff,
 							 unsigned int itemSize);
-static void EmitXmlBtreeTuple(BlockNumber blkno, OffsetNumber offset,
+static void EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset,
 							  IndexTuple tuple, uint32 relfileOff);
 static void EmitXmlItemId(BlockNumber blkno, OffsetNumber offset,
 						  ItemId itemId, uint32 relfileOff,
@@ -1266,20 +1266,36 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 }
 
 /*
- * Emit a wxHexEditor tag for entire B-Tree index tuple.
+ * Emit a wxHexEditor tag for entire B-Tree/GIN index tuple.
  *
  * Note: Caller does not need to pass itemSize from ItemId, because that's
- * redundant in the case of B-Tree IndexTuples.
+ * redundant in the case of IndexTuples.
  */
 static void
-EmitXmlBtreeTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
+EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
 				  uint32 relfileOff)
 {
 	uint32		relfileOffNext = 0;
 	uint32		relfileOffOrig = relfileOff;
 	char	   *flagString;
 
-	/* TID style matches EmitXmlHeapTuple() */
+	/*
+	 * Emit t_tid tags.  TID tag style should be kept consistent with
+	 * EmitXmlHeapTuple().
+	 *
+	 * Note: Leaf-level GIN pages are rather similar to nbtree leaf pages (and
+	 * nbtree internal pages) in that they consist of keys of a cataloged type
+	 * (which pg_hexedit, as a front-end utility, cannot reason about), plus a
+	 * simple t_tid pointer.  However, posting tree entries, non-leaf entries,
+	 * and pending list entries perform special punning of t_tid within
+	 * IndexTuples, which we currently don't highlight in any way.  See
+	 * GinFormTuple() and its callers.
+	 *
+	 * TODO: We should decode the meaning of t_tid when this GIN-private t_tid
+	 * offset number punning has taken place, and cut this information into
+	 * finer detail.  There is quite a bit of discoverable information we could
+	 * tag/annotate directly, to show details of posting list compression, etc.
+	 */
 	relfileOffNext = relfileOff + sizeof(uint16);
 	EmitXmlTupleTag(blkno, offset, "t_tid->bi_hi", COLOR_BLUE_LIGHT, relfileOff,
 					relfileOffNext - 1);
@@ -1320,7 +1336,7 @@ EmitXmlBtreeTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
 	}
 
 	/*
-	 * Tuple contents
+	 * Tuple contents.
 	 *
 	 * All-attributes-NULL IndexTuples will not have any contents here, so we
 	 * avoid creating a tuple content tag entirely.  The same applies to "minus
@@ -1707,28 +1723,14 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 									 pageOffset + itemOffset, itemSize);
 				}
 			}
-			else if (formatAs == ITEM_INDEX &&
-					 specialType == SPEC_SECT_INDEX_BTREE)
+			else if (formatAs == ITEM_INDEX)
 			{
 				IndexTuple	tuple;
 
 				tuple = (IndexTuple) PageGetItem(page, itemId);
 
-				EmitXmlBtreeTuple(blkno, offset, tuple,
+				EmitXmlIndexTuple(blkno, offset, tuple,
 								  pageOffset + itemOffset);
-			}
-			else if (formatAs == ITEM_INDEX &&
-					 specialType == SPEC_SECT_INDEX_GIN)
-			{
-				IndexTuple	tuple;
-
-				if (itemSize != 0)
-				{
-					tuple = (IndexTuple) PageGetItem(page, itemId);
-
-					/* TODO: Implement support for emitting GIN tuples */
-					(void) tuple;
-				}
 			}
 		}
 	}
