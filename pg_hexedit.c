@@ -200,7 +200,6 @@ static unsigned int GetSpecialSectionType(Page page);
 static XLogRecPtr GetPageLsn(Page page);
 static char *GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2);
 static char *GetIndexTupleFlags(IndexTuple itup);
-static bool IsBtreeMetaPage(Page page);
 static bool IsBrinMetaPage(Page page);
 static void EmitXmlDocHeader(int numOptions, char **options);
 static void EmitXmlPage(BlockNumber blkno);
@@ -215,13 +214,13 @@ static void EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset,
 static void EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 							 HeapTupleHeader htup, uint32 relfileOff,
 							 unsigned int itemSize);
-static void EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset,
+static void EmitXmlBtreeTuple(BlockNumber blkno, OffsetNumber offset,
 							  IndexTuple tuple, uint32 relfileOff);
 static void EmitXmlItemId(BlockNumber blkno, OffsetNumber offset,
 						  ItemId itemId, uint32 relfileOff,
 						  const char *textFlags);
-static int EmitXmlPageHeader(Page page, BlockNumber blkno,
-							 uint32 level);
+static int EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno,
+							uint32 level);
 static void EmitXmlTuples(BlockNumber blkno, Page page);
 static void EmitXmlSpecial(BlockNumber blkno, uint32 level);
 static void EmitXmlFile(void);
@@ -935,27 +934,6 @@ GetIndexTupleFlags(IndexTuple itup)
 	return flagString;
 }
 
-/*	Check whether page is a btree meta page */
-static bool
-IsBtreeMetaPage(Page page)
-{
-	PageHeader	pageHeader = (PageHeader) page;
-
-	if ((PageGetSpecialSize(page) == (MAXALIGN(sizeof(BTPageOpaqueData))))
-		&& (bytesToFormat == blockSize))
-	{
-		BTPageOpaque btpo =
-		(BTPageOpaque) ((char *) page + pageHeader->pd_special);
-
-		/* Must check the cycleid to be sure it's really btree. */
-		if ((btpo->btpo_cycleid <= MAX_BT_CYCLE_ID) &&
-			(btpo->btpo_flags & BTP_META))
-			return true;
-	}
-
-	return false;
-}
-
 /*	Check whether page is a BRIN meta page */
 static bool
 IsBrinMetaPage(Page page)
@@ -1070,11 +1048,10 @@ EmitXmlPage(BlockNumber blkno)
 	}
 
 	/*
-	 * Every block that we aren't skipping as an uninteresting leaf page will
-	 * have header, items and possibly a special section tags created.  Beware
-	 * of partial block reads, though.
+	 * Every block that we aren't skipping will have header, items and possibly
+	 * special section tags created.  Beware of partial block reads, though.
 	 */
-	rc = EmitXmlPageHeader(page, blkno, level);
+	rc = EmitXmlPageHeaderAndMeta(page, blkno, level);
 
 	/* If we didn't encounter a partial read in header, carry on...  */
 	if (rc != EOF_ENCOUNTERED)
@@ -1289,13 +1266,13 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 }
 
 /*
- * Emit a wxHexEditor tag for entire index tuple.
+ * Emit a wxHexEditor tag for entire B-Tree index tuple.
  *
  * Note: Caller does not need to pass itemSize from ItemId, because that's
- * redundant in the case of IndexTuples.
+ * redundant in the case of B-Tree IndexTuples.
  */
 static void
-EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
+EmitXmlBtreeTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
 				  uint32 relfileOff)
 {
 	uint32		relfileOffNext = 0;
@@ -1381,14 +1358,15 @@ EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
 }
 
 /*
- * Dump out a formatted block header for the requested block
+ * Dump out a formatted block header for the requested block.  If this is a
+ * metapage, include metapage tags.
  *
  * Unlike with pg_filedump, this is also where ItemId entries are printed.
  * This is necessary to satisfy the tag number ordering requirement of
  * wxHexEditor.
  */
 static int
-EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
+EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno, uint32 level)
 {
 	int			rc = 0;
 	unsigned int headerBytes;
@@ -1409,6 +1387,8 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 		XLogRecPtr	pageLSN = GetPageLsn(page);
 		int			maxOffset = PageGetMaxOffsetNumber(page);
 		char		flagString[100];
+		uint32		metaStartOffset = pageOffset + MAXALIGN(SizeOfPageHeaderData);
+
 
 		headerBytes = offsetof(PageHeaderData, pd_linp[0]);
 		blockVersion = (unsigned int) PageGetPageLayoutVersion(page);
@@ -1474,14 +1454,9 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 				   pageOffset + offsetof(PageHeaderData, pd_prune_xid),
 				   (pageOffset + offsetof(PageHeaderData, pd_linp[0])) - 1);
 
-		if (IsBtreeMetaPage(page))
+		if (specialType == SPEC_SECT_INDEX_BTREE &&
+			blkno == BTREE_METAPAGE)
 		{
-			uint32	metaStartOffset = pageOffset + MAXALIGN(SizeOfPageHeaderData);
-
-			/*
-			 * If it's a btree meta page, produce tags for the contents of the
-			 * meta block
-			 */
 			EmitXmlTag(blkno, level, "btm_magic", COLOR_PINK,
 					   metaStartOffset + offsetof(BTMetaPageData, btm_magic),
 					   (metaStartOffset + offsetof(BTMetaPageData, btm_version) - 1));
@@ -1501,6 +1476,41 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 					   metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel),
 					   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) + sizeof(uint32) - 1));
 			headerBytes += sizeof(BTMetaPageData);
+		}
+		else if (specialType == SPEC_SECT_INDEX_GIN &&
+				 blkno == GIN_METAPAGE_BLKNO)
+		{
+			EmitXmlTag(blkno, level, "head", COLOR_PINK,
+					   metaStartOffset + offsetof(GinMetaPageData, head),
+					   (metaStartOffset + offsetof(GinMetaPageData, tail) - 1));
+			EmitXmlTag(blkno, level, "tail", COLOR_PINK,
+					   metaStartOffset + offsetof(GinMetaPageData, tail),
+					   (metaStartOffset + offsetof(GinMetaPageData, tailFreeSize) - 1));
+			EmitXmlTag(blkno, level, "tailFreeSize", COLOR_PINK,
+					   metaStartOffset + offsetof(GinMetaPageData, tailFreeSize),
+					   (metaStartOffset + offsetof(GinMetaPageData, nPendingPages) - 1));
+			EmitXmlTag(blkno, level, "nPendingPages", COLOR_PINK,
+					   metaStartOffset + offsetof(GinMetaPageData, nPendingPages),
+					   (metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples) - 1));
+			EmitXmlTag(blkno, level, "nPendingHeapTuples", COLOR_PINK,
+					   metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples),
+					   (metaStartOffset + offsetof(GinMetaPageData, nTotalPages) - 1));
+			EmitXmlTag(blkno, level, "nTotalPages", COLOR_PINK,
+					   metaStartOffset + offsetof(GinMetaPageData, nTotalPages),
+					   (metaStartOffset + offsetof(GinMetaPageData, nEntryPages) - 1));
+			EmitXmlTag(blkno, level, "nEntryPages", COLOR_PINK,
+					   metaStartOffset + offsetof(GinMetaPageData, nEntryPages),
+					   (metaStartOffset + offsetof(GinMetaPageData, nDataPages) - 1));
+			EmitXmlTag(blkno, level, "nDataPages", COLOR_PINK,
+					   metaStartOffset + offsetof(GinMetaPageData, nDataPages),
+					   (metaStartOffset + offsetof(GinMetaPageData, nEntries) - 1));
+			EmitXmlTag(blkno, level, "nEntries", COLOR_PINK,
+					   metaStartOffset + offsetof(GinMetaPageData, nEntries),
+					   (metaStartOffset + offsetof(GinMetaPageData, ginVersion) - 1));
+			EmitXmlTag(blkno, level, "ginVersion", COLOR_PINK,
+					   metaStartOffset + offsetof(GinMetaPageData, ginVersion),
+					   ((metaStartOffset + offsetof(GinMetaPageData, ginVersion) + sizeof(int32)) - 1));
+			headerBytes += sizeof(GinMetaPageData);
 		}
 		else
 		{
@@ -1612,8 +1622,9 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 	ItemId		itemId;
 	int			maxOffset = PageGetMaxOffsetNumber(page);
 
-	/* If it's a btree meta page, the meta block will have no items */
-	if (IsBtreeMetaPage(page))
+	/* If it's a meta page, the meta block will have no items */
+	if ((specialType == SPEC_SECT_INDEX_BTREE && blkno == BTREE_METAPAGE) ||
+		(specialType == SPEC_SECT_INDEX_GIN && blkno == GIN_METAPAGE_BLKNO))
 		return;
 
 	/*
@@ -1643,10 +1654,10 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 #ifdef DISABLED
 			case SPEC_SECT_INDEX_HASH:
 			case SPEC_SECT_INDEX_GIST:
-			case SPEC_SECT_INDEX_GIN:
 			case SPEC_SECT_INDEX_SPGIST:
 			case SPEC_SECT_INDEX_BRIN:
 #endif
+			case SPEC_SECT_INDEX_GIN:
 			case SPEC_SECT_INDEX_BTREE:
 				formatAs = ITEM_INDEX;
 				break;
@@ -1696,14 +1707,28 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 									 pageOffset + itemOffset, itemSize);
 				}
 			}
-			else if (formatAs == ITEM_INDEX)
+			else if (formatAs == ITEM_INDEX &&
+					 specialType == SPEC_SECT_INDEX_BTREE)
 			{
 				IndexTuple	tuple;
 
 				tuple = (IndexTuple) PageGetItem(page, itemId);
 
-				EmitXmlIndexTuple(blkno, offset, tuple,
+				EmitXmlBtreeTuple(blkno, offset, tuple,
 								  pageOffset + itemOffset);
+			}
+			else if (formatAs == ITEM_INDEX &&
+					 specialType == SPEC_SECT_INDEX_GIN)
+			{
+				IndexTuple	tuple;
+
+				if (itemSize != 0)
+				{
+					tuple = (IndexTuple) PageGetItem(page, itemId);
+
+					/* TODO: Implement support for emitting GIN tuples */
+					(void) tuple;
+				}
 			}
 		}
 	}
@@ -1769,6 +1794,44 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 				EmitXmlTag(blkno, level, "btpo_cycleid", COLOR_BLACK,
 						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_cycleid),
 						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_cycleid) + sizeof(BTCycleId)) - 1);
+			}
+			break;
+
+		case SPEC_SECT_INDEX_GIN:
+			{
+				GinPageOpaque ginSection = (GinPageOpaque) (buffer + specialOffset);
+
+				EmitXmlTag(blkno, level, "rightlink", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, rightlink),
+						   (pageOffset + specialOffset + offsetof(GinPageOpaqueData, maxoff)) - 1);
+				EmitXmlTag(blkno, level, "maxoff", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, maxoff),
+						   (pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags)) - 1);
+
+				/* Generate GIN special area flags */
+				strcat(flagString, "flags - ");
+				if (ginSection->flags & GIN_DATA)
+					strcat(flagString, "GIN_DATA|");
+				if (ginSection->flags & GIN_LEAF)
+					strcat(flagString, "GIN_LEAF|");
+				if (ginSection->flags & GIN_DELETED)
+					strcat(flagString, "GIN_DELETED|");
+				if (ginSection->flags & GIN_META)
+					strcat(flagString, "GIN_META|");
+				if (ginSection->flags & GIN_LIST)
+					strcat(flagString, "GIN_LIST|");
+				if (ginSection->flags & GIN_LIST_FULLROW)
+					strcat(flagString, "GIN_LIST_FULLROW|");
+				if (ginSection->flags & GIN_INCOMPLETE_SPLIT)
+					strcat(flagString, "GIN_INCOMPLETE_SPLIT|");
+				if (ginSection->flags & GIN_COMPRESSED)
+					strcat(flagString, "GIN_COMPRESSED|");
+				if (strlen(flagString))
+					flagString[strlen(flagString) - 1] = '\0';
+
+				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags),
+						   (pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags) + sizeof(uint16)) - 1);
 			}
 			break;
 
