@@ -1018,8 +1018,9 @@ EmitXmlPage(BlockNumber blkno)
 	specialType = GetSpecialSectionType(page);
 
 	/*
-	 * Either dump out the entire block in hex + ACSII fashion, or interpret
-	 * the data based on block structure
+	 * We optionally itemize leaf blocks as whole tags, in order to limit the
+	 * size of tag files sharply (nbtree only).  Internal pages can be more
+	 * interesting when debugging certain types of problems.
 	 */
 	if (specialType == SPEC_SECT_INDEX_BTREE)
 	{
@@ -1029,11 +1030,8 @@ EmitXmlPage(BlockNumber blkno)
 		level = btreeSection->btpo.level;
 
 		/*
-		 * We optionally itemize leaf blocks as whole tags, in order to limit
-		 * the size of tag files sharply.  Internal pages tend to be more
-		 * interesting, for many reasons, at least when it comes to performance
-		 * optimizations.  Still, always display the root page when it happens
-		 * to be a leaf (before the first root page split).
+		 * Always display the root page when it happens to be a leaf (i.e.  the
+		 * root before the first root page split)
 		 */
 		if ((btreeSection->btpo_flags & BTP_LEAF) &&
 			!(btreeSection->btpo_flags & BTP_ROOT) &&
@@ -1667,18 +1665,20 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 		/* Use the special section to determine the format style */
 		switch (specialType)
 		{
-#ifdef DISABLED
+			case SPEC_SECT_NONE:
+				formatAs = ITEM_HEAP;
+				break;
+			case SPEC_SECT_INDEX_BTREE:
+#ifdef UNIMPLEMENTED
 			case SPEC_SECT_INDEX_HASH:
 			case SPEC_SECT_INDEX_GIST:
+#endif
+			case SPEC_SECT_INDEX_GIN:
+#ifdef UNIMPLEMENTED
 			case SPEC_SECT_INDEX_SPGIST:
 			case SPEC_SECT_INDEX_BRIN:
 #endif
-			case SPEC_SECT_INDEX_GIN:
-			case SPEC_SECT_INDEX_BTREE:
 				formatAs = ITEM_INDEX;
-				break;
-			case SPEC_SECT_NONE:
-				formatAs = ITEM_HEAP;
 				break;
 			default:
 				fprintf(stderr, "pg_hexedit error: unsupported special section type. type: <%u>.\n", specialType);
