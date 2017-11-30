@@ -1663,6 +1663,7 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 	OffsetNumber offset;
 	unsigned int itemSize;
 	unsigned int itemOffset;
+	unsigned int itemFlags;
 	ItemId		itemId;
 	int			maxOffset = PageGetMaxOffsetNumber(page);
 
@@ -1724,6 +1725,28 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 			itemId = PageGetItemId(page, offset);
 			itemSize = (unsigned int) ItemIdGetLength(itemId);
 			itemOffset = (unsigned int) ItemIdGetOffset(itemId);
+			itemFlags = (unsigned int) ItemIdGetFlags(itemId);
+
+			/* LD_DEAD items may have storage, so we go by lp_len alone */
+			if (itemSize == 0)
+			{
+				if (itemFlags == LP_NORMAL)
+				{
+					fprintf(stderr, "pg_hexedit error: LP_NORMAL item has lp_len 0.\n");
+					exitCode = 1;
+					exit(exitCode);
+				}
+
+				continue;
+			}
+			/* Sanitize */
+			if (itemFlags == LP_REDIRECT || LP_UNUSED)
+			{
+				fprintf(stderr, "pg_hexedit error: LP_REDIRECT or LP_UNUSED item has lp_len %u.\n",
+					   itemSize);
+				exitCode = 1;
+				exit(exitCode);
+			}
 
 			/*
 			 * Make sure the item can physically fit on this block before
@@ -1746,13 +1769,10 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 			{
 				HeapTupleHeader htup;
 
-				if (itemSize != 0)
-				{
-					htup = (HeapTupleHeader) PageGetItem(page, itemId);
+				htup = (HeapTupleHeader) PageGetItem(page, itemId);
 
-					EmitXmlHeapTuple(blkno, offset, htup,
-									 pageOffset + itemOffset, itemSize);
-				}
+				EmitXmlHeapTuple(blkno, offset, htup,
+								 pageOffset + itemOffset, itemSize);
 			}
 			else if (formatAs == ITEM_INDEX)
 			{
