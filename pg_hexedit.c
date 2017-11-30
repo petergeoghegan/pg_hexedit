@@ -197,6 +197,7 @@ static int GetOptionValue(char *optionString);
 static XLogRecPtr GetOptionXlogRecPtr(char *optionString);
 static unsigned int GetBlockSize(void);
 static unsigned int GetSpecialSectionType(Page page);
+static const char *GetSpecialSectionString(unsigned int type);
 static XLogRecPtr GetPageLsn(Page page);
 static char *GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2);
 static char *GetIndexTupleFlags(IndexTuple itup);
@@ -333,7 +334,7 @@ ConsumeOptions(int numOptions, char **options)
 			{
 				rc = OPT_RC_INVALID;
 				fprintf(stderr,
-						"pg_hexedit error: invalid range start identifier <%s>.\n",
+						"pg_hexedit error: invalid range start identifier \"%s\".\n",
 					   optionString);
 				exitCode = 1;
 				break;
@@ -361,8 +362,8 @@ ConsumeOptions(int numOptions, char **options)
 					else
 					{
 						rc = OPT_RC_INVALID;
-						fprintf(stderr, "pg_hexedit error: requested block range start <%d> is "
-							   "greater than end <%d>.\n", blockStart, range);
+						fprintf(stderr, "pg_hexedit error: requested block range start %d is "
+							   "greater than end %d.\n", blockStart, range);
 						exitCode = 1;
 						break;
 					}
@@ -398,7 +399,7 @@ ConsumeOptions(int numOptions, char **options)
 			if ((afterThreshold = GetOptionXlogRecPtr(optionString)) == InvalidXLogRecPtr)
 			{
 				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: invalid lsn identifier <%s>.\n",
+				fprintf(stderr, "pg_hexedit error: invalid lsn identifier \"%s\".\n",
 					   optionString);
 				exitCode = 1;
 				break;
@@ -431,7 +432,7 @@ ConsumeOptions(int numOptions, char **options)
 			else
 			{
 				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: invalid segment size requested <%s>.\n",
+				fprintf(stderr, "pg_hexedit error: invalid segment size requested \"%s\".\n",
 					   optionString);
 				exitCode = 1;
 				break;
@@ -468,7 +469,7 @@ ConsumeOptions(int numOptions, char **options)
 			else
 			{
 				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: invalid segment number requested <%s>.\n",
+				fprintf(stderr, "pg_hexedit error: invalid segment number requested \"%s\".\n",
 					   optionString);
 				exitCode = 1;
 				break;
@@ -490,7 +491,7 @@ ConsumeOptions(int numOptions, char **options)
 				else
 				{
 					rc = OPT_RC_FILE;
-					fprintf(stderr, "pg_hexedit error: could not open file <%s>.\n", optionString);
+					fprintf(stderr, "pg_hexedit error: could not open file \"%s\".\n", optionString);
 					exitCode = 1;
 					break;
 				}
@@ -520,7 +521,7 @@ ConsumeOptions(int numOptions, char **options)
 			if (optionString[0] != '-')
 			{
 				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: invalid option string <%s>.\n", optionString);
+				fprintf(stderr, "pg_hexedit error: invalid option string \"%s\".\n", optionString);
 				exitCode = 1;
 				break;
 			}
@@ -550,7 +551,7 @@ ConsumeOptions(int numOptions, char **options)
 
 					default:
 						rc = OPT_RC_INVALID;
-						fprintf(stderr, "pg_hexedit error: unknown option <%c>.\n", optionString[y]);
+						fprintf(stderr, "pg_hexedit error: unknown option '%c'.\n", optionString[y]);
 						exitCode = 1;
 						break;
 				}
@@ -563,7 +564,7 @@ ConsumeOptions(int numOptions, char **options)
 
 	if (rc == OPT_RC_DUPLICATE)
 	{
-		fprintf(stderr, "pg_hexedit error: duplicate option listed <%c>.\n", duplicateSwitch);
+		fprintf(stderr, "pg_hexedit error: duplicate option listed '%c'.\n", duplicateSwitch);
 		exitCode = 1;
 	}
 
@@ -760,6 +761,36 @@ GetSpecialSectionType(Page page)
 	return rc;
 }
 
+static const char *
+GetSpecialSectionString(unsigned int type)
+{
+	switch (type)
+	{
+		case SPEC_SECT_NONE:
+			return "SPEC_SECT_NONE";
+		case SPEC_SECT_SEQUENCE:
+			return "SPEC_SECT_SEQUENCE";
+		case SPEC_SECT_INDEX_BTREE:
+			return "SPEC_SECT_INDEX_BTREE";
+		case SPEC_SECT_INDEX_HASH:
+			return "SPEC_SECT_INDEX_HASH";
+		case SPEC_SECT_INDEX_GIST:
+			return "SPEC_SECT_INDEX_GIST";
+		case SPEC_SECT_INDEX_GIN:
+			return "SPEC_SECT_INDEX_GIN";
+		case SPEC_SECT_INDEX_SPGIST:
+			return "SPEC_SECT_INDEX_SPGIST";
+		case SPEC_SECT_INDEX_BRIN:
+			return "SPEC_SECT_INDEX_BRIN";
+		case SPEC_SECT_ERROR_UNKNOWN:
+			return "SPEC_SECT_ERROR_UNKNOWN";
+		case SPEC_SECT_ERROR_BOUNDARY:
+			return "SPEC_SECT_ERROR_BOUNDARY";
+		default:
+			return "???";
+	}
+}
+
 /*
  * Given Heap tuple header, return string buffer with t_infomask or t_infomask2
  * flags.
@@ -780,7 +811,7 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 
 	if (!flagString)
 	{
-		fprintf(stderr, "pg_hexedit error: unable to create buffer of size <512>.\n");
+		fprintf(stderr, "pg_hexedit error: unable to create buffer of size 512.\n");
 		exitCode = 1;
 		exit(exitCode);
 	}
@@ -879,8 +910,7 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 		fprintf
 			(stderr,
 			 "pg_hexedit error: computed header length not equal to header size.\n"
-			 "computed <%u>  header: <%d>\n", computedLength,
-			 localHoff);
+			 "computed: %u header: %d\n", computedLength, localHoff);
 
 		exitCode = 1;
 		exit(exitCode);
@@ -904,7 +934,7 @@ GetIndexTupleFlags(IndexTuple itup)
 
 	if (!flagString)
 	{
-		fprintf(stderr, "pg_hexedit error: unable to create buffer of size <512>.\n");
+		fprintf(stderr, "pg_hexedit error: unable to create buffer of size 128.\n");
 		exitCode = 1;
 		exit(exitCode);
 	}
@@ -1587,7 +1617,7 @@ EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno, uint32 level)
 			|| (pageHeader->pd_upper < pageHeader->pd_lower)
 			|| (pageHeader->pd_special > blockSize))
 		{
-			fprintf(stderr, "pg_hexedit error: invalid header information.\n\n");
+			fprintf(stderr, "pg_hexedit error: invalid header information.\n");
 			exitCode = 1;
 		}
 
@@ -1601,7 +1631,7 @@ EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno, uint32 level)
 
 			if (calc_checksum != pageHeader->pd_checksum)
 			{
-				fprintf(stderr, "pg_hexedit error: checksum failure: calculated 0x%04x.\n\n",
+				fprintf(stderr, "pg_hexedit error: checksum failure: calculated 0x%04x.\n",
 					   calc_checksum);
 				exitCode = 1;
 			}
@@ -1617,7 +1647,7 @@ EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno, uint32 level)
 		fprintf
 			(stderr,
 			 "pg_hexedit error: end of block encountered within the header."
-			 "bytes read: %4u.\n\n", bytesToFormat);
+			 "bytes read: %4u.\n", bytesToFormat);
 		exitCode = 1;
 	}
 
@@ -1647,13 +1677,13 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 	 */
 	if (maxOffset == 0)
 	{
-		fprintf(stderr, "pg_hexedit error: empty block - no items listed \n");
+		fprintf(stderr, "pg_hexedit error: empty block - no items listed.\n");
 		exitCode = 1;
 		exit(exitCode);
 	}
 	else if ((maxOffset < 0) || (maxOffset > blockSize))
 	{
-		fprintf(stderr, "pg_hexedit error: item index corrupt on block. offset: <%d>\n",
+		fprintf(stderr, "pg_hexedit error: item index corrupt on block. offset: %d\n",
 			   maxOffset);
 		exitCode = 1;
 		exit(exitCode);
@@ -1681,7 +1711,8 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 				formatAs = ITEM_INDEX;
 				break;
 			default:
-				fprintf(stderr, "pg_hexedit error: unsupported special section type. type: <%u>.\n", specialType);
+				fprintf(stderr, "pg_hexedit error: unsupported special section type \"%s\".\n",
+						GetSpecialSectionString(specialType));
 				exitCode = 1;
 				exit(exitCode);
 		}
@@ -1705,7 +1736,7 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 				 (itemOffset + itemSize > bytesToFormat)))
 			{
 				fprintf(stderr, "pg_hexedit error: item contents extend beyond block.\n"
-					   "blocksize<%d> bytes read<%d> item start<%d>.\n",
+					   "blocksize %d  bytes read  %d  item start %d .\n",
 					   blockSize, bytesToFormat, itemOffset + itemSize);
 				exitCode = 1;
 				exit(exitCode);
@@ -1838,7 +1869,8 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 			break;
 
 		default:
-			fprintf(stderr, "pg_hexedit error: unsupported special section type. type: <%u>.\n", specialType);
+			fprintf(stderr, "pg_hexedit error: unsupported special section type \"%s\".\n",
+					GetSpecialSectionString(specialType));
 			exitCode = 1;
 			exit(exitCode);
 			break;
@@ -1865,7 +1897,7 @@ EmitXmlFile(void)
 		if (fseek(fp, position, SEEK_SET) != 0)
 		{
 			fprintf(stderr, "pg_hexedit error: seek error encountered before requested "
-				   "start block <%d>.\n", blockStart);
+				   "start block %d.\n", blockStart);
 			contentsToDump = 0;
 			exitCode = 1;
 		}
@@ -1946,7 +1978,7 @@ main(int argv, char **argc)
 				EmitXmlFile();
 			else
 			{
-				fprintf(stderr, "pg_hexedit error: unable to create buffer of size <%d>.\n",
+				fprintf(stderr, "pg_hexedit error: unable to create buffer of size %d.\n",
 					   blockSize);
 				exitCode = 1;
 			}
