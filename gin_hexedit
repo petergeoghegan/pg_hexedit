@@ -36,57 +36,61 @@ if [ ! $? -eq 0 ]; then
 fi
 
 echo "Contiguous flags in GIN index summary:"
-psql --no-psqlrc -P pager=off -c "with recursive index_details as (
-  select
-    '$relname'::text idx
+
+psql --no-psqlrc -P pager=off -c "WITH recursive index_details AS (
+  SELECT '$relname'::text AS idx
 ),
-size_in_pages_index as (
-  select
-    (pg_relation_size(idx::regclass) / (2^13))::int4 size_pages
-  from
+size_in_pages_index AS (
+  SELECT
+    (pg_relation_size(idx::regclass) / (2^13))::int4 AS size_pages
+  FROM
     index_details
 ),
-page_stats as (
-  select
+page_stats AS (
+  SELECT
     index_details.*,
     stats.*,
-    i as series
-  from
+    i AS series
+  FROM
     index_details,
     size_in_pages_index,
-    lateral (select i from generate_series(0, size_pages - 1) i) series,
-    lateral (select * from gin_page_opaque_info(get_raw_page(idx, i))) stats
-  order by i
+    LATERAL (SELECT i FROM generate_series(0, size_pages - 1) i) AS series,
+    LATERAL (SELECT * FROM gin_page_opaque_info(get_raw_page(idx, i))) AS stats
+  ORDER BY
+    i
 ),
-ordered_internal_items(flags, series, first) as (
-  select
+recursive_rangewise_blocks(flags, series, first) AS (
+  SELECT
     p.flags,
     0,
     0
-  from
+  FROM
     page_stats p
-    where series = 0
-  union
-  select
-        i.flags,
-        i.series,
-        case when i.flags = o.flags then o.first else i.series end
-  from
-    page_stats i,
-    ordered_internal_items o
-  where
+  WHERE
+    series = 0
+  UNION
+  SELECT
+    i.flags,
+    i.series,
+    CASE WHEN i.flags = o.flags THEN o.first ELSE i.series END
+  FROM
+    page_stats AS i,
+    recursive_rangewise_blocks AS o
+  WHERE
     i.series = o.series + 1
 )
-select
-    flags,
-    first as first_block_in_series,
-    lead(series, 1, size_pages) over () - 1 as last_block_in_series,
-    first * (2^13) as offset_bytes_first
-from
-ordered_internal_items,
-size_in_pages_index
-where series = first
-order by first;"
+SELECT
+  flags,
+  first AS first_block_in_series,
+  lead(series, 1, size_pages) OVER() - 1 AS last_block_in_series,
+  first * (2^13) AS offset_bytes_first
+FROM
+  recursive_rangewise_blocks,
+  size_in_pages_index
+WHERE
+  series = first
+ORDER BY
+  first;"
 
 if [ ! $? -eq 0 ]; then
    echo "displaying contiguous range of blocks failed; is $relname a GIN index?"
