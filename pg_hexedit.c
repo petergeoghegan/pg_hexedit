@@ -65,6 +65,7 @@
 #define COLOR_GREEN_DARK		"#16A085"
 #define COLOR_GREEN_LIGHT		"#1ABC9C"
 #define COLOR_MAROON			"#E96950"
+#define COLOR_ORANGE			"#FF8C00"
 #define COLOR_PINK				"#E949D1"
 #define COLOR_RED_DARK			"#912C21"
 #define COLOR_RED_LIGHT			"#E74C3C"
@@ -217,12 +218,14 @@ static void EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 							 unsigned int itemSize);
 static void EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset,
 							  IndexTuple tuple, uint32 relfileOff);
+static int EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno,
+							uint32 level);
 static void EmitXmlItemId(BlockNumber blkno, OffsetNumber offset,
 						  ItemId itemId, uint32 relfileOff,
 						  const char *textFlags);
-static int EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno,
-							uint32 level);
-static void EmitXmlTuples(BlockNumber blkno, Page page);
+static void EmitXmlPageItemIdArray(Page page, BlockNumber blkno);
+static void EmitXmlTuples(Page page, BlockNumber blkno);
+static void EmitXmlPostingTreeTids(Page page, BlockNumber blkno);
 static void EmitXmlSpecial(BlockNumber blkno, uint32 level);
 static void EmitXmlFile(void);
 
@@ -958,7 +961,7 @@ GetIndexTupleFlags(IndexTuple itup)
 	if (itup->t_info & (INDEX_VAR_MASK | INDEX_NULL_MASK))
 	{
 		flagString[strlen(flagString) - 1] = '\0';
-		strcat(flagString, " )");
+		strcat(flagString, ")");
 	}
 
 	return flagString;
@@ -1028,6 +1031,9 @@ EmitXmlPage(BlockNumber blkno)
 	uint32		level = UINT_MAX;
 	int			rc;
 
+	if (PageIsNew(page))
+		return;
+
 	pageOffset = blockSize * currentBlock;
 
 	/*
@@ -1084,7 +1090,22 @@ EmitXmlPage(BlockNumber blkno)
 	/* If we didn't encounter a partial read in header, carry on...  */
 	if (rc != EOF_ENCOUNTERED)
 	{
-		EmitXmlTuples(blkno, page);
+		if ((specialType == SPEC_SECT_INDEX_BTREE && blkno == BTREE_METAPAGE) ||
+			(specialType == SPEC_SECT_INDEX_GIN && blkno == GIN_METAPAGE_BLKNO))
+		{
+			/* If it's a meta page, the meta block will have no tuples */
+		}
+		else if (specialType != SPEC_SECT_INDEX_GIN || !GinPageIsData(page))
+		{
+			/* Conventional page format */
+			EmitXmlPageItemIdArray(page, blkno);
+			EmitXmlTuples(page, blkno);
+		}
+		else
+		{
+			/* GIN data/posting tree pages don't use IndexTuple or ItemId */
+			EmitXmlPostingTreeTids(page, blkno);
+		}
 
 		if (specialType != SPEC_SECT_NONE)
 			EmitXmlSpecial(blkno, level);
@@ -1111,6 +1132,8 @@ static void
 EmitXmlTag(BlockNumber blkno, uint32 level, const char *name, const char *color,
 		   uint32 relfileOff, uint32 relfileOffEnd)
 {
+	Assert(relfileOff <= relfileOffEnd);
+
 	printf("    <TAG id=\"%u\">\n", tagNumber++);
 	printf("      <start_offset>%u</start_offset>\n", relfileOff);
 	printf("      <end_offset>%u</end_offset>\n", relfileOffEnd);
@@ -1124,7 +1147,9 @@ EmitXmlTag(BlockNumber blkno, uint32 level, const char *name, const char *color,
 }
 
 /*
- * Emit a wxHexEditor tag for individual tuple or special area tag.
+ * Emit a wxHexEditor tag for individual tuple.  Could be an IndexTuple, heap
+ * tuple, or special tuple-like structure (e.g., GIN data/posting tree page
+ * item).
  *
  * Note: relfileOffEnd is an offset to the last byte whose range the tag
  * covers, so callers generally pass (relfileOff + length) - 1.  This is
@@ -1134,6 +1159,8 @@ static void
 EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset, const char *name,
 				const char *color, uint32 relfileOff, uint32 relfileOffEnd)
 {
+	Assert(relfileOff <= relfileOffEnd);
+
 	printf("    <TAG id=\"%u\">\n", tagNumber++);
 	printf("      <start_offset>%u</start_offset>\n", relfileOff);
 	printf("      <end_offset>%u</end_offset>\n", relfileOffEnd);
@@ -1352,6 +1379,10 @@ EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
 	 * NULL bitmap, if any, is counted as a separate tag, and not an extension
 	 * of t_info.  This is a little arbitrary, but makes more sense overall.
 	 * This matches heap tuple header tags.
+	 *
+	 * GIN has special rules for multicolumn indexes.  We don't break down the
+	 * structure of GIN's special representation of NULLness because doing so
+	 * requires access to catalog metadata.  See the GIN README for details.
 	 */
 	if (IndexTupleHasNulls(tuple))
 	{
@@ -1379,26 +1410,22 @@ EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
 	 */
 	relfileOffNext = relfileOffOrig + IndexTupleSize(tuple);
 	if (relfileOff < relfileOffNext)
-		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
-						relfileOff, relfileOffNext - 1);
-}
+	{
+		if (specialType != SPEC_SECT_INDEX_GIN || !GinItupIsCompressed(tuple))
+			EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
+							relfileOff, relfileOffNext - 1);
+		else
+		{
+			Size postoffset = IndexTupleSize(tuple) - GinGetPostingOffset(tuple);
 
-/*
- * Emit a wxHexEditor tag for an item pointer (ItemId).
- */
-static void
-EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
-			  uint32 relfileOff, const char *textFlags)
-{
-	/* Interpret the content of each ItemId separately */
-	printf("    <TAG id=\"%u\">\n", tagNumber++);
-	printf("      <start_offset>%u</start_offset>\n", relfileOff);
-	printf("      <end_offset>%lu</end_offset>\n", (relfileOff + sizeof(ItemIdData)) - 1);
-	printf("      <tag_text>(%u,%d) lp_len: %u, lp_off: %u, lp_flags: %s</tag_text>\n",
-		   blkno, offset, ItemIdGetLength(itemId), ItemIdGetOffset(itemId), textFlags);
-	printf("      <font_colour>" COLOR_FONT_STANDARD "</font_colour>\n");
-	printf("      <note_colour>" COLOR_BLUE_LIGHT "</note_colour>\n");
-	printf("    </TAG>\n");
+			EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
+							relfileOff, (relfileOffNext - postoffset) - 1);
+			relfileOff = relfileOffNext - postoffset;
+			/* Compressed TIDs are orange */
+			EmitXmlTupleTag(blkno, offset, "posting list", COLOR_ORANGE,
+							relfileOff, relfileOffNext - 1);
+		}
+	}
 }
 
 /*
@@ -1519,7 +1546,6 @@ EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno, uint32 level)
 			EmitXmlTag(blkno, level, "btm_fastlevel", COLOR_PINK,
 					   metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel),
 					   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) + sizeof(uint32) - 1));
-			headerBytes += sizeof(BTMetaPageData);
 		}
 		else if (specialType == SPEC_SECT_INDEX_GIN &&
 				 blkno == GIN_METAPAGE_BLKNO)
@@ -1554,52 +1580,6 @@ EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno, uint32 level)
 			EmitXmlTag(blkno, level, "ginVersion", COLOR_PINK,
 					   metaStartOffset + offsetof(GinMetaPageData, ginVersion),
 					   ((metaStartOffset + offsetof(GinMetaPageData, ginVersion) + sizeof(int32)) - 1));
-			headerBytes += sizeof(GinMetaPageData);
-		}
-		else
-		{
-			OffsetNumber offset;
-
-			/*
-			 * It's either a non-meta index page, or a heap page.  Create tags
-			 * for all ItemId entries/item pointers on page.
-			 */
-			for (offset = FirstOffsetNumber;
-				 offset <= maxOffset;
-				 offset = OffsetNumberNext(offset))
-			{
-				ItemId			itemId;
-				unsigned int	itemFlags;
-				char			textFlags[16];
-
-				itemId = PageGetItemId(page, offset);
-
-				itemFlags = (unsigned int) ItemIdGetFlags(itemId);
-
-				switch (itemFlags)
-				{
-					case LP_UNUSED:
-						strcpy(textFlags, "LP_UNUSED");
-						break;
-					case LP_NORMAL:
-						strcpy(textFlags, "LP_NORMAL");
-						break;
-					case LP_REDIRECT:
-						strcpy(textFlags, "LP_REDIRECT");
-						break;
-					case LP_DEAD:
-						strcpy(textFlags, "LP_DEAD");
-						break;
-					default:
-						/* shouldn't be possible */
-						sprintf(textFlags, "0x%02x", itemFlags);
-						break;
-				}
-
-				EmitXmlItemId(blkno, offset, itemId,
-							  pageOffset + headerBytes + (sizeof(ItemIdData) * (offset - 1)),
-							  textFlags);
-			}
 		}
 
 		/*
@@ -1655,10 +1635,81 @@ EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno, uint32 level)
 }
 
 /*
- * Emit formatted items that reside on this block
+ * Emit a wxHexEditor tag for an item pointer (ItemId).
  */
 static void
-EmitXmlTuples(BlockNumber blkno, Page page)
+EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
+			  uint32 relfileOff, const char *textFlags)
+{
+	/* Interpret the content of each ItemId separately */
+	printf("    <TAG id=\"%u\">\n", tagNumber++);
+	printf("      <start_offset>%u</start_offset>\n", relfileOff);
+	printf("      <end_offset>%lu</end_offset>\n", (relfileOff + sizeof(ItemIdData)) - 1);
+	printf("      <tag_text>(%u,%d) lp_len: %u, lp_off: %u, lp_flags: %s</tag_text>\n",
+		   blkno, offset, ItemIdGetLength(itemId), ItemIdGetOffset(itemId), textFlags);
+	printf("      <font_colour>" COLOR_FONT_STANDARD "</font_colour>\n");
+	printf("      <note_colour>" COLOR_BLUE_LIGHT "</note_colour>\n");
+	printf("    </TAG>\n");
+}
+
+/*
+ * Emit formatted ItemId tags for tuples that reside on this block
+ */
+static void
+EmitXmlPageItemIdArray(Page page, BlockNumber blkno)
+{
+	int				maxOffset = PageGetMaxOffsetNumber(page);
+	OffsetNumber	offset;
+	unsigned int	headerBytes;
+	headerBytes = offsetof(PageHeaderData, pd_linp[0]);
+
+	/*
+	 * It's either a non-meta index page, or a heap page.  Create tags
+	 * for all ItemId entries/item pointers on page.
+	 */
+	for (offset = FirstOffsetNumber;
+		 offset <= maxOffset;
+		 offset = OffsetNumberNext(offset))
+	{
+		ItemId			itemId;
+		unsigned int	itemFlags;
+		char			textFlags[16];
+
+		itemId = PageGetItemId(page, offset);
+
+		itemFlags = (unsigned int) ItemIdGetFlags(itemId);
+
+		switch (itemFlags)
+		{
+			case LP_UNUSED:
+				strcpy(textFlags, "LP_UNUSED");
+				break;
+			case LP_NORMAL:
+				strcpy(textFlags, "LP_NORMAL");
+				break;
+			case LP_REDIRECT:
+				strcpy(textFlags, "LP_REDIRECT");
+				break;
+			case LP_DEAD:
+				strcpy(textFlags, "LP_DEAD");
+				break;
+			default:
+				/* shouldn't be possible */
+				sprintf(textFlags, "0x%02x", itemFlags);
+				break;
+		}
+
+		EmitXmlItemId(blkno, offset, itemId,
+					  pageOffset + headerBytes + (sizeof(ItemIdData) * (offset - 1)),
+					  textFlags);
+	}
+}
+
+/*
+ * Emit formatted tuples that reside on this block
+ */
+static void
+EmitXmlTuples(Page page, BlockNumber blkno)
 {
 	OffsetNumber offset;
 	unsigned int itemSize;
@@ -1667,25 +1718,25 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 	ItemId		itemId;
 	int			maxOffset = PageGetMaxOffsetNumber(page);
 
-	/* If it's a meta page, the meta block will have no items */
-	if ((specialType == SPEC_SECT_INDEX_BTREE && blkno == BTREE_METAPAGE) ||
-		(specialType == SPEC_SECT_INDEX_GIN && blkno == GIN_METAPAGE_BLKNO))
-		return;
-
 	/*
 	 * Loop through the items on the block.  Check if the block is empty and
 	 * has a sensible item array listed before running through each item
 	 */
 	if (maxOffset == 0)
 	{
-		fprintf(stderr, "pg_hexedit error: empty block - no items listed.\n");
+		/* This can happen within GIN when only pending list full */
+		if (specialType == SPEC_SECT_INDEX_GIN)
+			return;
+
+		fprintf(stderr, "pg_hexedit error: empty block %u - no items listed.\n",
+				blkno);
 		exitCode = 1;
 		exit(exitCode);
 	}
 	else if ((maxOffset < 0) || (maxOffset > blockSize))
 	{
-		fprintf(stderr, "pg_hexedit error: item index corrupt on block. offset: %d\n",
-			   maxOffset);
+		fprintf(stderr, "pg_hexedit error: item index corrupt on block %u. offset: %d\n",
+			   blkno, maxOffset);
 		exitCode = 1;
 		exit(exitCode);
 	}
@@ -1732,7 +1783,8 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 			{
 				if (itemFlags == LP_NORMAL)
 				{
-					fprintf(stderr, "pg_hexedit error: LP_NORMAL item has lp_len 0.\n");
+					fprintf(stderr, "pg_hexedit error: (%u,%u) LP_NORMAL item has lp_len 0.\n",
+							blkno, offset);
 					exitCode = 1;
 					exit(exitCode);
 				}
@@ -1742,8 +1794,8 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 			/* Sanitize */
 			if (itemFlags == LP_REDIRECT || LP_UNUSED)
 			{
-				fprintf(stderr, "pg_hexedit error: LP_REDIRECT or LP_UNUSED item has lp_len %u.\n",
-					   itemSize);
+				fprintf(stderr, "pg_hexedit error: (%u,%u) LP_REDIRECT or LP_UNUSED item has lp_len %u",
+						blkno, offset, itemSize);
 				exitCode = 1;
 				exit(exitCode);
 			}
@@ -1758,9 +1810,10 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 				((itemOffset + itemSize > blockSize) ||
 				 (itemOffset + itemSize > bytesToFormat)))
 			{
-				fprintf(stderr, "pg_hexedit error: item contents extend beyond block.\n"
+				fprintf(stderr, "pg_hexedit error: (%u,%u) item contents extend beyond block.\n"
 					   "blocksize %d  bytes read  %d  item start %d .\n",
-					   blockSize, bytesToFormat, itemOffset + itemSize);
+					   blkno, offset, blockSize, bytesToFormat,
+					   itemOffset + itemSize);
 				exitCode = 1;
 				exit(exitCode);
 			}
@@ -1788,6 +1841,126 @@ EmitXmlTuples(BlockNumber blkno, Page page)
 }
 
 /*
+ * Emit posting tree page pseudo-tuples.
+ *
+ * Posting tree pages don't store regular tuples. Non-leaf pages contain
+ * PostingItems, which are pairs of ItemPointers and child block numbers.  Leaf
+ * pages contain GinPostingLists and an uncompressed array of item pointers.
+ *
+ * In a leaf page, the compressed posting lists are stored after the regular
+ * page header, one after each other. Although we don't store regular tuples,
+ * pd_lower is used to indicate the end of the posting lists. After that, free
+ * space follows.  This layout is compatible with the "standard" heap and index
+ * page layout described in bufpage.h, so that we can e.g set buffer_std when
+ * writing WAL records.
+ */
+static void
+EmitXmlPostingTreeTids(Page page, BlockNumber blkno)
+{
+	OffsetNumber offsetnum;
+	OffsetNumber maxoff = GinPageGetOpaque(page)->maxoff;
+	unsigned int itemOffset;
+	unsigned int itemOffsetNext;
+
+	Assert(GinPageIsData(page));
+
+	if (!GinPageIsLeaf(page))
+	{
+		itemOffset = GinDataPageGetData(page) - page;
+
+		for (offsetnum = FirstOffsetNumber;
+			 offsetnum <= maxoff;
+			 offsetnum = OffsetNumberNext(offsetnum))
+		{
+			EmitXmlTupleTag(blkno, offsetnum, "PostingItem->child_blkno->bi_hi", COLOR_BLUE_LIGHT,
+							pageOffset + itemOffset,
+							(pageOffset + itemOffset + sizeof(uint16)) - 1);
+			itemOffset += sizeof(uint16);
+			EmitXmlTupleTag(blkno, offsetnum, "PostingItem->child_blkno->bi_lo", COLOR_BLUE_LIGHT,
+							pageOffset + itemOffset,
+							(pageOffset + itemOffset + sizeof(uint16)) - 1);
+			itemOffset += sizeof(uint16);
+
+			/*
+			 * These TIDs are white because within this page (an internal
+			 * posting tree page) they are keys, not pointers
+			 */
+			EmitXmlTupleTag(blkno, offsetnum, "PostingItem->key->hi_lo", COLOR_WHITE,
+							pageOffset + itemOffset,
+							(pageOffset + itemOffset + sizeof(uint16)) - 1);
+			itemOffset += sizeof(uint16);
+			EmitXmlTupleTag(blkno, offsetnum, "PostingItem->key->bi_lo", COLOR_WHITE,
+							pageOffset + itemOffset,
+							(pageOffset + itemOffset + sizeof(uint16)) - 1);
+			itemOffset += sizeof(uint16);
+			EmitXmlTupleTag(blkno, offsetnum, "PostingItem->key->offsetNumber", COLOR_WHITE,
+							pageOffset + itemOffset,
+							(pageOffset + itemOffset + sizeof(uint16)) - 1);
+			itemOffset += sizeof(uint16);
+		}
+	}
+	else
+	{
+		GinPostingList *seg, *nextseg;
+		Pointer			endptr;
+
+		/*
+		 * See description of posting page/data page format at top of
+		 * ginpostlinglist.c for more information.
+		 *
+		 * TODO: Add support for pre-9.4 uncompressed data pages.  We don't
+		 * support those versions, but arguably we should at least support the
+		 * format across pg_upgrade.
+		 */
+		if (!GinPageIsCompressed(page))
+		{
+			fprintf(stderr, "pg_hexedit error: uncompressed GIN leaf pages unsupported.\n");
+			exitCode = 1;
+			exit(exitCode);
+		}
+
+		itemOffset = GinDataPageGetData(page) - page;
+		offsetnum = FirstOffsetNumber;
+		seg = GinDataLeafPageGetPostingList(page);
+		nextseg = GinNextPostingListSegment(seg);
+		itemOffsetNext = itemOffset + ((Pointer) nextseg - (Pointer) seg);
+
+		endptr = ((Pointer) seg) + GinDataLeafPageGetPostingListSize(page);
+		do
+		{
+			EmitXmlTupleTag(blkno, offsetnum, "GinPostingList->first->bi_hi", COLOR_BLUE_LIGHT,
+							pageOffset + itemOffset,
+							(pageOffset + itemOffset + sizeof(uint16)) - 1);
+			itemOffset += sizeof(uint16);
+			EmitXmlTupleTag(blkno, offsetnum, "GinPostingList->first->bi_lo", COLOR_BLUE_LIGHT,
+							pageOffset + itemOffset,
+							(pageOffset + itemOffset + sizeof(uint16)) - 1);
+			itemOffset += sizeof(uint16);
+			EmitXmlTupleTag(blkno, offsetnum, "GinPostingList->first->offsetNumber", COLOR_BLUE_DARK,
+							pageOffset + itemOffset,
+							(pageOffset + itemOffset + sizeof(uint16)) - 1);
+			itemOffset += sizeof(uint16);
+
+			/* Make nbytes dark yellow, to match similar IndexTuple metadata */
+			EmitXmlTupleTag(blkno, offsetnum, "GinPostingList->nbytes", COLOR_YELLOW_DARK,
+							pageOffset + itemOffset,
+							(pageOffset + itemOffset + sizeof(uint16)) - 1);
+			itemOffset += sizeof(uint16);
+			/* Compressed TIDs are orange */
+			EmitXmlTupleTag(blkno, offsetnum, "varbyte encoded TIDs", COLOR_ORANGE,
+							pageOffset + itemOffset,
+							(pageOffset + itemOffset + seg->nbytes) - 1);
+			itemOffset = itemOffsetNext;
+			seg = nextseg;
+			nextseg = GinNextPostingListSegment(seg);
+			itemOffsetNext = itemOffset + ((Pointer) nextseg - (Pointer) seg);
+			offsetnum = OffsetNumberNext(offsetnum);
+		}
+		while ((Pointer) nextseg <= endptr);
+	}
+}
+
+/*
  * On blocks that have special sections, print the contents according to
  * previously determined special section type
  */
@@ -1802,7 +1975,8 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 	{
 		case SPEC_SECT_ERROR_UNKNOWN:
 		case SPEC_SECT_ERROR_BOUNDARY:
-			fprintf(stderr, "pg_hexedit error: invalid special section encountered.\n");
+			fprintf(stderr, "pg_hexedit error: invalid special section type \"%s\".\n",
+					GetSpecialSectionString(specialType));
 			exitCode = 1;
 			break;
 

@@ -293,9 +293,7 @@ The first element returned in our `bytea` array is the name of the type,
 
 ## Areas that might be improved someday
 
-* Support additional index AMs: GiST, SP-GiST, and BRIN.
-
-* Improve GIN support.
+* Support additional index AMs: GiST, SP-GiST, BRIN, and hash.
 
 * Support sequence relation files.
 
