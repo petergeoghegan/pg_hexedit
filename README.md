@@ -169,6 +169,15 @@ generic relation_hexedit script is that btree_hexedit sets offsets for every
 block that is a direct child of the root page.  The wxHexEditor shortcut for
 accessing the offsets is Ctrl + G.
 
+There is also a gin_hexedit convenience script.  This does not set offsets
+automatically.  Instead, it runs an SQL query that summarizes contiguous ranges
+within the index based on block type (this is output to stdout).  Byte-wise
+offsets are output, which may be manually input using the offsets dialog.  GIN
+indexes are often made up of a fairly small number of contiguous ranges of a
+single page type (e.g., 'data', 'leaf'), so a high level summary can help when
+locating the section that is of interest.  Note that there might be
+fragmentation (many distinct, smaller contiguous ranges) in uncommon cases.
+
 The scripts will only open the first 1GB segment file in the relation.  Note
 also that these convenience scripts limit the range of blocks that are
 summarized, to keep the overhead acceptable.  (This can be changed by modifying

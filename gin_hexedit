@@ -1,0 +1,130 @@
+#!/bin/bash
+usage() {
+    cat <<EOM
+    Usage:
+    $(basename $0) relname
+
+EOM
+    exit 0
+}
+
+[ -z $1 ] && { usage; }
+
+source ./hexedit.cfg
+
+relname=$1
+
+# Spoof home director, to avoid clobbering real /.wxHexEditor file
+export HOME=`pwd`
+wxconfig="$HOME/.wxHexEditor"
+
+psql -c "CHECKPOINT" &> /dev/null
+if [ ! $? -eq 0 ]; then
+   echo "CHECKPOINT failed"
+   exit
+fi
+psql -c "CREATE EXTENSION IF NOT EXISTS pageinspect" &> /dev/null
+if [ ! $? -eq 0 ]; then
+   echo "creating pageinspect extension failed"
+   exit
+fi
+
+RFN=$(psql --no-psqlrc -tA -c "SELECT pg_relation_filepath('$relname')")
+if [ ! $? -eq 0 ]; then
+   echo "invoking pg_relation_filepath() failed"
+   exit
+fi
+
+echo "Contiguous flags in GIN index summary:"
+psql --no-psqlrc -P pager=off -c "with recursive index_details as (
+  select
+    '$relname'::text idx
+),
+size_in_pages_index as (
+  select
+    (pg_relation_size(idx::regclass) / (2^13))::int4 size_pages
+  from
+    index_details
+),
+page_stats as (
+  select
+    index_details.*,
+    stats.*,
+    i as series
+  from
+    index_details,
+    size_in_pages_index,
+    lateral (select i from generate_series(0, size_pages - 1) i) series,
+    lateral (select * from gin_page_opaque_info(get_raw_page(idx, i))) stats
+  order by i
+),
+ordered_internal_items(flags, series, first) as (
+  select
+    p.flags,
+    0,
+    0
+  from
+    page_stats p
+    where series = 0
+  union
+  select
+        i.flags,
+        i.series,
+        case when i.flags = o.flags then o.first else i.series end
+  from
+    page_stats i,
+    ordered_internal_items o
+  where
+    i.series = o.series + 1
+)
+select
+    flags,
+    first as first_block_in_series,
+    lead(series, 1, size_pages) over () - 1 as last_block_in_series,
+    first * (2^13) as offset_bytes_first
+from
+ordered_internal_items,
+size_in_pages_index
+where series = first
+order by first;"
+
+if [ ! $? -eq 0 ]; then
+   echo "displaying contiguous range of blocks failed; is $relname a GIN index?"
+   exit
+fi
+
+# Put minimal .wxHexEditor registry style config file in place, so old tags are
+# forgotten.  We don't do anything special for GIN here -- this script leaves
+# it up to the user to manually input offsets, since the context of which range
+# is which is too complicated for automatic offsets to work sensibly.
+
+echo "Replacing $wxconfig with pg_hexedit optimized settings..."
+cat > $wxconfig <<- EOM
+UpdateCheck=0
+UseCustomHexFormat=0
+CustomHexFormat=xx
+UseBytesPerLineLimit=1
+BytesPerLineLimit=$BYTES_PER_LINE_LIMIT
+FontSize=$FONTSIZE
+CharacterEncodingFamily=DOS
+CharacterEncoding=OEM - IBM PC/DOS CP437 - MS-DOS Latin US
+ScreenFullScreen=1
+AutoShowTagPanel=0
+GoToOptions=7
+EOM
+
+PGDATA=$(psql --no-psqlrc -tA -c "SELECT setting FROM pg_settings WHERE name = 'data_directory'")
+echo "Determined that data directory is $PGDATA"
+FULLPATH="$PGDATA/$RFN"
+echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
+echo "Note: Only blocks 0 - $BLOCK_TAGS will be annotated, to keep overhead low"
+./pg_hexedit -R 0 $BLOCK_TAGS $FULLPATH > $FULLPATH.tags
+
+if [ ! $? -eq 0 ]; then
+   exit
+fi
+
+echo "Opening $FULLPATH with $HEXEDITOR..."
+echo "Tip: 'Go to Offset' dialog (shortcut: Ctrl + G) has children of root and root offsets cached"
+# Output from wxHexEditor is verbose, and not terribly useful, so we redirect:
+$HEXEDITOR $FULLPATH &> /dev/null
