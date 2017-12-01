@@ -203,12 +203,15 @@ static XLogRecPtr GetPageLsn(Page page);
 static char *GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2);
 static char *GetIndexTupleFlags(IndexTuple itup);
 static bool IsBrinMetaPage(Page page);
-static void EmitXmlDocHeader(int numOptions, char **options);
 static void EmitXmlPage(BlockNumber blkno);
+static void EmitXmlDocHeader(int numOptions, char **options);
 static void EmitXmlFooter(void);
 static void EmitXmlTag(BlockNumber blkno, uint32 level, const char *name,
 					   const char *color, uint32 relfileOff,
 					   uint32 relfileOffEnd);
+static void EmitXmlItemId(BlockNumber blkno, OffsetNumber offset,
+						  ItemId itemId, uint32 relfileOff,
+						  const char *textFlags);
 static void EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset,
 							const char *name, const char *color,
 							uint32 relfileOff,
@@ -218,11 +221,8 @@ static void EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 							 unsigned int itemSize);
 static void EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset,
 							  IndexTuple tuple, uint32 relfileOff);
-static int EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno,
-							uint32 level);
-static void EmitXmlItemId(BlockNumber blkno, OffsetNumber offset,
-						  ItemId itemId, uint32 relfileOff,
-						  const char *textFlags);
+static int EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level);
+static void EmitXmlPageMeta(BlockNumber blkno, uint32 level);
 static void EmitXmlPageItemIdArray(Page page, BlockNumber blkno);
 static void EmitXmlTuples(Page page, BlockNumber blkno);
 static void EmitXmlPostingTreeTids(Page page, BlockNumber blkno);
@@ -986,42 +986,6 @@ IsBrinMetaPage(Page page)
 }
 
 /*
- * Display a header for the dump so we know the file name, the options and the
- * time the dump was taken
- */
-static void
-EmitXmlDocHeader(int numOptions, char **options)
-{
-	unsigned int x;
-	char		optionBuffer[52] = "\0";
-	char		timeStr[1000];
-
-	/* Format time without newline */
-	time_t		rightNow = time(NULL);
-	struct tm  *localNow = localtime(&rightNow);
-
-	strftime(timeStr, sizeof(timeStr), "%H:%M:%S %A, %B %d %Y", localNow);
-
-	/*
-	 * Iterate through the options and cache them. The maximum we can display
-	 * is 50 option characters + spaces.
-	 */
-	for (x = 1; x < (numOptions - 1); x++)
-	{
-		if ((strlen(optionBuffer) + strlen(options[x])) > 50)
-			break;
-		strcat(optionBuffer, options[x]);
-		strcat(optionBuffer, " ");
-	}
-
-	printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-	printf("<!-- Dump created on: %s -->\n", timeStr);
-	printf("<!-- Options used: %s -->\n", (strlen(optionBuffer)) ? optionBuffer : "None");
-	printf("<wxHexEditor_XML_TAG>\n");
-	printf("  <filename path=\"%s\">\n", fileName);
-}
-
-/*
  * For each block, dump out formatted header and content information
  */
 static void
@@ -1085,7 +1049,7 @@ EmitXmlPage(BlockNumber blkno)
 	 * Every block that we aren't skipping will have header, items and possibly
 	 * special section tags created.  Beware of partial block reads, though.
 	 */
-	rc = EmitXmlPageHeaderAndMeta(page, blkno, level);
+	rc = EmitXmlPageHeader(page, blkno, level);
 
 	/* If we didn't encounter a partial read in header, carry on...  */
 	if (rc != EOF_ENCOUNTERED)
@@ -1094,6 +1058,7 @@ EmitXmlPage(BlockNumber blkno)
 			(specialType == SPEC_SECT_INDEX_GIN && blkno == GIN_METAPAGE_BLKNO))
 		{
 			/* If it's a meta page, the meta block will have no tuples */
+			EmitXmlPageMeta(blkno, level);
 		}
 		else if (specialType != SPEC_SECT_INDEX_GIN || !GinPageIsData(page))
 		{
@@ -1112,6 +1077,42 @@ EmitXmlPage(BlockNumber blkno)
 	}
 }
 
+/*
+ * Display a header for the dump so we know the file name, the options and the
+ * time the dump was taken
+ */
+static void
+EmitXmlDocHeader(int numOptions, char **options)
+{
+	unsigned int x;
+	char		optionBuffer[52] = "\0";
+	char		timeStr[1000];
+
+	/* Format time without newline */
+	time_t		rightNow = time(NULL);
+	struct tm  *localNow = localtime(&rightNow);
+
+	strftime(timeStr, sizeof(timeStr), "%H:%M:%S %A, %B %d %Y", localNow);
+
+	/*
+	 * Iterate through the options and cache them. The maximum we can display
+	 * is 50 option characters + spaces.
+	 */
+	for (x = 1; x < (numOptions - 1); x++)
+	{
+		if ((strlen(optionBuffer) + strlen(options[x])) > 50)
+			break;
+		strcat(optionBuffer, options[x]);
+		strcat(optionBuffer, " ");
+	}
+
+	printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+	printf("<!-- Dump created on: %s -->\n", timeStr);
+	printf("<!-- Options used: %s -->\n", (strlen(optionBuffer)) ? optionBuffer : "None");
+	printf("<wxHexEditor_XML_TAG>\n");
+	printf("  <filename path=\"%s\">\n", fileName);
+}
+
 static void
 EmitXmlFooter(void)
 {
@@ -1120,7 +1121,7 @@ EmitXmlFooter(void)
 }
 
 /*
- * Emit a wxHexEditor tag for tuple data.
+ * Emit a generic wxHexEditor tag for tuple data.
  *
  * Note: endOffset is an offset to the last byte whose range the tag covers, so
  * callers generally pass (relfileOff + length) - 1.  This is slightly less
@@ -1147,9 +1148,27 @@ EmitXmlTag(BlockNumber blkno, uint32 level, const char *name, const char *color,
 }
 
 /*
- * Emit a wxHexEditor tag for individual tuple.  Could be an IndexTuple, heap
- * tuple, or special tuple-like structure (e.g., GIN data/posting tree page
- * item).
+ * Emit a wxHexEditor tag for an item pointer (ItemId).
+ */
+static void
+EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
+			  uint32 relfileOff, const char *textFlags)
+{
+	/* Interpret the content of each ItemId separately */
+	printf("    <TAG id=\"%u\">\n", tagNumber++);
+	printf("      <start_offset>%u</start_offset>\n", relfileOff);
+	printf("      <end_offset>%lu</end_offset>\n", (relfileOff + sizeof(ItemIdData)) - 1);
+	printf("      <tag_text>(%u,%d) lp_len: %u, lp_off: %u, lp_flags: %s</tag_text>\n",
+		   blkno, offset, ItemIdGetLength(itemId), ItemIdGetOffset(itemId), textFlags);
+	printf("      <font_colour>" COLOR_FONT_STANDARD "</font_colour>\n");
+	printf("      <note_colour>" COLOR_BLUE_LIGHT "</note_colour>\n");
+	printf("    </TAG>\n");
+}
+
+/*
+ * Emit a wxHexEditor tag for individual tuple, whose TID is to be represented
+ * in the tag annotation.  Could be an IndexTuple, heap tuple, or special
+ * tuple-like structure (e.g., GIN data/posting tree page item).
  *
  * Note: relfileOffEnd is an offset to the last byte whose range the tag
  * covers, so callers generally pass (relfileOff + length) - 1.  This is
@@ -1429,15 +1448,10 @@ EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
 }
 
 /*
- * Dump out a formatted block header for the requested block.  If this is a
- * metapage, include metapage tags.
- *
- * Unlike with pg_filedump, this is also where ItemId entries are printed.
- * This is necessary to satisfy the tag number ordering requirement of
- * wxHexEditor.
+ * Dump out a formatted block header for the requested block.
  */
 static int
-EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno, uint32 level)
+EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 {
 	int			rc = 0;
 	unsigned int headerBytes;
@@ -1458,7 +1472,6 @@ EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno, uint32 level)
 		XLogRecPtr	pageLSN = GetPageLsn(page);
 		int			maxOffset = PageGetMaxOffsetNumber(page);
 		char		flagString[100];
-		uint32		metaStartOffset = pageOffset + MAXALIGN(SizeOfPageHeaderData);
 
 
 		headerBytes = offsetof(PageHeaderData, pd_linp[0]);
@@ -1525,63 +1538,6 @@ EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno, uint32 level)
 				   pageOffset + offsetof(PageHeaderData, pd_prune_xid),
 				   (pageOffset + offsetof(PageHeaderData, pd_linp[0])) - 1);
 
-		if (specialType == SPEC_SECT_INDEX_BTREE &&
-			blkno == BTREE_METAPAGE)
-		{
-			EmitXmlTag(blkno, level, "btm_magic", COLOR_PINK,
-					   metaStartOffset + offsetof(BTMetaPageData, btm_magic),
-					   (metaStartOffset + offsetof(BTMetaPageData, btm_version) - 1));
-			EmitXmlTag(blkno, level, "btm_version", COLOR_PINK,
-					   metaStartOffset + offsetof(BTMetaPageData, btm_version),
-					   (metaStartOffset + offsetof(BTMetaPageData, btm_root) - 1));
-			EmitXmlTag(blkno, level, "btm_root", COLOR_PINK,
-					   metaStartOffset + offsetof(BTMetaPageData, btm_root),
-					   (metaStartOffset + offsetof(BTMetaPageData, btm_level) - 1));
-			EmitXmlTag(blkno, level, "btm_level", COLOR_PINK,
-					   metaStartOffset + offsetof(BTMetaPageData, btm_level),
-					   (metaStartOffset + offsetof(BTMetaPageData, btm_fastroot) - 1));
-			EmitXmlTag(blkno, level, "btm_fastroot", COLOR_PINK,
-					   metaStartOffset + offsetof(BTMetaPageData, btm_fastroot),
-					   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) - 1));
-			EmitXmlTag(blkno, level, "btm_fastlevel", COLOR_PINK,
-					   metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel),
-					   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) + sizeof(uint32) - 1));
-		}
-		else if (specialType == SPEC_SECT_INDEX_GIN &&
-				 blkno == GIN_METAPAGE_BLKNO)
-		{
-			EmitXmlTag(blkno, level, "head", COLOR_PINK,
-					   metaStartOffset + offsetof(GinMetaPageData, head),
-					   (metaStartOffset + offsetof(GinMetaPageData, tail) - 1));
-			EmitXmlTag(blkno, level, "tail", COLOR_PINK,
-					   metaStartOffset + offsetof(GinMetaPageData, tail),
-					   (metaStartOffset + offsetof(GinMetaPageData, tailFreeSize) - 1));
-			EmitXmlTag(blkno, level, "tailFreeSize", COLOR_PINK,
-					   metaStartOffset + offsetof(GinMetaPageData, tailFreeSize),
-					   (metaStartOffset + offsetof(GinMetaPageData, nPendingPages) - 1));
-			EmitXmlTag(blkno, level, "nPendingPages", COLOR_PINK,
-					   metaStartOffset + offsetof(GinMetaPageData, nPendingPages),
-					   (metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples) - 1));
-			EmitXmlTag(blkno, level, "nPendingHeapTuples", COLOR_PINK,
-					   metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples),
-					   (metaStartOffset + offsetof(GinMetaPageData, nTotalPages) - 1));
-			EmitXmlTag(blkno, level, "nTotalPages", COLOR_PINK,
-					   metaStartOffset + offsetof(GinMetaPageData, nTotalPages),
-					   (metaStartOffset + offsetof(GinMetaPageData, nEntryPages) - 1));
-			EmitXmlTag(blkno, level, "nEntryPages", COLOR_PINK,
-					   metaStartOffset + offsetof(GinMetaPageData, nEntryPages),
-					   (metaStartOffset + offsetof(GinMetaPageData, nDataPages) - 1));
-			EmitXmlTag(blkno, level, "nDataPages", COLOR_PINK,
-					   metaStartOffset + offsetof(GinMetaPageData, nDataPages),
-					   (metaStartOffset + offsetof(GinMetaPageData, nEntries) - 1));
-			EmitXmlTag(blkno, level, "nEntries", COLOR_PINK,
-					   metaStartOffset + offsetof(GinMetaPageData, nEntries),
-					   (metaStartOffset + offsetof(GinMetaPageData, ginVersion) - 1));
-			EmitXmlTag(blkno, level, "ginVersion", COLOR_PINK,
-					   metaStartOffset + offsetof(GinMetaPageData, ginVersion),
-					   ((metaStartOffset + offsetof(GinMetaPageData, ginVersion) + sizeof(int32)) - 1));
-		}
-
 		/*
 		 * Eye the contents of the header and alert the user to possible
 		 * problems
@@ -1635,21 +1591,76 @@ EmitXmlPageHeaderAndMeta(Page page, BlockNumber blkno, uint32 level)
 }
 
 /*
- * Emit a wxHexEditor tag for an item pointer (ItemId).
+ * Dump out a formatted metapage tags for metapage block.
  */
 static void
-EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
-			  uint32 relfileOff, const char *textFlags)
+EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 {
-	/* Interpret the content of each ItemId separately */
-	printf("    <TAG id=\"%u\">\n", tagNumber++);
-	printf("      <start_offset>%u</start_offset>\n", relfileOff);
-	printf("      <end_offset>%lu</end_offset>\n", (relfileOff + sizeof(ItemIdData)) - 1);
-	printf("      <tag_text>(%u,%d) lp_len: %u, lp_off: %u, lp_flags: %s</tag_text>\n",
-		   blkno, offset, ItemIdGetLength(itemId), ItemIdGetOffset(itemId), textFlags);
-	printf("      <font_colour>" COLOR_FONT_STANDARD "</font_colour>\n");
-	printf("      <note_colour>" COLOR_BLUE_LIGHT "</note_colour>\n");
-	printf("    </TAG>\n");
+	uint32		metaStartOffset = pageOffset + MAXALIGN(SizeOfPageHeaderData);
+
+	if (specialType == SPEC_SECT_INDEX_BTREE &&
+		blkno == BTREE_METAPAGE)
+	{
+		EmitXmlTag(blkno, level, "btm_magic", COLOR_PINK,
+				   metaStartOffset + offsetof(BTMetaPageData, btm_magic),
+				   (metaStartOffset + offsetof(BTMetaPageData, btm_version) - 1));
+		EmitXmlTag(blkno, level, "btm_version", COLOR_PINK,
+				   metaStartOffset + offsetof(BTMetaPageData, btm_version),
+				   (metaStartOffset + offsetof(BTMetaPageData, btm_root) - 1));
+		EmitXmlTag(blkno, level, "btm_root", COLOR_PINK,
+				   metaStartOffset + offsetof(BTMetaPageData, btm_root),
+				   (metaStartOffset + offsetof(BTMetaPageData, btm_level) - 1));
+		EmitXmlTag(blkno, level, "btm_level", COLOR_PINK,
+				   metaStartOffset + offsetof(BTMetaPageData, btm_level),
+				   (metaStartOffset + offsetof(BTMetaPageData, btm_fastroot) - 1));
+		EmitXmlTag(blkno, level, "btm_fastroot", COLOR_PINK,
+				   metaStartOffset + offsetof(BTMetaPageData, btm_fastroot),
+				   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) - 1));
+		EmitXmlTag(blkno, level, "btm_fastlevel", COLOR_PINK,
+				   metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel),
+				   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) + sizeof(uint32) - 1));
+	}
+	else if (specialType == SPEC_SECT_INDEX_GIN &&
+			 blkno == GIN_METAPAGE_BLKNO)
+	{
+		EmitXmlTag(blkno, level, "head", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, head),
+				   (metaStartOffset + offsetof(GinMetaPageData, tail) - 1));
+		EmitXmlTag(blkno, level, "tail", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, tail),
+				   (metaStartOffset + offsetof(GinMetaPageData, tailFreeSize) - 1));
+		EmitXmlTag(blkno, level, "tailFreeSize", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, tailFreeSize),
+				   (metaStartOffset + offsetof(GinMetaPageData, nPendingPages) - 1));
+		EmitXmlTag(blkno, level, "nPendingPages", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, nPendingPages),
+				   (metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples) - 1));
+		EmitXmlTag(blkno, level, "nPendingHeapTuples", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples),
+				   (metaStartOffset + offsetof(GinMetaPageData, nTotalPages) - 1));
+		EmitXmlTag(blkno, level, "nTotalPages", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, nTotalPages),
+				   (metaStartOffset + offsetof(GinMetaPageData, nEntryPages) - 1));
+		EmitXmlTag(blkno, level, "nEntryPages", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, nEntryPages),
+				   (metaStartOffset + offsetof(GinMetaPageData, nDataPages) - 1));
+		EmitXmlTag(blkno, level, "nDataPages", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, nDataPages),
+				   (metaStartOffset + offsetof(GinMetaPageData, nEntries) - 1));
+		EmitXmlTag(blkno, level, "nEntries", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, nEntries),
+				   (metaStartOffset + offsetof(GinMetaPageData, ginVersion) - 1));
+		EmitXmlTag(blkno, level, "ginVersion", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, ginVersion),
+				   ((metaStartOffset + offsetof(GinMetaPageData, ginVersion) + sizeof(int32)) - 1));
+	}
+	else
+	{
+		fprintf(stderr, "pg_hexedit error: unsupported metapage special section type \"%s\".\n",
+				GetSpecialSectionString(specialType));
+		exitCode = 1;
+		exit(exitCode);
+	}
 }
 
 /*
