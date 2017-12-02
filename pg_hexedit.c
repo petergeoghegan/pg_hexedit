@@ -1723,6 +1723,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 	unsigned int itemOffset;
 	unsigned int itemFlags;
 	ItemId		itemId;
+	int			formatAs;
 	int			maxOffset = PageGetMaxOffsetNumber(page);
 
 	/*
@@ -1738,6 +1739,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 		fprintf(stderr, "pg_hexedit error: empty block %u - no items listed.\n",
 				blkno);
 		exitCode = 1;
+		return;
 	}
 	else if ((maxOffset < 0) || (maxOffset > blockSize))
 	{
@@ -1746,99 +1748,95 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 		exitCode = 1;
 		return;
 	}
-	else
-	{
-		int			formatAs;
 
-		/* Use the special section to determine the format style */
-		switch (specialType)
+	/* Use the special section to determine the format style */
+	switch (specialType)
+	{
+		case SPEC_SECT_NONE:
+			formatAs = ITEM_HEAP;
+			break;
+		case SPEC_SECT_INDEX_BTREE:
+#ifdef UNIMPLEMENTED
+		case SPEC_SECT_INDEX_HASH:
+		case SPEC_SECT_INDEX_GIST:
+#endif
+		case SPEC_SECT_INDEX_GIN:
+#ifdef UNIMPLEMENTED
+		case SPEC_SECT_INDEX_SPGIST:
+		case SPEC_SECT_INDEX_BRIN:
+#endif
+			formatAs = ITEM_INDEX;
+			break;
+		default:
+			fprintf(stderr, "pg_hexedit error: unsupported special section type \"%s\".\n",
+					GetSpecialSectionString(specialType));
+			exitCode = 1;
+	}
+
+	for (offset = FirstOffsetNumber;
+		 offset <= maxOffset;
+		 offset = OffsetNumberNext(offset))
+	{
+		itemId = PageGetItemId(page, offset);
+		itemSize = (unsigned int) ItemIdGetLength(itemId);
+		itemOffset = (unsigned int) ItemIdGetOffset(itemId);
+		itemFlags = (unsigned int) ItemIdGetFlags(itemId);
+
+		/* LD_DEAD items may have storage, so we go by lp_len alone */
+		if (itemSize == 0)
 		{
-			case SPEC_SECT_NONE:
-				formatAs = ITEM_HEAP;
-				break;
-			case SPEC_SECT_INDEX_BTREE:
-#ifdef UNIMPLEMENTED
-			case SPEC_SECT_INDEX_HASH:
-			case SPEC_SECT_INDEX_GIST:
-#endif
-			case SPEC_SECT_INDEX_GIN:
-#ifdef UNIMPLEMENTED
-			case SPEC_SECT_INDEX_SPGIST:
-			case SPEC_SECT_INDEX_BRIN:
-#endif
-				formatAs = ITEM_INDEX;
-				break;
-			default:
-				fprintf(stderr, "pg_hexedit error: unsupported special section type \"%s\".\n",
-						GetSpecialSectionString(specialType));
+			if (itemFlags == LP_NORMAL)
+			{
+				fprintf(stderr, "pg_hexedit error: (%u,%u) LP_NORMAL item has lp_len 0.\n",
+						blkno, offset);
 				exitCode = 1;
+			}
+			continue;
+		}
+		/* Sanitize */
+		if (itemFlags == LP_REDIRECT || itemFlags == LP_UNUSED)
+		{
+			fprintf(stderr, "pg_hexedit error: (%u,%u) LP_REDIRECT or LP_UNUSED item has lp_len %u",
+					blkno, offset, itemSize);
+			exitCode = 1;
+			continue;
 		}
 
-		for (offset = FirstOffsetNumber;
-			 offset <= maxOffset;
-			 offset = OffsetNumberNext(offset))
+		/*
+		 * Make sure the item can physically fit on this block before
+		 * formatting.  Since in a future pg version lp_len might be used
+		 * for abbreviated keys in indexes, only insist on this for heap
+		 * pages
+		 */
+		if (formatAs == ITEM_HEAP &&
+			((itemOffset + itemSize > blockSize) ||
+			 (itemOffset + itemSize > bytesToFormat)))
 		{
-			itemId = PageGetItemId(page, offset);
-			itemSize = (unsigned int) ItemIdGetLength(itemId);
-			itemOffset = (unsigned int) ItemIdGetOffset(itemId);
-			itemFlags = (unsigned int) ItemIdGetFlags(itemId);
+			fprintf(stderr, "pg_hexedit error: (%u,%u) item contents extend beyond block.\n"
+				   "blocksize %d  bytes read  %d  item start %d .\n",
+				   blkno, offset, blockSize, bytesToFormat,
+				   itemOffset + itemSize);
+			exitCode = 1;
+			continue;
+		}
 
-			/* LD_DEAD items may have storage, so we go by lp_len alone */
-			if (itemSize == 0)
-			{
-				if (itemFlags == LP_NORMAL)
-				{
-					fprintf(stderr, "pg_hexedit error: (%u,%u) LP_NORMAL item has lp_len 0.\n",
-							blkno, offset);
-					exitCode = 1;
-				}
-				continue;
-			}
-			/* Sanitize */
-			if (itemFlags == LP_REDIRECT || LP_UNUSED)
-			{
-				fprintf(stderr, "pg_hexedit error: (%u,%u) LP_REDIRECT or LP_UNUSED item has lp_len %u",
-						blkno, offset, itemSize);
-				exitCode = 1;
-				continue;
-			}
+		if (formatAs == ITEM_HEAP)
+		{
+			HeapTupleHeader htup;
 
-			/*
-			 * Make sure the item can physically fit on this block before
-			 * formatting.  Since in a future pg version lp_len might be used
-			 * for abbreviated keys in indexes, only insist on this for heap
-			 * pages
-			 */
-			if (formatAs == ITEM_HEAP &&
-				((itemOffset + itemSize > blockSize) ||
-				 (itemOffset + itemSize > bytesToFormat)))
-			{
-				fprintf(stderr, "pg_hexedit error: (%u,%u) item contents extend beyond block.\n"
-					   "blocksize %d  bytes read  %d  item start %d .\n",
-					   blkno, offset, blockSize, bytesToFormat,
-					   itemOffset + itemSize);
-				exitCode = 1;
-				continue;
-			}
+			htup = (HeapTupleHeader) PageGetItem(page, itemId);
 
-			if (formatAs == ITEM_HEAP)
-			{
-				HeapTupleHeader htup;
+			EmitXmlHeapTuple(blkno, offset, htup,
+							 pageOffset + itemOffset, itemSize);
+		}
+		else if (formatAs == ITEM_INDEX)
+		{
+			IndexTuple	tuple;
 
-				htup = (HeapTupleHeader) PageGetItem(page, itemId);
+			tuple = (IndexTuple) PageGetItem(page, itemId);
 
-				EmitXmlHeapTuple(blkno, offset, htup,
-								 pageOffset + itemOffset, itemSize);
-			}
-			else if (formatAs == ITEM_INDEX)
-			{
-				IndexTuple	tuple;
-
-				tuple = (IndexTuple) PageGetItem(page, itemId);
-
-				EmitXmlIndexTuple(blkno, offset, tuple,
-								  pageOffset + itemOffset);
-			}
+			EmitXmlIndexTuple(blkno, offset, tuple,
+							  pageOffset + itemOffset);
 		}
 	}
 }
