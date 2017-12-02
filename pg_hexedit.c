@@ -219,8 +219,9 @@ static void EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset,
 static void EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 							 HeapTupleHeader htup, uint32 relfileOff,
 							 unsigned int itemSize);
-static void EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset,
-							  IndexTuple tuple, uint32 relfileOff);
+static void EmitXmlIndexTuple(Page page, BlockNumber blkno,
+							  OffsetNumber offset, IndexTuple tuple,
+							  uint32 relfileOff);
 static int EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level);
 static void EmitXmlPageMeta(BlockNumber blkno, uint32 level);
 static void EmitXmlPageItemIdArray(Page page, BlockNumber blkno);
@@ -1345,8 +1346,8 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
  * redundant in the case of IndexTuples.
  */
 static void
-EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
-				  uint32 relfileOff)
+EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
+				  IndexTuple tuple, uint32 relfileOff)
 {
 	uint32		relfileOffNext = 0;
 	uint32		relfileOffOrig = relfileOff;
@@ -1366,8 +1367,9 @@ EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
 	 *
 	 * TODO: We should decode the meaning of t_tid when this GIN-private t_tid
 	 * offset number punning has taken place, and cut this information into
-	 * finer detail.  There is quite a bit of discoverable information we could
-	 * tag/annotate directly, to show details of posting list compression, etc.
+	 * finer detail.  We could do this for main entry key B-Tree leaf pages,
+	 * where these fields are abused (they are not abused within
+	 * internal/non-leaf pages).
 	 */
 	relfileOffNext = relfileOff + sizeof(uint16);
 	EmitXmlTupleTag(blkno, offset, "t_tid->bi_hi", COLOR_BLUE_LIGHT, relfileOff,
@@ -1417,19 +1419,29 @@ EmitXmlIndexTuple(BlockNumber blkno, OffsetNumber offset, IndexTuple tuple,
 	 *
 	 * All-attributes-NULL IndexTuples will not have any contents here, so we
 	 * avoid creating a tuple content tag entirely.  The same applies to "minus
-	 * infinity" items from internal pages (though they don't have a NULL
-	 * bitmap).
+	 * infinity" items from nbtree internal pages (though they don't have a
+	 * NULL bitmap).
 	 *
 	 * We don't use the lp_len value here, though we could do it that way
 	 * instead (we do use lp_len at the same point within EmitXmlHeapTuple()).
 	 * The lp_len field is redundant for B-Tree indexes, and somebody might
 	 * take advantage of that fact in the future, so this seems more
 	 * future-proof.
+	 *
+	 * For GIN, we've already determined that this tuple is from the main key
+	 * B-Tree (posting trees don't use IndexTuples at all).  We should only
+	 * treat it as containing a compressed posting list if it's definitely from
+	 * a leaf page, and definitely was compressed.  Old Postgres versions have
+	 * old-style uncompressed lists of TIDs in leaf pages, and we don't bother
+	 * doing anything special there (we treat the posting list as "contents").
+	 * See Postgres commit 36a35c55, which added compression to posting lists
+	 * in the main B-Tree.
 	 */
 	relfileOffNext = relfileOffOrig + IndexTupleSize(tuple);
 	if (relfileOff < relfileOffNext)
 	{
-		if (specialType != SPEC_SECT_INDEX_GIN || !GinItupIsCompressed(tuple))
+		if (specialType != SPEC_SECT_INDEX_GIN || !GinPageIsLeaf(page) ||
+			!GinItupIsCompressed(tuple))
 			EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
 							relfileOff, relfileOffNext - 1);
 		else
@@ -1835,7 +1847,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 
 			tuple = (IndexTuple) PageGetItem(page, itemId);
 
-			EmitXmlIndexTuple(blkno, offset, tuple,
+			EmitXmlIndexTuple(page, blkno, offset, tuple,
 							  pageOffset + itemOffset);
 		}
 	}
