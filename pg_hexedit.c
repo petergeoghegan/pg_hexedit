@@ -815,8 +815,8 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 	if (!flagString)
 	{
 		fprintf(stderr, "pg_hexedit error: unable to create buffer of size 512.\n");
-		exitCode = 1;
-		exit(exitCode);
+		/* Call exit() immediately, so caller doesn't have to handle failure */
+		exit(1);
 	}
 
 	localHoff = htup->t_hoff;
@@ -916,7 +916,6 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 			 "computed: %u header: %d\n", computedLength, localHoff);
 
 		exitCode = 1;
-		exit(exitCode);
 	}
 
 	return flagString;
@@ -938,8 +937,8 @@ GetIndexTupleFlags(IndexTuple itup)
 	if (!flagString)
 	{
 		fprintf(stderr, "pg_hexedit error: unable to create buffer of size 128.\n");
-		exitCode = 1;
-		exit(exitCode);
+		/* Call exit() immediately, so caller doesn't have to handle failure */
+		exit(1);
 	}
 
 	/*
@@ -1321,10 +1320,10 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 		return;
 	else if (itemSize < (relfileOffNext - relfileOffOrig))
 	{
-		fprintf(stderr, "pg_hexedit error: lp_len %d from (%u,%u) is undersized.\n", itemSize,
-			   blkno, offset);
+		fprintf(stderr, "pg_hexedit error: lp_len %d from (%u,%u) is undersized.\n",
+				itemSize, blkno, offset);
 		exitCode = 1;
-		exit(exitCode);
+		return;
 	}
 
 	/*
@@ -1598,8 +1597,7 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 {
 	uint32		metaStartOffset = pageOffset + MAXALIGN(SizeOfPageHeaderData);
 
-	if (specialType == SPEC_SECT_INDEX_BTREE &&
-		blkno == BTREE_METAPAGE)
+	if (specialType == SPEC_SECT_INDEX_BTREE && blkno == BTREE_METAPAGE)
 	{
 		EmitXmlTag(blkno, level, "btm_magic", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_magic),
@@ -1620,8 +1618,7 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 				   metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel),
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) + sizeof(uint32) - 1));
 	}
-	else if (specialType == SPEC_SECT_INDEX_GIN &&
-			 blkno == GIN_METAPAGE_BLKNO)
+	else if (specialType == SPEC_SECT_INDEX_GIN && blkno == GIN_METAPAGE_BLKNO)
 	{
 		EmitXmlTag(blkno, level, "head", COLOR_PINK,
 				   metaStartOffset + offsetof(GinMetaPageData, head),
@@ -1659,12 +1656,11 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 		fprintf(stderr, "pg_hexedit error: unsupported metapage special section type \"%s\".\n",
 				GetSpecialSectionString(specialType));
 		exitCode = 1;
-		exit(exitCode);
 	}
 }
 
 /*
- * Emit formatted ItemId tags for tuples that reside on this block
+ * Emit formatted ItemId tags for tuples that reside on this block.
  */
 static void
 EmitXmlPageItemIdArray(Page page, BlockNumber blkno)
@@ -1717,7 +1713,7 @@ EmitXmlPageItemIdArray(Page page, BlockNumber blkno)
 }
 
 /*
- * Emit formatted tuples that reside on this block
+ * Emit formatted tuples that reside on this block.
  */
 static void
 EmitXmlTuples(Page page, BlockNumber blkno)
@@ -1742,14 +1738,13 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 		fprintf(stderr, "pg_hexedit error: empty block %u - no items listed.\n",
 				blkno);
 		exitCode = 1;
-		exit(exitCode);
 	}
 	else if ((maxOffset < 0) || (maxOffset > blockSize))
 	{
 		fprintf(stderr, "pg_hexedit error: item index corrupt on block %u. offset: %d\n",
 			   blkno, maxOffset);
 		exitCode = 1;
-		exit(exitCode);
+		return;
 	}
 	else
 	{
@@ -1777,7 +1772,6 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 				fprintf(stderr, "pg_hexedit error: unsupported special section type \"%s\".\n",
 						GetSpecialSectionString(specialType));
 				exitCode = 1;
-				exit(exitCode);
 		}
 
 		for (offset = FirstOffsetNumber;
@@ -1797,9 +1791,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 					fprintf(stderr, "pg_hexedit error: (%u,%u) LP_NORMAL item has lp_len 0.\n",
 							blkno, offset);
 					exitCode = 1;
-					exit(exitCode);
 				}
-
 				continue;
 			}
 			/* Sanitize */
@@ -1808,7 +1800,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 				fprintf(stderr, "pg_hexedit error: (%u,%u) LP_REDIRECT or LP_UNUSED item has lp_len %u",
 						blkno, offset, itemSize);
 				exitCode = 1;
-				exit(exitCode);
+				continue;
 			}
 
 			/*
@@ -1826,7 +1818,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 					   blkno, offset, blockSize, bytesToFormat,
 					   itemOffset + itemSize);
 				exitCode = 1;
-				exit(exitCode);
+				continue;
 			}
 
 			if (formatAs == ITEM_HEAP)
@@ -1859,11 +1851,9 @@ EmitXmlTuples(Page page, BlockNumber blkno)
  * pages contain GinPostingLists and an uncompressed array of item pointers.
  *
  * In a leaf page, the compressed posting lists are stored after the regular
- * page header, one after each other. Although we don't store regular tuples,
- * pd_lower is used to indicate the end of the posting lists. After that, free
- * space follows.  This layout is compatible with the "standard" heap and index
- * page layout described in bufpage.h, so that we can e.g set buffer_std when
- * writing WAL records.
+ * page header, one after each other.  Although GIN does not store regular
+ * tuples, pd_lower is used to indicate the end of the posting lists. After
+ * that, free space follows.
  */
 static void
 EmitXmlPostingTreeTids(Page page, BlockNumber blkno)
@@ -1927,7 +1917,7 @@ EmitXmlPostingTreeTids(Page page, BlockNumber blkno)
 		{
 			fprintf(stderr, "pg_hexedit error: uncompressed GIN leaf pages unsupported.\n");
 			exitCode = 1;
-			exit(exitCode);
+			return;
 		}
 
 		itemOffset = GinDataPageGetData(page) - page;
@@ -2077,8 +2067,6 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 			fprintf(stderr, "pg_hexedit error: unsupported special section type \"%s\".\n",
 					GetSpecialSectionString(specialType));
 			exitCode = 1;
-			exit(exitCode);
-			break;
 	}
 }
 
