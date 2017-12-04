@@ -230,6 +230,26 @@ the database that is not under the control of a running PostgreSQL server.
 
 See `pg_hexedit -h` for full details.
 
+## Supporting other hex editors
+
+While pg_hexedit targets wxHexEditor, it should not be difficult to adopt it to
+other hex editors with a similar tag import feature if that becomes a
+requirement in the future.
+
+Actually generating raw tag output is confined to the following simple C
+functions:
+
+```
+EmitXmlDocHeader()
+EmitXmlFooter()
+EmitXmlTag()
+EmitXmlItemId()
+EmitXmlTupleTag()
+```
+
+These routines could be changed to call a per-hexeditor callback.  Each
+supported hex editor could have its own "provider" routines.
+
 ## Interpreting tuple contents with pageinspect
 
 Because the pg_hexedit executable is a frontend utility that doesn't have
