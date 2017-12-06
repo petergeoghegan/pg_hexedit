@@ -109,9 +109,10 @@ Window that is highlighted within your desktop environment.
 pg_hexedit and wxHexEditor can be invoked using convenience scripts that take
 care of everything.  These are designed to be run on a PostgreSQL backend
 hacker's laptop, while the target PostgreSQL server is actually running.  The
-server is queried to locate the relevant relation files. The scripts also take
+server is queried to locate the relevant relation files.  The scripts also take
 care of adding convenience offsets to the wxHexEditor cache, which can be used
-to quickly locate internal pages of a B-Tree, for example.
+to quickly locate internal pages of a B-Tree, for example.  The wxHexEditor
+shortcut for accessing the offsets is Ctrl + G.
 
 `psql` should be within your $PATH when the scripts are invoked. libpq
 environment variables like $PGDATABASE can be set within the `hexedit.cfg`
@@ -127,20 +128,26 @@ corruption__, especially when the PostgreSQL server is actually running
 throughout.  The scripts were designed with backend development convenience in
 mind, where __the database should only contain disposable test data__.
 
-Convenience script dependencies:
-
-* The convenience scripts rely on `CREATE EXTENSION IF NOT EXISTS pageinspect`
-  running.
-
-[`contrib/pageinspect`](https://www.postgresql.org/docs/current/static/pageinspect.html)
-must be installed.
+Convenience script requirements:
 
 * The scripts are built on the assumption that they're invoked by a user that
   has the operating system level permissions needed to open PostgreSQL relation
   files, and Postgres superuser permissions.  The user invoking the script should
   have access to the same filesystem, through the same absolute paths. (Be very
-  careful if the Postgres data directory is containarized; that's untested and
+  careful if the Postgres data directory is containerized; that's untested and
   unsupported.)
+
+* Most convenience scripts rely on `CREATE EXTENSION IF NOT EXISTS pageinspect`
+  running and making available various SQL-callable functions.  These functions
+  are used to generate interesting offsets, or to display hints on index
+  structure.  (This is highly recommended, but not actually required.)
+
+[`contrib/pageinspect`](https://www.postgresql.org/docs/current/static/pageinspect.html)
+must be available (the extensions supporting files must be installed) to use
+the convenience scripts that depend on `contrib/pageinspect`.  Note that the
+relation_hexedit script does not depend on `contrib/pageinspect`.
+relation_hexedit is designed to work equally well with relations of any access
+method, and uses simple convenience offsets (decile offsets).
 
 To open the Postgres table `pg_type` with tags and annotations:
 
@@ -166,8 +173,7 @@ Replacing /home/pg/code/pg_hexedit/.wxHexEditor with pg_hexedit optimized settin
 
 The advantage of using the btree_hexedit script for B-Tree indexes over the
 generic relation_hexedit script is that btree_hexedit sets offsets for every
-block that is a direct child of the root page.  The wxHexEditor shortcut for
-accessing the offsets is Ctrl + G.
+block that is a direct child of the root page.
 
 There is also a gin_hexedit convenience script.  This does not set offsets
 automatically.  Instead, it runs an SQL query that summarizes contiguous ranges

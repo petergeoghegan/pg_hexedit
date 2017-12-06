@@ -18,12 +18,12 @@ relname=$1
 export HOME=`pwd`
 wxconfig="$HOME/.wxHexEditor"
 
-psql -c "CHECKPOINT" &> /dev/null
+psql -c "CHECKPOINT"
 if [ ! $? -eq 0 ]; then
    echo "CHECKPOINT failed"
    exit
 fi
-psql -c "CREATE EXTENSION IF NOT EXISTS pageinspect" &> /dev/null
+psql -c "CREATE EXTENSION IF NOT EXISTS pageinspect"
 if [ ! $? -eq 0 ]; then
    echo "creating pageinspect extension failed"
    exit
