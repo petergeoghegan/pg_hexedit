@@ -18,7 +18,7 @@ relname=$1
 export HOME=`pwd`
 wxconfig="$HOME/.wxHexEditor"
 
-psql -c "CHECKPOINT"
+psql --no-psqlrc -c "CHECKPOINT"
 if [ ! $? -eq 0 ]; then
    echo "CHECKPOINT failed"
    exit
