@@ -202,7 +202,7 @@ static const char *GetSpecialSectionString(unsigned int type);
 static XLogRecPtr GetPageLsn(Page page);
 static char *GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2);
 static char *GetIndexTupleFlags(IndexTuple itup);
-static bool IsBrinMetaPage(Page page);
+static bool IsBrinPage(Page page);
 static void EmitXmlPage(BlockNumber blkno);
 static void EmitXmlDocHeader(int numOptions, char **options);
 static void EmitXmlFooter(void);
@@ -715,7 +715,7 @@ GetSpecialSectionType(Page page)
 							 *ptype == SPGIST_PAGE_ID)
 						rc = SPEC_SECT_INDEX_SPGIST;
 					else if (specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
-							 IsBrinMetaPage(page))
+							 IsBrinPage(page))
 						rc = SPEC_SECT_INDEX_BRIN;
 					else if (specialSize == MAXALIGN(sizeof(GinPageOpaqueData)))
 						rc = SPEC_SECT_INDEX_GIN;
@@ -734,6 +734,9 @@ GetSpecialSectionType(Page page)
 					 bytesToFormat == blockSize &&
 					 *ptype == SPGIST_PAGE_ID)
 				rc = SPEC_SECT_INDEX_SPGIST;
+			else if (specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
+					 IsBrinPage(page))
+				rc = SPEC_SECT_INDEX_BRIN;
 			else if (specialSize == MAXALIGN(sizeof(GinPageOpaqueData)))
 				rc = SPEC_SECT_INDEX_GIN;
 			else if (specialSize > 2 && bytesToFormat == blockSize)
@@ -969,18 +972,15 @@ GetIndexTupleFlags(IndexTuple itup)
 
 /*	Check whether page is a BRIN meta page */
 static bool
-IsBrinMetaPage(Page page)
+IsBrinPage(Page page)
 {
 #if PG_VERSION_NUM >= 90500
-	 BrinMetaPageData   *meta;
-
-	if (bytesToFormat != blockSize || !BRIN_IS_META_PAGE(page))
+	if (bytesToFormat != blockSize)
 		return false;
 
-	 meta = ((BrinMetaPageData *) PageGetContents(page));
-
-	 if (meta->brinMagic == BRIN_META_MAGIC)
-		 return true;
+	if (BRIN_IS_META_PAGE(page) || BRIN_IS_REVMAP_PAGE(page) ||
+		BRIN_IS_REGULAR_PAGE(page))
+		return true;
 #endif
 	return false;
 }
