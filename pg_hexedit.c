@@ -1780,6 +1780,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 			formatAs = ITEM_INDEX;
 			break;
 		default:
+			formatAs = ITEM_INDEX;
 			fprintf(stderr, "pg_hexedit error: unsupported special section type \"%s\".\n",
 					GetSpecialSectionString(specialType));
 			exitCode = 1;
@@ -1808,7 +1809,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 		/* Sanitize */
 		if (itemFlags == LP_REDIRECT || itemFlags == LP_UNUSED)
 		{
-			fprintf(stderr, "pg_hexedit error: (%u,%u) LP_REDIRECT or LP_UNUSED item has lp_len %u",
+			fprintf(stderr, "pg_hexedit error: (%u,%u) LP_REDIRECT or LP_UNUSED item has lp_len %u\n",
 					blkno, offset, itemSize);
 			exitCode = 1;
 			continue;
