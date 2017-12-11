@@ -1738,19 +1738,15 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 	int			formatAs;
 	int			maxOffset = PageGetMaxOffsetNumber(page);
 
-	/*
-	 * Loop through the items on the block.  Check if the block is empty and
-	 * has a sensible item array listed before running through each item
-	 */
+	/* Loop through the items on the block */
 	if (maxOffset == 0)
 	{
-		/* This can happen within GIN when only pending list full */
-		if (specialType == SPEC_SECT_INDEX_GIN)
-			return;
-
-		fprintf(stderr, "pg_hexedit error: empty block %u - no items listed.\n",
-				blkno);
-		exitCode = 1;
+		if (specialType == SPEC_SECT_INDEX_BTREE)
+		{
+			fprintf(stderr, "pg_hexedit error: empty nbtree block %u - no items listed.\n",
+					blkno);
+			exitCode = 1;
+		}
 		return;
 	}
 	else if ((maxOffset < 0) || (maxOffset > blockSize))
@@ -1780,9 +1776,11 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 			formatAs = ITEM_INDEX;
 			break;
 		default:
+			/* Only complain the first time an error like this is seen */
+			if (exitCode == 0)
+				fprintf(stderr, "pg_hexedit error: unsupported special section type \"%s\".\n",
+						GetSpecialSectionString(specialType));
 			formatAs = ITEM_INDEX;
-			fprintf(stderr, "pg_hexedit error: unsupported special section type \"%s\".\n",
-					GetSpecialSectionString(specialType));
 			exitCode = 1;
 	}
 
@@ -2075,8 +2073,10 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 			break;
 
 		default:
-			fprintf(stderr, "pg_hexedit error: unsupported special section type \"%s\".\n",
-					GetSpecialSectionString(specialType));
+			/* Only complain the first time an error like this is seen */
+			if (exitCode == 0)
+				fprintf(stderr, "pg_hexedit error: unsupported special section type \"%s\".\n",
+						GetSpecialSectionString(specialType));
 			exitCode = 1;
 	}
 }
