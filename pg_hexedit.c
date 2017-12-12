@@ -1777,8 +1777,10 @@ EmitXmlPageItemIdArray(Page page, BlockNumber blkno)
 				strcpy(textFlags, "LP_DEAD");
 				break;
 			default:
-				/* shouldn't be possible */
 				sprintf(textFlags, "0x%02x", itemFlags);
+				fprintf(stderr, "pg_hexedit error: invalid item pointer flags for (%u,%u): %s.\n",
+						blkno, offset, textFlags);
+				exitCode = 1;
 				break;
 		}
 
