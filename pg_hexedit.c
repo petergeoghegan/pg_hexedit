@@ -1061,11 +1061,12 @@ EmitXmlPage(BlockNumber blkno)
 	if (rc != EOF_ENCOUNTERED)
 	{
 		/*
-		 * All AMs have a metapage at block zero, with the exception of heapam
-		 * and GiST. (Sequences more or less reuse the heap format, and don't
-		 * have a metapage.)
+		 * All AMs have a single metapage at block zero of the first segment,
+		 * with the exception of heapam and GiST. (Sequences more or less reuse
+		 * the heap format, and so don't have a metapage.)
 		 */
-		if (blkno == 0 && specialType != SPEC_SECT_NONE &&
+		if (blkno == 0 && segmentNumber == 0 &&
+			specialType != SPEC_SECT_NONE &&
 			specialType != SPEC_SECT_INDEX_GIST &&
 			specialType != SPEC_SECT_SEQUENCE)
 		{
