@@ -1056,10 +1056,12 @@ EmitXmlPage(BlockNumber blkno)
 	{
 		/*
 		 * All AMs have a metapage at block zero, with the exception of heapam
-		 * and GiST.
+		 * and GiST. (Sequences more or less reuse the heap format, and don't
+		 * have a metapage.)
 		 */
 		if (blkno == 0 && specialType != SPEC_SECT_NONE &&
-			specialType != SPEC_SECT_INDEX_GIST)
+			specialType != SPEC_SECT_INDEX_GIST &&
+			specialType != SPEC_SECT_SEQUENCE)
 		{
 			/* If it's a meta page, the meta block will have no tuples */
 			EmitXmlPageMeta(blkno, level);
@@ -1076,6 +1078,7 @@ EmitXmlPage(BlockNumber blkno)
 			EmitXmlPostingTreeTids(page, blkno);
 		}
 
+		/* Only heapam doesn't have a special area (even sequences have one) */
 		if (specialType != SPEC_SECT_NONE)
 			EmitXmlSpecial(blkno, level);
 	}
@@ -1816,6 +1819,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 	switch (specialType)
 	{
 		case SPEC_SECT_NONE:
+		case SPEC_SECT_SEQUENCE:
 			formatAs = ITEM_HEAP;
 			break;
 		case SPEC_SECT_INDEX_BTREE:
@@ -2036,11 +2040,21 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 
 	switch (specialType)
 	{
+		case SPEC_SECT_NONE:
 		case SPEC_SECT_ERROR_UNKNOWN:
 		case SPEC_SECT_ERROR_BOUNDARY:
 			fprintf(stderr, "pg_hexedit error: invalid special section type \"%s\".\n",
 					GetSpecialSectionString(specialType));
 			exitCode = 1;
+			break;
+
+		case SPEC_SECT_SEQUENCE:
+			{
+				/* Special area consists of a single uint32, "magic" */
+				EmitXmlTag(blkno, level, "magic", COLOR_BLACK,
+						   pageOffset + specialOffset,
+						   (pageOffset + specialOffset + sizeof(uint32) - 1));
+			}
 			break;
 
 		case SPEC_SECT_INDEX_BTREE:
