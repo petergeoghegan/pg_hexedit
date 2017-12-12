@@ -238,7 +238,7 @@ pg_hexedit retains a minority of the flags that appear in pg_filedump:
   pg_hexedit [-hkzl] [-R startblock [endblock]] [-s segsize] [-n segnumber] [-x lsn] file
 ```
 
-Two new flags, `-x` and `-l`, have been added.
+Three new flags, `-x`, `-l`, and `-z`, have been added.
 
 Invoking it directly might be more useful when you want to work on a copy of
 the database that is not under the control of a running PostgreSQL server.
