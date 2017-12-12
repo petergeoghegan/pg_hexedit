@@ -71,8 +71,8 @@ PGDATA=$(psql --no-psqlrc -tA -c "SELECT setting FROM pg_settings WHERE name = '
 echo "Determined that data directory is $PGDATA"
 FULLPATH="$PGDATA/$RFN"
 echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
-echo "Note: Only blocks 0 - $BLOCK_TAGS will be annotated, to keep overhead low"
-./pg_hexedit -R 0 $BLOCK_TAGS $FULLPATH > $FULLPATH.tags
+echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to keep overhead low"
+./pg_hexedit -R $MIN_BLOCK_TAGS $MAX_BLOCK_TAGS $FULLPATH > $FULLPATH.tags
 
 if [ ! $? -eq 0 ]; then
    echo "Error encountered by pg_hexedit. Could not generate all tags."
