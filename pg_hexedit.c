@@ -714,7 +714,10 @@ GetSpecialSectionType(Page page)
 					else if (specialSize == MAXALIGN(sizeof(SpGistPageOpaqueData)) &&
 							 *ptype == SPGIST_PAGE_ID)
 						rc = SPEC_SECT_INDEX_SPGIST;
-					else if (specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
+					else if (
+#if PG_VERSION_NUM >= 90500
+							 specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
+#endif
 							 IsBrinPage(page))
 						rc = SPEC_SECT_INDEX_BRIN;
 					else if (specialSize == MAXALIGN(sizeof(GinPageOpaqueData)))
@@ -734,7 +737,10 @@ GetSpecialSectionType(Page page)
 					 bytesToFormat == blockSize &&
 					 *ptype == SPGIST_PAGE_ID)
 				rc = SPEC_SECT_INDEX_SPGIST;
-			else if (specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
+			else if (
+#if PG_VERSION_NUM >= 90500
+							 specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
+#endif
 					 IsBrinPage(page))
 				rc = SPEC_SECT_INDEX_BRIN;
 			else if (specialSize == MAXALIGN(sizeof(GinPageOpaqueData)))
@@ -2125,6 +2131,7 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 					strcat(flagString, "LH_BITMAP_PAGE|");
 				if (hashSection->hasho_flag & LH_META_PAGE)
 					strcat(flagString, "LH_META_PAGE|");
+#if PG_VERSION_NUM >= 100000
 				if (hashSection->hasho_flag & LH_BUCKET_BEING_POPULATED)
 					strcat(flagString, "LH_BUCKET_BEING_POPULATED|");
 				if (hashSection->hasho_flag & LH_BUCKET_BEING_SPLIT)
@@ -2133,6 +2140,7 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 					strcat(flagString, "LH_BUCKET_NEEDS_SPLIT_CLEANUP|");
 				if (hashSection->hasho_flag & LH_PAGE_HAS_DEAD_TUPLES)
 					strcat(flagString, "LH_PAGE_HAS_DEAD_TUPLES|");
+#endif
 				if (strlen(flagString))
 					flagString[strlen(flagString) - 1] = '\0';
 
@@ -2166,8 +2174,10 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 					strcat(flagString, "F_TUPLES_DELETED|");
 				if (gistSection->flags & F_FOLLOW_RIGHT)
 					strcat(flagString, "F_FOLLOW_RIGHT|");
+#if PG_VERSION_NUM >= 90600
 				if (gistSection->flags & F_HAS_GARBAGE)
 					strcat(flagString, "F_HAS_GARBAGE|");
+#endif
 				if (strlen(flagString))
 					flagString[strlen(flagString) - 1] = '\0';
 
