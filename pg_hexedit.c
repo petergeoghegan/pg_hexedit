@@ -1055,7 +1055,8 @@ EmitXmlPage(BlockNumber blkno)
 	if (rc != EOF_ENCOUNTERED)
 	{
 		if ((specialType == SPEC_SECT_INDEX_BTREE && blkno == BTREE_METAPAGE) ||
-			(specialType == SPEC_SECT_INDEX_GIN && blkno == GIN_METAPAGE_BLKNO))
+			(specialType == SPEC_SECT_INDEX_GIN && blkno == GIN_METAPAGE_BLKNO) ||
+			(specialType == SPEC_SECT_INDEX_HASH && blkno == HASH_METAPAGE))
 		{
 			/* If it's a meta page, the meta block will have no tuples */
 			EmitXmlPageMeta(blkno, level);
@@ -1663,6 +1664,58 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 				   metaStartOffset + offsetof(GinMetaPageData, ginVersion),
 				   ((metaStartOffset + offsetof(GinMetaPageData, ginVersion) + sizeof(int32)) - 1));
 	}
+	else if (specialType == SPEC_SECT_INDEX_HASH && blkno == HASH_METAPAGE)
+	{
+		EmitXmlTag(blkno, level, "hashm_magic", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_magic),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_version) - 1));
+		EmitXmlTag(blkno, level, "hashm_version", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_version),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_ntuples) - 1));
+		EmitXmlTag(blkno, level, "hashm_ntuples", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_ntuples),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_ffactor) - 1));
+		EmitXmlTag(blkno, level, "hashm_ffactor", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_ffactor),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_bsize) - 1));
+		EmitXmlTag(blkno, level, "hashm_bsize", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_bsize),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_bmsize) - 1));
+		EmitXmlTag(blkno, level, "hashm_bmsize", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_bmsize),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_bmshift) - 1));
+		EmitXmlTag(blkno, level, "hashm_bmshift", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_bmshift),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_maxbucket) - 1));
+		EmitXmlTag(blkno, level, "hashm_maxbucket", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_maxbucket),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_highmask) - 1));
+		EmitXmlTag(blkno, level, "hashm_highmask", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_highmask),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_lowmask) - 1));
+		EmitXmlTag(blkno, level, "hashm_lowmask", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_lowmask),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_ovflpoint) - 1));
+		EmitXmlTag(blkno, level, "hashm_ovflpoint", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_ovflpoint),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_firstfree) - 1));
+		EmitXmlTag(blkno, level, "hashm_firstfree", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_firstfree),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_nmaps) - 1));
+		EmitXmlTag(blkno, level, "hashm_nmaps", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_nmaps),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_procid) - 1));
+		EmitXmlTag(blkno, level, "hashm_procid", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_procid),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_spares) - 1));
+		EmitXmlTag(blkno, level, "hashm_spares", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_spares),
+				   (metaStartOffset + offsetof(HashMetaPageData, hashm_mapp) - 1));
+		EmitXmlTag(blkno, level, "hashm_mapp", COLOR_PINK,
+				   metaStartOffset + offsetof(HashMetaPageData, hashm_mapp),
+				   ((metaStartOffset + offsetof(HashMetaPageData, hashm_mapp) +
+					 sizeof(BlockNumber) * HASH_MAX_BITMAPS) - 1));
+	}
 	else
 	{
 		fprintf(stderr, "pg_hexedit error: unsupported metapage special section type \"%s\".\n",
@@ -1764,8 +1817,8 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 			formatAs = ITEM_HEAP;
 			break;
 		case SPEC_SECT_INDEX_BTREE:
-#ifdef UNIMPLEMENTED
 		case SPEC_SECT_INDEX_HASH:
+#ifdef UNIMPLEMENTED
 		case SPEC_SECT_INDEX_GIST:
 #endif
 		case SPEC_SECT_INDEX_GIN:
@@ -2069,6 +2122,50 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
 						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags),
 						   (pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags) + sizeof(uint16)) - 1);
+			}
+			break;
+
+		case SPEC_SECT_INDEX_HASH:
+			{
+				HashPageOpaque hashSection = (HashPageOpaque) (buffer + specialOffset);
+
+				EmitXmlTag(blkno, level, "hasho_prevblkno", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_prevblkno),
+						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_nextblkno)) - 1);
+				EmitXmlTag(blkno, level, "hasho_nextblkno", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_nextblkno),
+						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_bucket)) - 1);
+				EmitXmlTag(blkno, level, "hasho_bucket", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_bucket),
+						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_flag)) - 1);
+
+				/* Generate hash special area flags */
+				strcat(flagString, "hasho_flag - ");
+				if (hashSection->hasho_flag & LH_OVERFLOW_PAGE)
+					strcat(flagString, "LH_OVERFLOW_PAGE|");
+				if (hashSection->hasho_flag & LH_BUCKET_PAGE)
+					strcat(flagString, "LH_BUCKET_PAGE|");
+				if (hashSection->hasho_flag & LH_BITMAP_PAGE)
+					strcat(flagString, "LH_BITMAP_PAGE|");
+				if (hashSection->hasho_flag & LH_META_PAGE)
+					strcat(flagString, "LH_META_PAGE|");
+				if (hashSection->hasho_flag & LH_BUCKET_BEING_POPULATED)
+					strcat(flagString, "LH_BUCKET_BEING_POPULATED|");
+				if (hashSection->hasho_flag & LH_BUCKET_BEING_SPLIT)
+					strcat(flagString, "LH_BUCKET_BEING_SPLIT|");
+				if (hashSection->hasho_flag & LH_BUCKET_NEEDS_SPLIT_CLEANUP)
+					strcat(flagString, "LH_BUCKET_NEEDS_SPLIT_CLEANUP|");
+				if (hashSection->hasho_flag & LH_PAGE_HAS_DEAD_TUPLES)
+					strcat(flagString, "LH_PAGE_HAS_DEAD_TUPLES|");
+				if (strlen(flagString))
+					flagString[strlen(flagString) - 1] = '\0';
+
+				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_flag),
+						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_page_id)) - 1);
+				EmitXmlTag(blkno, level, "hasho_page_id", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_page_id),
+						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_page_id) + sizeof(uint16)) - 1);
 			}
 			break;
 
