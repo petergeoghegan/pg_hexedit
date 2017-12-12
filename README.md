@@ -16,9 +16,9 @@ Supported platforms: Linux + libwxgtk (though MacOS probably also works)
 ## Overview
 
 pg_hexedit is an experimental toolkit to format PostgreSQL heap and index files
-(B-Tree, GIN, and hash indexes only) when opened within the open source GUI hex
-editor [wxHexEditor](https://github.com/EUA/wxHexEditor).  It makes viewing and
-editing PostgreSQL relation files *significantly* easier.
+(B-Tree, GiST, GIN, and hash indexes only) when opened within the open source
+GUI hex editor [wxHexEditor](https://github.com/EUA/wxHexEditor).  It makes
+viewing and editing PostgreSQL relation files *significantly* easier.
 
 ![Image of wxHexEditor with pg_hexedit tags](./screenshot1.png)
 
@@ -189,10 +189,10 @@ also that these convenience scripts limit the range of blocks that are
 summarized, to keep the overhead acceptable.  (This can be changed by modifying
 hexedit.cfg.)
 
-Although only the B-Tree, GIN and hash access methods are currently supported,
-relation_hexedit may produce reasonably helpful tags and annotations for other
-index AMs, such as BRIN.  Many of the conventions are the same across index
-access methods, since they're based on generic bufpage.h and itup.h
+Although only the B-Tree, GiST, GIN and hash access methods are currently
+supported, relation_hexedit may produce reasonably helpful tags and annotations
+for other index AMs, such as BRIN.  Many of the conventions are the same across
+index access methods, since they're based on generic bufpage.h and itup.h
 conventions.  The only thing that's consistently different across index AMs is
 the format of tuple "contents", which pg_hexedit doesn't do anything special
 with anyway (due to not having direct access to catalog metadata/operator class
@@ -337,7 +337,7 @@ The first element returned in our `bytea` array is the name of the type,
 
 ## Areas that might be improved someday
 
-* Support additional index AMs: GiST, SP-GiST, and BRIN.
+* Support additional index AMs: SP-GiST and BRIN.
 
 * Support sequence relation files.
 

@@ -1632,40 +1632,7 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) - 1));
 		EmitXmlTag(blkno, level, "btm_fastlevel", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel),
-				   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) + sizeof(uint32) - 1));
-	}
-	else if (specialType == SPEC_SECT_INDEX_GIN && blkno == GIN_METAPAGE_BLKNO)
-	{
-		EmitXmlTag(blkno, level, "head", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, head),
-				   (metaStartOffset + offsetof(GinMetaPageData, tail) - 1));
-		EmitXmlTag(blkno, level, "tail", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, tail),
-				   (metaStartOffset + offsetof(GinMetaPageData, tailFreeSize) - 1));
-		EmitXmlTag(blkno, level, "tailFreeSize", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, tailFreeSize),
-				   (metaStartOffset + offsetof(GinMetaPageData, nPendingPages) - 1));
-		EmitXmlTag(blkno, level, "nPendingPages", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, nPendingPages),
-				   (metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples) - 1));
-		EmitXmlTag(blkno, level, "nPendingHeapTuples", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples),
-				   (metaStartOffset + offsetof(GinMetaPageData, nTotalPages) - 1));
-		EmitXmlTag(blkno, level, "nTotalPages", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, nTotalPages),
-				   (metaStartOffset + offsetof(GinMetaPageData, nEntryPages) - 1));
-		EmitXmlTag(blkno, level, "nEntryPages", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, nEntryPages),
-				   (metaStartOffset + offsetof(GinMetaPageData, nDataPages) - 1));
-		EmitXmlTag(blkno, level, "nDataPages", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, nDataPages),
-				   (metaStartOffset + offsetof(GinMetaPageData, nEntries) - 1));
-		EmitXmlTag(blkno, level, "nEntries", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, nEntries),
-				   (metaStartOffset + offsetof(GinMetaPageData, ginVersion) - 1));
-		EmitXmlTag(blkno, level, "ginVersion", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, ginVersion),
-				   ((metaStartOffset + offsetof(GinMetaPageData, ginVersion) + sizeof(int32)) - 1));
+				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
 	}
 	else if (specialType == SPEC_SECT_INDEX_HASH && blkno == HASH_METAPAGE)
 	{
@@ -1716,8 +1683,40 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_mapp) - 1));
 		EmitXmlTag(blkno, level, "hashm_mapp", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_mapp),
-				   ((metaStartOffset + offsetof(HashMetaPageData, hashm_mapp) +
-					 sizeof(BlockNumber) * HASH_MAX_BITMAPS) - 1));
+				   (metaStartOffset + sizeof(HashMetaPageData)) - 1);
+	}
+	else if (specialType == SPEC_SECT_INDEX_GIN && blkno == GIN_METAPAGE_BLKNO)
+	{
+		EmitXmlTag(blkno, level, "head", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, head),
+				   (metaStartOffset + offsetof(GinMetaPageData, tail) - 1));
+		EmitXmlTag(blkno, level, "tail", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, tail),
+				   (metaStartOffset + offsetof(GinMetaPageData, tailFreeSize) - 1));
+		EmitXmlTag(blkno, level, "tailFreeSize", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, tailFreeSize),
+				   (metaStartOffset + offsetof(GinMetaPageData, nPendingPages) - 1));
+		EmitXmlTag(blkno, level, "nPendingPages", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, nPendingPages),
+				   (metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples) - 1));
+		EmitXmlTag(blkno, level, "nPendingHeapTuples", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples),
+				   (metaStartOffset + offsetof(GinMetaPageData, nTotalPages) - 1));
+		EmitXmlTag(blkno, level, "nTotalPages", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, nTotalPages),
+				   (metaStartOffset + offsetof(GinMetaPageData, nEntryPages) - 1));
+		EmitXmlTag(blkno, level, "nEntryPages", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, nEntryPages),
+				   (metaStartOffset + offsetof(GinMetaPageData, nDataPages) - 1));
+		EmitXmlTag(blkno, level, "nDataPages", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, nDataPages),
+				   (metaStartOffset + offsetof(GinMetaPageData, nEntries) - 1));
+		EmitXmlTag(blkno, level, "nEntries", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, nEntries),
+				   (metaStartOffset + offsetof(GinMetaPageData, ginVersion) - 1));
+		EmitXmlTag(blkno, level, "ginVersion", COLOR_PINK,
+				   metaStartOffset + offsetof(GinMetaPageData, ginVersion),
+				   (metaStartOffset + sizeof(GinMetaPageData)) - 1);
 	}
 	else
 	{
@@ -1821,9 +1820,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 			break;
 		case SPEC_SECT_INDEX_BTREE:
 		case SPEC_SECT_INDEX_HASH:
-#ifdef UNIMPLEMENTED
 		case SPEC_SECT_INDEX_GIST:
-#endif
 		case SPEC_SECT_INDEX_GIN:
 #ifdef UNIMPLEMENTED
 		case SPEC_SECT_INDEX_SPGIST:
@@ -2086,45 +2083,7 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_cycleid)) - 1);
 				EmitXmlTag(blkno, level, "btpo_cycleid", COLOR_BLACK,
 						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_cycleid),
-						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_cycleid) + sizeof(BTCycleId)) - 1);
-			}
-			break;
-
-		case SPEC_SECT_INDEX_GIN:
-			{
-				GinPageOpaque ginSection = (GinPageOpaque) (buffer + specialOffset);
-
-				EmitXmlTag(blkno, level, "rightlink", COLOR_BLACK,
-						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, rightlink),
-						   (pageOffset + specialOffset + offsetof(GinPageOpaqueData, maxoff)) - 1);
-				EmitXmlTag(blkno, level, "maxoff", COLOR_BLACK,
-						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, maxoff),
-						   (pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags)) - 1);
-
-				/* Generate GIN special area flags */
-				strcat(flagString, "flags - ");
-				if (ginSection->flags & GIN_DATA)
-					strcat(flagString, "GIN_DATA|");
-				if (ginSection->flags & GIN_LEAF)
-					strcat(flagString, "GIN_LEAF|");
-				if (ginSection->flags & GIN_DELETED)
-					strcat(flagString, "GIN_DELETED|");
-				if (ginSection->flags & GIN_META)
-					strcat(flagString, "GIN_META|");
-				if (ginSection->flags & GIN_LIST)
-					strcat(flagString, "GIN_LIST|");
-				if (ginSection->flags & GIN_LIST_FULLROW)
-					strcat(flagString, "GIN_LIST_FULLROW|");
-				if (ginSection->flags & GIN_INCOMPLETE_SPLIT)
-					strcat(flagString, "GIN_INCOMPLETE_SPLIT|");
-				if (ginSection->flags & GIN_COMPRESSED)
-					strcat(flagString, "GIN_COMPRESSED|");
-				if (strlen(flagString))
-					flagString[strlen(flagString) - 1] = '\0';
-
-				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
-						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags),
-						   (pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags) + sizeof(uint16)) - 1);
+						   (pageOffset + specialOffset + sizeof(BTPageOpaqueData) - 1));
 			}
 			break;
 
@@ -2168,7 +2127,80 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_page_id)) - 1);
 				EmitXmlTag(blkno, level, "hasho_page_id", COLOR_BLACK,
 						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_page_id),
-						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_page_id) + sizeof(uint16)) - 1);
+						   (pageOffset + specialOffset + sizeof(HashPageOpaqueData) - 1));
+			}
+			break;
+
+		case SPEC_SECT_INDEX_GIST:
+			{
+				GISTPageOpaque gistSection = (GISTPageOpaque) (buffer + specialOffset);
+
+				EmitXmlTag(blkno, level, "nsn", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(GISTPageOpaqueData, nsn),
+						   (pageOffset + specialOffset + offsetof(GISTPageOpaqueData, rightlink)) - 1);
+				EmitXmlTag(blkno, level, "rightlink", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(GISTPageOpaqueData, rightlink),
+						   (pageOffset + specialOffset + offsetof(GISTPageOpaqueData, flags)) - 1);
+
+				/* Generate GiST special area flags */
+				strcat(flagString, "flags - ");
+				if (gistSection->flags & F_LEAF)
+					strcat(flagString, "F_LEAF|");
+				if (gistSection->flags & F_DELETED)
+					strcat(flagString, "F_DELETED|");
+				if (gistSection->flags & F_TUPLES_DELETED)
+					strcat(flagString, "F_TUPLES_DELETED|");
+				if (gistSection->flags & F_FOLLOW_RIGHT)
+					strcat(flagString, "F_FOLLOW_RIGHT|");
+				if (gistSection->flags & F_HAS_GARBAGE)
+					strcat(flagString, "F_HAS_GARBAGE|");
+				if (strlen(flagString))
+					flagString[strlen(flagString) - 1] = '\0';
+
+				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(GISTPageOpaqueData, flags),
+						   (pageOffset + specialOffset + offsetof(GISTPageOpaqueData, gist_page_id)) - 1);
+				EmitXmlTag(blkno, level, "gist_page_id", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(GISTPageOpaqueData, gist_page_id),
+						   (pageOffset + specialOffset + sizeof(GISTPageOpaqueData) - 1));
+			}
+			break;
+
+		case SPEC_SECT_INDEX_GIN:
+			{
+				GinPageOpaque ginSection = (GinPageOpaque) (buffer + specialOffset);
+
+				EmitXmlTag(blkno, level, "rightlink", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, rightlink),
+						   (pageOffset + specialOffset + offsetof(GinPageOpaqueData, maxoff)) - 1);
+				EmitXmlTag(blkno, level, "maxoff", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, maxoff),
+						   (pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags)) - 1);
+
+				/* Generate GIN special area flags */
+				strcat(flagString, "flags - ");
+				if (ginSection->flags & GIN_DATA)
+					strcat(flagString, "GIN_DATA|");
+				if (ginSection->flags & GIN_LEAF)
+					strcat(flagString, "GIN_LEAF|");
+				if (ginSection->flags & GIN_DELETED)
+					strcat(flagString, "GIN_DELETED|");
+				if (ginSection->flags & GIN_META)
+					strcat(flagString, "GIN_META|");
+				if (ginSection->flags & GIN_LIST)
+					strcat(flagString, "GIN_LIST|");
+				if (ginSection->flags & GIN_LIST_FULLROW)
+					strcat(flagString, "GIN_LIST_FULLROW|");
+				if (ginSection->flags & GIN_INCOMPLETE_SPLIT)
+					strcat(flagString, "GIN_INCOMPLETE_SPLIT|");
+				if (ginSection->flags & GIN_COMPRESSED)
+					strcat(flagString, "GIN_COMPRESSED|");
+				if (strlen(flagString))
+					flagString[strlen(flagString) - 1] = '\0';
+
+				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags),
+						   (pageOffset + specialOffset + sizeof(GinPageOpaqueData) - 1));
 			}
 			break;
 
