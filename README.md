@@ -235,7 +235,7 @@ convenience scripts.
 pg_hexedit retains a minority of the flags that appear in pg_filedump:
 
 ```shell
-  pg_hexedit [-hkl] [-R startblock [endblock]] [-s segsize] [-n segnumber] [-x lsn] file
+  pg_hexedit [-hkzl] [-R startblock [endblock]] [-s segsize] [-n segnumber] [-x lsn] file
 ```
 
 Two new flags, `-x` and `-l`, have been added.

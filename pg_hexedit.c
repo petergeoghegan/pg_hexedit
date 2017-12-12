@@ -75,15 +75,16 @@
 
 typedef enum blockSwitches
 {
-	BLOCK_RANGE = 0x00000020,	/* -R: Specific block range to dump */
-	BLOCK_CHECKSUMS = 0x00000040,	/* -k: verify block checksums */
-	BLOCK_SKIP_LEAF = 0x00000080,	/* -l: Skip leaf pages (use whole page tag) */
-	BLOCK_SKIP_LSN = 0x00000010		/* -x: Skip pages before LSN */
+	BLOCK_RANGE =			0x00000020,	/* -R: Specific block range to dump */
+	BLOCK_CHECKSUMS =		0x00000040,	/* -k: verify block checksums */
+	BLOCK_ZEROSUMS =		0x00000080,	/* -z: verify block checksums when non-zero */
+	BLOCK_SKIP_LEAF =		0x00000100,	/* -l: Skip leaf pages (use whole page tag) */
+	BLOCK_SKIP_LSN =		0x00000200	/* -x: Skip pages before LSN */
 } blockSwitches;
 
 typedef enum segmentSwitches
 {
-	SEGMENT_SIZE_FORCED = 0x00000001,	/* -s: Segment size forced */
+	SEGMENT_SIZE_FORCED =	0x00000001,	/* -s: Segment size forced */
 	SEGMENT_NUMBER_FORCED = 0x00000002	/* -n: Segment number forced */
 } segmentSwitches;
 
@@ -244,13 +245,14 @@ DisplayOptions(unsigned int validOptions)
 			 PG_VERSION);
 
 	printf
-		("\nUsage: pg_hexedit [-hkl] [-R startblock [endblock]] [-s segsize] [-n segnumber] file\n\n"
+		("\nUsage: pg_hexedit [-hkzl] [-R startblock [endblock]] [-s segsize] [-n segnumber] file\n\n"
 		 "Display formatted contents of a PostgreSQL heap/index/control file\n"
 		 "Defaults are: relative addressing, range of the entire file, block\n"
 		 "               size as listed on block 0 in the file\n\n"
 		 "The following options are valid for heap and index files:\n"
 		 "  -h  Display this information\n"
-		 "  -k  Verify block checksums\n"
+		 "  -k  Verify all block checksums\n"
+		 "  -z  Verify block checksums when non-zero\n"
 		 "  -l  Skip non-root B-Tree leaf pages\n"
 		 "  -x  Skip pages whose LSN is before [lsn]\n"
 		 "  -R  Display specific block ranges within the file (Blocks are\n"
@@ -543,9 +545,14 @@ ConsumeOptions(int numOptions, char **options)
 						rc = OPT_RC_COPYRIGHT;
 						break;
 
-						/* Verify block checksums */
+						/* Verify all block checksums */
 					case 'k':
 						SET_OPTION(blockOptions, BLOCK_CHECKSUMS, 'k');
+						break;
+
+					/* Verify block checksums when non-zero */
+					case 'z':
+						SET_OPTION(blockOptions, BLOCK_ZEROSUMS, 'z');
 						break;
 
 						/* Skip non-root leaf pages */
@@ -1583,9 +1590,12 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 		}
 
 		/*
-		 * Verify checksums if requested
+		 * Verify checksums as valid if requested.
+		 *
+		 * Caller may want us to skip zero checksums.
 		 */
-		if (blockOptions & BLOCK_CHECKSUMS)
+		if (blockOptions & BLOCK_CHECKSUMS ||
+			((blockOptions & BLOCK_ZEROSUMS) && pageHeader->pd_checksum != 0))
 		{
 			uint32		delta = (segmentSize / blockSize) * segmentNumber;
 			uint16		calc_checksum = pg_checksum_page(page, delta + blkno);
