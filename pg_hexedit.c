@@ -1054,9 +1054,12 @@ EmitXmlPage(BlockNumber blkno)
 	/* If we didn't encounter a partial read in header, carry on...  */
 	if (rc != EOF_ENCOUNTERED)
 	{
-		if ((specialType == SPEC_SECT_INDEX_BTREE && blkno == BTREE_METAPAGE) ||
-			(specialType == SPEC_SECT_INDEX_GIN && blkno == GIN_METAPAGE_BLKNO) ||
-			(specialType == SPEC_SECT_INDEX_HASH && blkno == HASH_METAPAGE))
+		/*
+		 * All AMs have a metapage at block zero, with the exception of heapam
+		 * and GiST.
+		 */
+		if (blkno == 0 && specialType != SPEC_SECT_NONE &&
+			specialType != SPEC_SECT_INDEX_GIST)
 		{
 			/* If it's a meta page, the meta block will have no tuples */
 			EmitXmlPageMeta(blkno, level);
