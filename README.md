@@ -189,13 +189,14 @@ also that these convenience scripts limit the range of blocks that are
 summarized, to keep the overhead acceptable.  (This can be changed by modifying
 hexedit.cfg.)
 
-Although only the B-Tree and GIN access methods are currently supported,
+Although only the B-Tree, GIN and hash access methods are currently supported,
 relation_hexedit may produce reasonably helpful tags and annotations for other
-index AMs.  Many of the conventions are the same across index access methods,
-since they're based on generic bufpage.h and itup.h conventions.  The only
-thing that's consistently different across index AMs is the format of tuple
-"contents", which pg_hexedit doesn't do anything special with anyway (due to
-not having direct access to catalog metadata/operator class details).
+index AMs, such as BRIN.  Many of the conventions are the same across index
+access methods, since they're based on generic bufpage.h and itup.h
+conventions.  The only thing that's consistently different across index AMs is
+the format of tuple "contents", which pg_hexedit doesn't do anything special
+with anyway (due to not having direct access to catalog metadata/operator class
+details).
 
 If there is concurrent write activity by Postgres, the process of building XML
 tags may error out before finishing.  In practice there is
