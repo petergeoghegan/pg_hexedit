@@ -1,11 +1,11 @@
 #!/bin/bash
 usage() {
-    cat <<EOM
-    Usage:
-    $(basename $0) relname
+  cat <<EOM
+  Usage:
+  $(basename $0) relname
 
 EOM
-    exit 0
+  exit 0
 }
 
 [ -z $1 ] && { usage; }
@@ -20,19 +20,19 @@ wxconfig="$HOME/.wxHexEditor"
 
 psql --no-psqlrc -c "CHECKPOINT"
 if [ ! $? -eq 0 ]; then
-   echo "CHECKPOINT failed"
-   exit
+  echo "CHECKPOINT failed"
+  exit
 fi
 psql --no-psqlrc -c "CREATE EXTENSION IF NOT EXISTS pageinspect"
 if [ ! $? -eq 0 ]; then
-   echo "creating pageinspect extension failed"
-   exit
+  echo "creating pageinspect extension failed"
+  exit
 fi
 
 RFN=$(psql --no-psqlrc -tA -c "SELECT pg_relation_filepath('$relname')")
 if [ ! $? -eq 0 ]; then
-   echo "invoking pg_relation_filepath() failed"
-   exit
+  echo "invoking pg_relation_filepath() failed"
+  exit
 fi
 
 # Put minimal .wxHexEditor registry style config file in place, so old tags are
@@ -46,17 +46,17 @@ fi
 # without any such cached offsets.
 TRUE_ROOT_OFFSET=$(psql --no-psqlrc -tA -c "SELECT root * 2^13 FROM bt_metap('$relname')")
 if [ ! $? -eq 0 ]; then
-   echo "obtaining true root block for offset dialog failed; is $relname a btree?"
-   exit
+  echo "obtaining true root block for offset dialog failed; is $relname a btree?"
+  exit
 fi
 ROOT_CHILD_OFFSETS=$(psql --no-psqlrc -tA -c "WITH offset_strings(string) AS (
-    SELECT 'GoToOffset' || ROW_NUMBER() OVER() || '=' || (substring(ctid::text from '([0-9]+)')::int8 * (2^13))
-    FROM bt_page_items('$relname', (SELECT root::int4 FROM bt_metap('$relname')))
+  SELECT 'GoToOffset' || ROW_NUMBER() OVER() || '=' || (substring(ctid::text from '([0-9]+)')::int8 * (2^13))
+  FROM bt_page_items('$relname', (SELECT root::int4 FROM bt_metap('$relname')))
 )
 SELECT string_agg(string, chr(10)) FROM offset_strings;")
 if [ ! $? -eq 0 ]; then
-   echo "obtaining children of root block for offset dialog failed"
-   exit
+  echo "obtaining children of root block for offset dialog failed"
+  exit
 fi
 
 echo "Replacing $wxconfig with pg_hexedit optimized settings..."
@@ -84,9 +84,9 @@ echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to 
 ./pg_hexedit -z -R $MIN_BLOCK_TAGS $MAX_BLOCK_TAGS $FULLPATH > $FULLPATH.tags
 
 if [ ! $? -eq 0 ]; then
-   echo "Error encountered by pg_hexedit. Could not generate all tags."
-   echo "You may still wish to run: $HEXEDITOR $FULLPATH"
-   exit
+  echo "Error encountered by pg_hexedit. Could not generate all tags."
+  echo "You may still wish to run: $HEXEDITOR $FULLPATH"
+  exit
 fi
 
 echo "Opening $FULLPATH with $HEXEDITOR..."

@@ -1,11 +1,11 @@
 #!/bin/bash
 usage() {
-    cat <<EOM
-    Usage:
-    $(basename $0) relname
+  cat <<EOM
+  Usage:
+  $(basename $0) relname
 
 EOM
-    exit 0
+  exit 0
 }
 
 [ -z $1 ] && { usage; }
@@ -20,14 +20,14 @@ wxconfig="$HOME/.wxHexEditor"
 
 psql --no-psqlrc -c "CHECKPOINT"
 if [ ! $? -eq 0 ]; then
-   echo "CHECKPOINT failed"
-   exit
+  echo "CHECKPOINT failed"
+  exit
 fi
 
 RFN=$(psql --no-psqlrc -tA -c "SELECT pg_relation_filepath('$relname')")
 if [ ! $? -eq 0 ]; then
-   echo "invoking pg_relation_filepath() failed"
-   exit
+  echo "invoking pg_relation_filepath() failed"
+  exit
 fi
 
 # Put minimal .wxHexEditor registry style config file in place, so old tags are
@@ -75,9 +75,9 @@ echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to 
 ./pg_hexedit -z -R $MIN_BLOCK_TAGS $MAX_BLOCK_TAGS $FULLPATH > $FULLPATH.tags
 
 if [ ! $? -eq 0 ]; then
-   echo "Error encountered by pg_hexedit. Could not generate all tags."
-   echo "You may still wish to run: $HEXEDITOR $FULLPATH"
-   exit
+  echo "Error encountered by pg_hexedit. Could not generate all tags."
+  echo "You may still wish to run: $HEXEDITOR $FULLPATH"
+  exit
 fi
 
 echo "Opening $FULLPATH with $HEXEDITOR..."
