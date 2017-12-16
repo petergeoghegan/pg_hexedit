@@ -29,8 +29,8 @@ used for simulating corruption/corruption analysis.
 
 The type of file (heap/index) is determined automatically by the content of the
 blocks within the file, using pg_filedump-style hueristics.  The default is to
-format the entire file using the block size listed in block 0 as wxHexEdit tag
-XML.  These defaults can be modified using run-time options.  However,
+format the entire file using the block size listed in block 0 as wxHexEditor
+tag XML.  These defaults can be modified using run-time options.  However,
 pg_hexedit is typically invoked using the packaged convenience scripts.
 
 ## Initial setup
@@ -75,9 +75,9 @@ feature that pg_hexedit targets.  It's worth having all recent bug fixes. See:
 
 [https://github.com/EUA/wxHexEditor](https://github.com/EUA/wxHexEditor)
 
-It's generally only mildly inconvenient to do this on a modern desktop Linux
-system.  On Debian-based systems with source repositories setup, obtaining all
-build dependencies quickly should be straightforward:
+It's generally only mildly inconvenient to build wxHexEditor on a modern
+desktop Linux system.  On Debian-based systems with source repositories setup,
+obtaining all build dependencies quickly should be straightforward:
 
 ```shell
   $ sudo apt-get build-dep wxhexeditor
@@ -95,6 +95,12 @@ See wxHexEditor docs for further instructions.
 While wxHexEditor does have noticeable stability issues, these seem to be worth
 working around, given the lack of any better alternative that is open source
 and cross platform.
+
+### wxHexEditor documentation
+
+The [wxHexEditor wiki](http://wiki.wxhexeditor.org/index.php?title=Main_Page)
+serves as wxHexEditor's user documentation.  It has some potentially useful
+tips for getting the most out of the tool.
 
 ### Caret GTK+ bug
 
