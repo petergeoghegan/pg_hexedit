@@ -39,6 +39,7 @@
 
 #if PG_VERSION_NUM >= 90500
 #include "access/brin_page.h"
+#include "access/brin_tuple.h"
 #endif
 #include "access/gin_private.h"
 #include "access/gist.h"
@@ -188,8 +189,9 @@ static int	exitCode = 0;
 
 typedef enum formatChoice
 {
-	ITEM_HEAP = 0x00000001,		/* Blocks contain HeapTuple items */
-	ITEM_INDEX = 0x00000002		/* Blocks contain IndexTuple items */
+	ITEM_HEAP,		/* Blocks contain HeapTuple items */
+	ITEM_INDEX,		/* Blocks contain IndexTuple items */
+	ITEM_BRIN		/* Blocks contain BrinTuple items */
 } formatChoice;
 
 static void DisplayOptions(unsigned int validOptions);
@@ -203,6 +205,9 @@ static const char *GetSpecialSectionString(unsigned int type);
 static XLogRecPtr GetPageLsn(Page page);
 static char *GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2);
 static char *GetIndexTupleFlags(IndexTuple itup);
+#if PG_VERSION_NUM >= 90500
+static char *GetBrinTupleFlags(BrinTuple *itup);
+#endif
 static bool IsBrinPage(Page page);
 static void EmitXmlPage(BlockNumber blkno);
 static void EmitXmlDocHeader(int numOptions, char **options);
@@ -223,11 +228,19 @@ static void EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 static void EmitXmlIndexTuple(Page page, BlockNumber blkno,
 							  OffsetNumber offset, IndexTuple tuple,
 							  uint32 relfileOff);
+#if PG_VERSION_NUM >= 90500
+static void EmitXmlBrinTuple(Page page, BlockNumber blkno,
+							 OffsetNumber offset, BrinTuple *tuple,
+							 uint32 relfileOff, unsigned int itemSize);
+#endif
 static int EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level);
 static void EmitXmlPageMeta(BlockNumber blkno, uint32 level);
 static void EmitXmlPageItemIdArray(Page page, BlockNumber blkno);
 static void EmitXmlTuples(Page page, BlockNumber blkno);
 static void EmitXmlPostingTreeTids(Page page, BlockNumber blkno);
+#if PG_VERSION_NUM >= 90500
+static void EmitXmlRevmap(Page page, BlockNumber blkno);
+#endif
 static void EmitXmlSpecial(BlockNumber blkno, uint32 level);
 static void EmitXmlFile(void);
 
@@ -831,7 +844,7 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 
 	if (!flagString)
 	{
-		fprintf(stderr, "pg_hexedit error: unable to create buffer of size 512.\n");
+		fprintf(stderr, "pg_hexedit error: unable to allocate buffer of size 512.\n");
 		/* Call exit() immediately, so caller doesn't have to handle failure */
 		exit(1);
 	}
@@ -953,7 +966,7 @@ GetIndexTupleFlags(IndexTuple itup)
 
 	if (!flagString)
 	{
-		fprintf(stderr, "pg_hexedit error: unable to create buffer of size 128.\n");
+		fprintf(stderr, "pg_hexedit error: unable to allocate buffer of size 128.\n");
 		/* Call exit() immediately, so caller doesn't have to handle failure */
 		exit(1);
 	}
@@ -982,6 +995,53 @@ GetIndexTupleFlags(IndexTuple itup)
 
 	return flagString;
 }
+
+/*
+ * Given BrinTuple, return string buffer with bt_info reported tuple length,
+ * and tuple flags.
+ *
+ * Note:  Caller is responsible for free()ing returned buffer.
+ */
+#if PG_VERSION_NUM >= 90500
+static char *
+GetBrinTupleFlags(BrinTuple *itup)
+{
+	char		   *flagString = NULL;
+
+	flagString = malloc(128);
+
+	if (!flagString)
+	{
+		fprintf(stderr, "pg_hexedit error: unable to allocate buffer of size 128.\n");
+		/* Call exit() immediately, so caller doesn't have to handle failure */
+		exit(1);
+	}
+
+	/*
+	 * Place readable versions of the tuple info mask into a buffer.  Assume
+	 * that the string can not expand beyond 128 bytes.
+	 */
+	flagString[0] = '\0';
+	sprintf(flagString, "bt_info BrinTupleDataOffset(): %zu",
+			BrinTupleDataOffset(itup));
+
+	if (itup->bt_info & (BRIN_PLACEHOLDER_MASK | BRIN_NULLS_MASK))
+		strcat(flagString, ", (");
+
+	if (itup->bt_info & BRIN_PLACEHOLDER_MASK)
+		strcat(flagString, "BRIN_PLACEHOLDER_MASK|");
+	if (itup->bt_info & BRIN_NULLS_MASK)
+		strcat(flagString, "BRIN_NULLS_MASK|");
+
+	if (itup->bt_info & (BRIN_PLACEHOLDER_MASK | BRIN_NULLS_MASK))
+	{
+		flagString[strlen(flagString) - 1] = '\0';
+		strcat(flagString, ")");
+	}
+
+	return flagString;
+}
+#endif
 
 /*	Check whether page is a BRIN meta page */
 static bool
@@ -1080,16 +1140,23 @@ EmitXmlPage(BlockNumber blkno)
 			/* If it's a meta page, the meta block will have no tuples */
 			EmitXmlPageMeta(blkno, level);
 		}
-		else if (specialType != SPEC_SECT_INDEX_GIN || !GinPageIsData(page))
-		{
-			/* Conventional page format */
-			EmitXmlPageItemIdArray(page, blkno);
-			EmitXmlTuples(page, blkno);
-		}
-		else
+		else if (specialType == SPEC_SECT_INDEX_GIN && GinPageIsData(page))
 		{
 			/* GIN data/posting tree pages don't use IndexTuple or ItemId */
 			EmitXmlPostingTreeTids(page, blkno);
+		}
+#if PG_VERSION_NUM >= 90500
+		else if (specialType == SPEC_SECT_INDEX_BRIN && BRIN_IS_REVMAP_PAGE(page))
+		{
+			/* BRIN revmap pages don't use IndexTuple/BrinTuple or ItemId */
+			EmitXmlRevmap(page, blkno);
+		}
+#endif
+		else
+		{
+			/* Conventional heap/index page format */
+			EmitXmlPageItemIdArray(page, blkno);
+			EmitXmlTuples(page, blkno);
 		}
 
 		/* Only heapam doesn't have a special area (even sequences have one) */
@@ -1361,7 +1428,20 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 }
 
 /*
- * Emit a wxHexEditor tag for entire B-Tree/GIN index tuple.
+ * Emit a wxHexEditor tag for entire index tuple.
+ *
+ * Function deals with B-Tree, GiST, and hash tuples in a generic way, because
+ * they use the IndexTuple format without adornment.
+ *
+ * This function is also used for GIN tuples in pending list and main B-Tree
+ * key pages, and so must deal with the various abuses of the IndexTuple format
+ * that GIN makes to store posting lists in main B-Tree key pages (pending
+ * pages don't compress TIDs, and posting tree pages are dealt with in special
+ * GIN-only paths).
+ *
+ * This fuaction is not used for BrinTuples, because they share nothing with
+ * IndexTuples in terms of layout, despite being conceptually similar (BRIN
+ * tuples store blocks, not exact TIDs).
  *
  * Note: Caller does not need to pass itemSize from ItemId, because that's
  * redundant in the case of IndexTuples.
@@ -1480,6 +1560,79 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 }
 
 /*
+ * Emit a wxHexEditor tag for entire BRIN regular page tuple.
+ *
+ * This is similar to ExmitXmlIndexTuple(), but BRIN never uses IndexTuple
+ * representation, so requires this custom tuple formatting function.
+ */
+#if PG_VERSION_NUM >= 90500
+static void
+EmitXmlBrinTuple(Page page, BlockNumber blkno, OffsetNumber offset,
+				 BrinTuple *tuple, uint32 relfileOff, unsigned int itemSize)
+{
+	uint32		relfileOffNext = 0;
+	uint32		relfileOffOrig = relfileOff;
+	char	   *flagString;
+
+	if (!BRIN_IS_REGULAR_PAGE(page))
+	{
+		fprintf(stderr, "pg_hexedit error: non-regular BRIN page formatted as regular");
+		exitCode = 1;
+	}
+
+	/*
+	 * Emit bt_info tags.  A straight block number is used here, in contrast to
+	 * the legacy bi_hi/bi_lo representation used everywhere else.  We still
+	 * match color/style, though.
+	 */
+	relfileOffNext = relfileOff + sizeof(BlockNumber);
+	EmitXmlTupleTag(blkno, offset, "bt_blkno", COLOR_BLUE_LIGHT, relfileOff,
+					relfileOffNext - 1);
+
+	/*
+	 * Metadata about the tuple shape and width is COLOR_YELLOW_DARK, which
+	 * also matches EmitXmlHeapTuple()
+	 */
+	relfileOff = relfileOffNext;
+	relfileOffNext += sizeof(unsigned short);
+	flagString = GetBrinTupleFlags(tuple);
+	EmitXmlTupleTag(blkno, offset, flagString, COLOR_YELLOW_DARK, relfileOff,
+					relfileOffNext - 1);
+	free(flagString);
+	relfileOff = relfileOffNext;
+
+	/*
+	 * NULL bitmap, if any, is counted as a separate tag, and not an extension
+	 * of bt_info.  This matches index tuples.
+	 */
+	if (BrinTupleHasNulls(tuple))
+	{
+		relfileOffNext +=
+			(BrinTupleDataOffset(tuple) - (relfileOff - relfileOffOrig));
+
+		EmitXmlTupleTag(blkno, offset, "IndexAttributeBitMapData array",
+						COLOR_YELLOW_DARK, relfileOff, relfileOffNext - 1);
+		relfileOff = relfileOffNext;
+	}
+
+	/*
+	 * Tuple contents.
+	 *
+	 * All-attributes-NULL BrinTuples will not have any contents here, so we
+	 * avoid creating a tuple content tag entirely.
+	 *
+	 * We use the lp_len value here, since there is no IndexTupleSize()
+	 * equivalent -- lp_len is really all we have to go on in the case of BRIN
+	 * tuples.
+	 */
+	relfileOffNext = relfileOffOrig + itemSize;
+	if (relfileOff < relfileOffNext)
+		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE, relfileOff,
+						relfileOffNext - 1);
+}
+#endif
+
+/*
  * Dump out a formatted block header for the requested block.
  */
 static int
@@ -1499,7 +1652,7 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 	}
 	else
 	{
-		/* Interpret the content of the header */
+		/* Interpret the contents of the header */
 		PageHeader	pageHeader = (PageHeader) page;
 		XLogRecPtr	pageLSN = GetPageLsn(page);
 		int			maxOffset = PageGetMaxOffsetNumber(page);
@@ -1738,6 +1891,23 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 				   metaStartOffset + offsetof(GinMetaPageData, ginVersion),
 				   (metaStartOffset + sizeof(GinMetaPageData)) - 1);
 	}
+#if PG_VERSION_NUM >= 90500
+	else if (specialType == SPEC_SECT_INDEX_BRIN && blkno == BRIN_METAPAGE_BLKNO)
+	{
+		EmitXmlTag(blkno, level, "brinMagic", COLOR_PINK,
+				   metaStartOffset + offsetof(BrinMetaPageData, brinMagic),
+				   (metaStartOffset + offsetof(BrinMetaPageData, brinVersion) - 1));
+		EmitXmlTag(blkno, level, "brinVersion", COLOR_PINK,
+				   metaStartOffset + offsetof(BrinMetaPageData, brinVersion),
+				   (metaStartOffset + offsetof(BrinMetaPageData, pagesPerRange) - 1));
+		EmitXmlTag(blkno, level, "pagesPerRange", COLOR_PINK,
+				   metaStartOffset + offsetof(BrinMetaPageData, pagesPerRange),
+				   (metaStartOffset + offsetof(BrinMetaPageData, lastRevmapPage) - 1));
+		EmitXmlTag(blkno, level, "lastRevmapPage", COLOR_PINK,
+				   metaStartOffset + offsetof(BrinMetaPageData, lastRevmapPage),
+				   (metaStartOffset + sizeof(BrinMetaPageData)) - 1);
+	}
+#endif
 	else
 	{
 		fprintf(stderr, "pg_hexedit error: unsupported metapage special section type \"%s\".\n",
@@ -1847,9 +2017,11 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 		case SPEC_SECT_INDEX_GIN:
 #ifdef UNIMPLEMENTED
 		case SPEC_SECT_INDEX_SPGIST:
-		case SPEC_SECT_INDEX_BRIN:
 #endif
 			formatAs = ITEM_INDEX;
+			break;
+		case SPEC_SECT_INDEX_BRIN:
+			formatAs = ITEM_BRIN;
 			break;
 		default:
 			/* Only complain the first time an error like this is seen */
@@ -1924,6 +2096,17 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 
 			EmitXmlIndexTuple(page, blkno, offset, tuple,
 							  pageOffset + itemOffset);
+		}
+		else if (formatAs == ITEM_BRIN)
+		{
+#if PG_VERSION_NUM >= 90500
+			BrinTuple	*tuple;
+
+			tuple = (BrinTuple *) PageGetItem(page, itemId);
+
+			EmitXmlBrinTuple(page, blkno, offset, tuple,
+							 pageOffset + itemOffset, itemSize);
+#endif
 		}
 	}
 }
@@ -2045,6 +2228,52 @@ EmitXmlPostingTreeTids(Page page, BlockNumber blkno)
 		while ((Pointer) nextseg <= endptr);
 	}
 }
+
+/*
+ * Emit BRIN revmap TIDs as pseudo-tuples.
+ *
+ * BRIN revmap pages don't store an ItemId array, or regular tuples.  Instead,
+ * the page contains an array of straight TIDs.
+ *
+ * We don't look at pd_upper, in keeping with pageinspect's brin_revmap_data(),
+ * which also always emits REVMAP_PAGE_MAXITEMS entries.
+ */
+#if PG_VERSION_NUM >= 90500
+static void
+EmitXmlRevmap(Page page, BlockNumber blkno)
+{
+	OffsetNumber	offsetnum;
+	uint32			relfileOff = pageOffset + (PageGetContents(page) - page);
+	uint32			relfileOffNext;
+
+	for (offsetnum = FirstOffsetNumber;
+		 offsetnum <= REVMAP_PAGE_MAXITEMS;
+		 offsetnum = OffsetNumberNext(offsetnum))
+	{
+		/*
+		 * Emit t_tid tags.  TID tag style should be kept consistent with
+		 * EmitXmlHeapTuple().
+		 *
+		 * Note: We use pseudo offset numbers here.  This is a somewhat
+		 * subjective interpretation of revmap page contents.  We want to
+		 * impose some conventions, even if they aren't particularly well
+		 * justified by struct definitions.
+		 */
+		relfileOffNext = relfileOff + sizeof(uint16);
+		EmitXmlTupleTag(blkno, offsetnum, "rm_tids[i]->bi_hi", COLOR_BLUE_LIGHT, relfileOff,
+						relfileOffNext - 1);
+		relfileOff = relfileOffNext;
+		relfileOffNext += sizeof(uint16);
+		EmitXmlTupleTag(blkno, offsetnum, "rm_tids[i]->bi_lo", COLOR_BLUE_LIGHT, relfileOff,
+						relfileOffNext - 1);
+		relfileOff = relfileOffNext;
+		relfileOffNext += sizeof(uint16);
+		EmitXmlTupleTag(blkno, offsetnum, "rm_tids[i]->offsetNumber", COLOR_BLUE_DARK,
+						relfileOff, relfileOffNext - 1);
+		relfileOff = relfileOffNext;
+	}
+}
+#endif
 
 /*
  * On blocks that have special sections, print the contents according to
@@ -2241,6 +2470,44 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 			}
 			break;
 
+#if PG_VERSION_NUM >= 90500
+		case SPEC_SECT_INDEX_BRIN:
+			{
+				/*
+				 * Details of array subscription are taken from BrinPageFlags()
+				 * and BringPageTupe() macros
+				 */
+				BrinSpecialSpace *brinSection = (BrinSpecialSpace *) (buffer + specialOffset);
+
+				/* Flags, of which there is currently only one, come first. */
+				strcat(flagString, "BrinPageFlags() - ");
+				if (brinSection->vector[MAXALIGN(1) / sizeof(uint16) - 2] & BRIN_EVACUATE_PAGE)
+					strcat(flagString, "BRIN_EVACUATE_PAGE|");
+				if (strlen(flagString))
+					flagString[strlen(flagString) - 1] = '\0';
+				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(BrinSpecialSpace, vector[MAXALIGN(1) / sizeof(uint16) - 2]),
+						   (pageOffset + specialOffset + offsetof(BrinSpecialSpace, vector[MAXALIGN(1) / sizeof(uint16) - 1])) - 1);
+
+				/* Generate BRIN special page type */
+				flagString[0] = '\0';
+				strcat(flagString, "BrinPageType() - ");
+				if (brinSection->vector[MAXALIGN(1) / sizeof(uint16) - 1] == BRIN_PAGETYPE_META)
+					strcat(flagString, "BRIN_PAGETYPE_META|");
+				else if (brinSection->vector[MAXALIGN(1) / sizeof(uint16) - 1] == BRIN_PAGETYPE_REVMAP)
+					strcat(flagString, "BRIN_PAGETYPE_REVMAP|");
+				else if (brinSection->vector[MAXALIGN(1) / sizeof(uint16) - 1] == BRIN_PAGETYPE_REGULAR)
+					strcat(flagString, "BRIN_PAGETYPE_REGULAR|");
+				if (strlen(flagString))
+					flagString[strlen(flagString) - 1] = '\0';
+
+				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(BrinSpecialSpace, vector[MAXALIGN(1) / sizeof(uint16) - 1]),
+						   (pageOffset + specialOffset + sizeof(BrinSpecialSpace) - 1));
+			}
+			break;
+#endif
+
 		default:
 			/* Only complain the first time an error like this is seen */
 			if (exitCode == 0)
@@ -2351,7 +2618,7 @@ main(int argv, char **argc)
 				EmitXmlFile();
 			else
 			{
-				fprintf(stderr, "pg_hexedit error: unable to create buffer of size %d.\n",
+				fprintf(stderr, "pg_hexedit error: unable to allocate buffer of size %d.\n",
 					   blockSize);
 				exitCode = 1;
 			}
