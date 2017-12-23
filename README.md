@@ -16,8 +16,8 @@ Supported platforms: Linux + libwxgtk (though MacOS probably also works)
 ## Overview
 
 pg_hexedit is an experimental toolkit to format PostgreSQL heap, sequence, and
-index files (B-Tree, GiST, GIN, hash, and BRIN indexes only) when opened within
-the open source GUI hex editor
+index files (B-Tree, GiST, GIN, hash, BRIN, and SP-GiST indexes) when opened
+within the open source GUI hex editor
 [wxHexEditor](https://github.com/EUA/wxHexEditor).  It makes viewing and
 editing PostgreSQL relation files *significantly* easier.
 
@@ -196,9 +196,9 @@ also that these convenience scripts limit the range of blocks that are
 summarized, to keep the overhead acceptable.  (This can be changed by modifying
 hexedit.cfg.)
 
-Although only the B-Tree, GiST, GIN, hash, and BRIN access methods are
-currently supported, relation_hexedit may produce reasonably helpful tags and
-annotations for other index AMs, such as contrib/bloom.
+Although only core index access methods are directly supported,
+relation_hexedit may produce reasonably helpful tags and annotations for
+user-defined index AMs, such as contrib/bloom.
 
 If there is concurrent write activity by Postgres, the process of building XML
 tags may error out before finishing.  In practice there is
@@ -338,8 +338,6 @@ The first element returned in our `bytea` array is the name of the type,
 `int4`.
 
 ## Areas that might be improved someday
-
-* Support additional index AMs: SP-GiST.
 
 * Support control files.
 

@@ -191,6 +191,8 @@ typedef enum formatChoice
 {
 	ITEM_HEAP,		/* Blocks contain HeapTuple items */
 	ITEM_INDEX,		/* Blocks contain IndexTuple items */
+	ITEM_SPG_INN,	/* Blocks contain SpGistInnerTuple items */
+	ITEM_SPG_LEAF,	/* Blocks contain SpGistLeafTuple items */
 	ITEM_BRIN		/* Blocks contain BrinTuple items */
 } formatChoice;
 
@@ -205,6 +207,9 @@ static const char *GetSpecialSectionString(unsigned int type);
 static XLogRecPtr GetPageLsn(Page page);
 static char *GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2);
 static char *GetIndexTupleFlags(IndexTuple itup);
+static const char *GetSpGistStateString(unsigned int code);
+static char *GetSpGistInnerTupleState(SpGistInnerTuple itup);
+static char *GetSpGistLeafTupleState(SpGistLeafTuple itup);
 #if PG_VERSION_NUM >= 90500
 static char *GetBrinTupleFlags(BrinTuple *itup);
 #endif
@@ -228,6 +233,14 @@ static void EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 static void EmitXmlIndexTuple(Page page, BlockNumber blkno,
 							  OffsetNumber offset, IndexTuple tuple,
 							  uint32 relfileOff);
+static void EmitXmlSpGistInnerTuple(Page page, BlockNumber blkno,
+									OffsetNumber offset,
+									SpGistInnerTuple tuple,
+									uint32 relfileOff);
+static void EmitXmlSpGistLeafTuple(Page page, BlockNumber blkno,
+								   OffsetNumber offset,
+								   SpGistLeafTuple tuple,
+								   uint32 relfileOff);
 #if PG_VERSION_NUM >= 90500
 static void EmitXmlBrinTuple(Page page, BlockNumber blkno,
 							 OffsetNumber offset, BrinTuple *tuple,
@@ -996,9 +1009,79 @@ GetIndexTupleFlags(IndexTuple itup)
 	return flagString;
 }
 
+static const char *
+GetSpGistStateString(unsigned int code)
+{
+	switch (code)
+	{
+		case SPGIST_LIVE:
+			return "SPGIST_LIVE";
+		case SPGIST_REDIRECT:
+			return "SPGIST_REDIRECT";
+		case SPGIST_DEAD:
+			return "SPGIST_DEAD";
+		case SPGIST_PLACEHOLDER:
+			return "SPGIST_PLACEHOLDER";
+		default:
+			return "???";
+	}
+}
+
 /*
- * Given BrinTuple, return string buffer with bt_info reported tuple length,
- * and tuple flags.
+ * Given SpGistInnerTuple, return string buffer with tuple-reported state from
+ * bitfields.
+ *
+ * Note:  Caller is responsible for free()ing returned buffer.
+ */
+static char *
+GetSpGistInnerTupleState(SpGistInnerTuple itup)
+{
+	char		   *flagString = NULL;
+
+	flagString = malloc(128);
+
+	if (!flagString)
+	{
+		fprintf(stderr, "pg_hexedit error: unable to allocate buffer of size 128.\n");
+		/* Call exit() immediately, so caller doesn't have to handle failure */
+		exit(1);
+	}
+
+	sprintf(flagString, "tuplestate: %s, allTheSame: %u, nNodes: %u, prefixSize: %u",
+			GetSpGistStateString(itup->tupstate), itup->allTheSame, itup->nNodes, itup->prefixSize);
+
+	return flagString;
+}
+
+/*
+ * Given SpGistLeafTuple, return string buffer with tuple-reported state from
+ * bitfields.
+ *
+ * Note:  Caller is responsible for free()ing returned buffer.
+ */
+static char *
+GetSpGistLeafTupleState(SpGistLeafTuple itup)
+{
+	char		   *flagString = NULL;
+
+	flagString = malloc(128);
+
+	if (!flagString)
+	{
+		fprintf(stderr, "pg_hexedit error: unable to allocate buffer of size 128.\n");
+		/* Call exit() immediately, so caller doesn't have to handle failure */
+		exit(1);
+	}
+
+	sprintf(flagString, "tuplestate: %s, size: %u",
+			GetSpGistStateString(itup->tupstate), itup->size);
+
+	return flagString;
+}
+
+/*
+ * Given BrinTuple, return string buffer with bt_info reported data offset, and
+ * tuple flags.
  *
  * Note:  Caller is responsible for free()ing returned buffer.
  */
@@ -1444,7 +1527,8 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
  * tuples store blocks, not exact TIDs).
  *
  * Note: Caller does not need to pass itemSize from ItemId, because that's
- * redundant in the case of IndexTuples.
+ * redundant in the case of IndexTuples, and because SP-GiST callers will not
+ * be able to pass an lp_len for an inner-node-contained IndexTuple.
  */
 static void
 EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
@@ -1556,6 +1640,144 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 			EmitXmlTupleTag(blkno, offset, "posting list", COLOR_ORANGE,
 							relfileOff, relfileOffNext - 1);
 		}
+	}
+}
+
+/*
+ * Emit a wxHexEditor tag for internal SP-GiST page tuple.
+ *
+ * This is similar to ExmitXmlIndexTuple(), but SP-GiST never directly uses
+ * IndexTuple representation, so requires this custom tuple formatting
+ * function.  (Actually, SP-GiST internal/inner tuples end up reusing the
+ * IndexTuple representation internally, which we must deal with here.)
+ *
+ * We are prepared for the possibility that tuple is actually SpGistDeadTuple.
+ *
+ * Note that lp_len isn't needed here, since it's redundant, just as it is with
+ * the IndexTuple representation.
+ */
+static void
+EmitXmlSpGistInnerTuple(Page page, BlockNumber blkno, OffsetNumber offset,
+						SpGistInnerTuple tuple, uint32 relfileOff)
+{
+	SpGistNodeTuple		node;
+	uint32				relfileOffNext = 0;
+	uint32				relfileOffOrig = relfileOff;
+	char			   *flagString;
+	bool				dead = (tuple->tupstate != SPGIST_LIVE);
+	int					i;
+
+	Assert(!SpGistPageIsLeaf(page));
+	Assert(!SpGistPageIsMeta(page));
+
+	/*
+	 * Reuse dead tuple handling within leaf tuple routine.  This correctly
+	 * indicates "inner page leaf tuple" size by interpreting the leaf tuple
+	 * "size" field, and there are no other fields that could be interpreted
+	 * incorrectly, so this seems to be the right approach.
+	 */
+	if (dead)
+	{
+		EmitXmlSpGistLeafTuple(page, blkno, offset, (SpGistLeafTuple) tuple,
+							   relfileOff);
+		return;
+	}
+
+	/*
+	 * Metadata about the tuple shape and width is COLOR_YELLOW_LIGHT, to
+	 * indicate that the field is metadata, but to create a contrast with
+	 * IndexTuple metadata fields (which are COLOR_YELLOW_DARK).
+	 */
+	flagString = GetSpGistInnerTupleState(tuple);
+	relfileOffNext = relfileOff + sizeof(unsigned int);
+	EmitXmlTupleTag(blkno, offset, flagString, COLOR_YELLOW_LIGHT, relfileOff,
+					relfileOffNext - 1);
+	free(flagString);
+
+	relfileOff = relfileOffNext;
+	relfileOffNext = relfileOff + sizeof(uint16);
+	EmitXmlTupleTag(blkno, offset, "SpGistInnerTuple size", COLOR_YELLOW_LIGHT,
+					relfileOff, relfileOffNext - 1);
+
+	/*
+	 * Print all SpGistNodeTuple entries, which actually share IndexTuple
+	 * representation
+	 */
+	SGITITERATE(tuple, i, node)
+	{
+		EmitXmlIndexTuple(page, blkno, offset, node,
+						  relfileOffOrig + ((char *) node - (char *) tuple));
+	}
+}
+
+/*
+ * Emit a wxHexEditor tag for leaf SP-GiST page tuple.
+ *
+ * We are prepared for the possibility that tuple is actually SpGistDeadTuple.
+ *
+ * Note that lp_len isn't needed here, since it's redundant, just as it is with
+ * the IndexTuple representation.
+ */
+static void
+EmitXmlSpGistLeafTuple(Page page, BlockNumber blkno, OffsetNumber offset,
+					   SpGistLeafTuple tuple, uint32 relfileOff)
+{
+	uint32		relfileOffNext = 0;
+	uint32		relfileOffOrig = relfileOff;
+	char	   *flagString;
+	bool		dead = (tuple->tupstate != SPGIST_LIVE);
+
+	Assert(!SpGistPageIsMeta(page));
+
+	/*
+	 * Metadata about the tuple shape and width is COLOR_YELLOW_LIGHT, to
+	 * indicate that the field is metadata, but to create a contrast with
+	 * IndexTuple metadata fields (which are COLOR_YELLOW_DARK).
+	 */
+	flagString = GetSpGistLeafTupleState(tuple);
+	relfileOffNext = relfileOff + sizeof(unsigned int);
+	EmitXmlTupleTag(blkno, offset, flagString, COLOR_YELLOW_LIGHT, relfileOff,
+					relfileOffNext - 1);
+	free(flagString);
+
+	relfileOff = relfileOffNext;
+	relfileOffNext = relfileOff + sizeof(OffsetNumber);
+	EmitXmlTupleTag(blkno, offset, "nextOffset", COLOR_YELLOW_DARK,
+					relfileOff, relfileOffNext - 1);
+
+	/* Heap pointer */
+	relfileOff = relfileOffNext;
+	relfileOffNext = relfileOff + sizeof(uint16);
+	EmitXmlTupleTag(blkno, offset, dead ? "pointer->bi_hi" : "heapPtr->bi_hi",
+					COLOR_BLUE_LIGHT, relfileOff, relfileOffNext - 1);
+	relfileOff = relfileOffNext;
+	relfileOffNext += sizeof(uint16);
+	EmitXmlTupleTag(blkno, offset, dead ? "pointer->bi_lo" : "heapPtr->bi_lo",
+					COLOR_BLUE_LIGHT, relfileOff, relfileOffNext - 1);
+	relfileOff = relfileOffNext;
+	relfileOffNext += sizeof(uint16);
+	EmitXmlTupleTag(blkno, offset, dead ? "pointer->offsetNumber" : "heapPtr->offsetNumber",
+					COLOR_BLUE_DARK, relfileOff, relfileOffNext - 1);
+
+	if (!dead)
+	{
+		/* Must not be inner tuple if not dead */
+		Assert(SpGistPageIsLeaf(page));
+
+		/* Emit tuple contents */
+		relfileOff = relfileOffOrig + SGLTHDRSZ;
+		relfileOffNext = relfileOffOrig + tuple->size;
+		if (relfileOff < relfileOffNext)
+			EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
+							relfileOff, relfileOffNext - 1);
+	}
+	else
+	{
+		/* XID */
+		relfileOff = relfileOffNext;
+		relfileOffNext = relfileOff + sizeof(TransactionId);
+		EmitXmlTupleTag(blkno, offset, "xid", COLOR_RED_LIGHT,
+						relfileOff, relfileOffNext - 1);
 	}
 }
 
@@ -1891,6 +2113,29 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 				   metaStartOffset + offsetof(GinMetaPageData, ginVersion),
 				   (metaStartOffset + sizeof(GinMetaPageData)) - 1);
 	}
+	else if (specialType == SPEC_SECT_INDEX_SPGIST && blkno == SPGIST_METAPAGE_BLKNO)
+	{
+		uint32		cachedOffset = metaStartOffset;
+		int			i;
+
+		EmitXmlTag(blkno, level, "magicNumber", COLOR_PINK,
+				   metaStartOffset + offsetof(SpGistMetaPageData, magicNumber),
+				   (metaStartOffset + offsetof(SpGistMetaPageData, lastUsedPages) - 1));
+
+		cachedOffset += offsetof(SpGistMetaPageData, lastUsedPages);
+
+		for (i = 0; i < SPGIST_CACHED_PAGES; i++)
+		{
+			EmitXmlTag(blkno, level, "lastUsedPages.blkno", COLOR_PINK,
+					   cachedOffset,
+					   (cachedOffset + offsetof(SpGistLastUsedPage, freeSpace)) - 1);
+			cachedOffset += offsetof(SpGistLastUsedPage, freeSpace);
+			EmitXmlTag(blkno, level, "lastUsedPages.freeSpace", COLOR_PINK,
+					   cachedOffset,
+					   (cachedOffset + sizeof(int) - 1));
+			cachedOffset += sizeof(int);
+		}
+	}
 #if PG_VERSION_NUM >= 90500
 	else if (specialType == SPEC_SECT_INDEX_BRIN && blkno == BRIN_METAPAGE_BLKNO)
 	{
@@ -2015,10 +2260,13 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 		case SPEC_SECT_INDEX_HASH:
 		case SPEC_SECT_INDEX_GIST:
 		case SPEC_SECT_INDEX_GIN:
-#ifdef UNIMPLEMENTED
-		case SPEC_SECT_INDEX_SPGIST:
-#endif
 			formatAs = ITEM_INDEX;
+			break;
+		case SPEC_SECT_INDEX_SPGIST:
+			if (!SpGistPageIsLeaf(page))
+				formatAs = ITEM_SPG_INN;
+			else
+				formatAs = ITEM_SPG_LEAF;
 			break;
 		case SPEC_SECT_INDEX_BRIN:
 			formatAs = ITEM_BRIN;
@@ -2096,6 +2344,24 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 
 			EmitXmlIndexTuple(page, blkno, offset, tuple,
 							  pageOffset + itemOffset);
+		}
+		else if (formatAs == ITEM_SPG_INN)
+		{
+			SpGistInnerTuple	tuple;
+
+			tuple = (SpGistInnerTuple) PageGetItem(page, itemId);
+
+			EmitXmlSpGistInnerTuple(page, blkno, offset, tuple,
+									pageOffset + itemOffset);
+		}
+		else if (formatAs == ITEM_SPG_LEAF)
+		{
+			SpGistLeafTuple tuple;
+
+			tuple = (SpGistLeafTuple) PageGetItem(page, itemId);
+
+			EmitXmlSpGistLeafTuple(page, blkno, offset, tuple,
+								   pageOffset + itemOffset);
 		}
 		else if (formatAs == ITEM_BRIN)
 		{
@@ -2467,6 +2733,39 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
 						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags),
 						   (pageOffset + specialOffset + sizeof(GinPageOpaqueData) - 1));
+			}
+			break;
+
+		case SPEC_SECT_INDEX_SPGIST:
+			{
+				SpGistPageOpaque spGistSection = (SpGistPageOpaque) (buffer + specialOffset);
+
+				/* Generate SP-GiST special area flags */
+				strcat(flagString, "flags - ");
+				if (spGistSection->flags & SPGIST_META)
+					strcat(flagString, "SPGIST_META|");
+				if (spGistSection->flags & SPGIST_DELETED)
+					strcat(flagString, "SPGIST_DELETED|");
+				if (spGistSection->flags & SPGIST_LEAF)
+					strcat(flagString, "SPGIST_LEAF|");
+				if (spGistSection->flags & SPGIST_NULLS)
+					strcat(flagString, "SPGIST_NULLS|");
+				if (strlen(flagString))
+					flagString[strlen(flagString) - 1] = '\0';
+
+				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, flags),
+						   (pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, nRedirection)) - 1);
+
+				EmitXmlTag(blkno, level, "nRedirection", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, nRedirection),
+						   (pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, nPlaceholder)) - 1);
+				EmitXmlTag(blkno, level, "nPlaceholder", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, nPlaceholder),
+						   (pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, spgist_page_id)) - 1);
+				EmitXmlTag(blkno, level, "spgist_page_id", COLOR_BLACK,
+						   pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, spgist_page_id),
+						   (pageOffset + specialOffset + sizeof(SpGistPageOpaqueData) - 1));
 			}
 			break;
 
