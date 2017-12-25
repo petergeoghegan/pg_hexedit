@@ -2,7 +2,7 @@
 
 Copyright (c) 2017, VMware, Inc.
 Copyright (c) 2002-2010 Red Hat, Inc.
-Copyright (c) 2011-2016, PostgreSQL Global Development Group
+Copyright (c) 2011-2017, PostgreSQL Global Development Group
 
 Author: Peter Geoghegan [`<pg@bowt.ie>`](mailto:pg@bowt.ie)
 pg_filedump author: Patrick Macdonald [`<patrickm@redhat.com>`](mailto:patrickm@redhat.com)
@@ -47,26 +47,16 @@ To compile pg_hexedit, you will need to have a properly configured
 PostgreSQL source tree or complete install tree (with include files)
 of the appropriate PostgreSQL major version.
 
-There are two makefiles included in this package.  Makefile is a standalone
-makefile for pg_hexedit.  Alter its `PGSQL_INCLUDE_DIR` variable to point to
-the PostgreSQL include files.  Makefile.contrib can be used if this package
-was untarred in the contrib directory of a PostgreSQL build tree:
+The Makefile is a standalone makefile for pg_hexedit.  `pg_config` must be
+available within your $PATH:
 
 ```shell
+  $ which pg_config
+  /code/postgresql/REL9_4_STABLE/install/bin/pg_config
   $ make
-  $ # if using Makefile.contrib (install not required by convenience scripts):
+  $ # Installation -- not actually required for convenience scripts:
   $ make install
 ```
-
-It is also possible to use Makefile.contrib without being in the contrib
-directory:
-
-```shell
-  $ make -f Makefile.contrib USE_PGXS=1
-```
-
-This method requires that the `pg_config` program be in your $PATH, but should
-not require any manual adjustments of the `Makefile`.
 
 ### Obtaining wxHexEditor
 

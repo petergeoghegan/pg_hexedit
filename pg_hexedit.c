@@ -4,7 +4,7 @@
  *
  * Copyright (c) 2017, VMware, Inc.
  * Copyright (c) 2002-2010 Red Hat, Inc.
- * Copyright (c) 2011-2016, PostgreSQL Global Development Group
+ * Copyright (c) 2011-2017, PostgreSQL Global Development Group
  *
  * This specialized fork of pg_filedump is modified to output XML that can be
  * used to annotate pages within the wxHexEditor hex editor.
@@ -28,6 +28,7 @@
  */
 #define FRONTEND 1
 #include "postgres.h"
+#include "common/fe_memutils.h"
 
 /*
  * We must #undef frontend because certain headers are not really supposed to
@@ -53,6 +54,7 @@
 #include "storage/checksum_impl.h"
 #include "utils/pg_crc.h"
 
+#define HEXEDIT_VERSION			"0.1"
 #define SEQUENCE_MAGIC			0x1717	/* PostgreSQL defined magic number */
 #define EOF_ENCOUNTERED 		(-1)	/* Indicator for partial read */
 
@@ -264,17 +266,17 @@ DisplayOptions(unsigned int validOptions)
 {
 	if (validOptions == OPT_RC_COPYRIGHT)
 		printf
-			("\npg_hexedit (for %s)"
+			("pg_hexedit %s (for PostgreSQL %s)"
 			 "\nCopyright (c) 2017, VMware, Inc."
 			 "\nCopyright (c) 2002-2010 Red Hat, Inc."
-			 "\nCopyright (c) 2011-2016, PostgreSQL Global Development Group\n",
-			 PG_VERSION);
+			 "\nCopyright (c) 2011-2017, PostgreSQL Global Development Group\n",
+			 HEXEDIT_VERSION, PG_VERSION);
 
 	printf
 		("\nUsage: pg_hexedit [-hkzl] [-R startblock [endblock]] [-s segsize] [-n segnumber] file\n\n"
 		 "Display formatted contents of a PostgreSQL heap/index/control file\n"
 		 "Defaults are: relative addressing, range of the entire file, block\n"
-		 "               size as listed on block 0 in the file\n\n"
+		 "              size as listed on block 0 in the file\n\n"
 		 "The following options are valid for heap and index files:\n"
 		 "  -h  Display this information\n"
 		 "  -k  Verify all block checksums\n"
@@ -841,7 +843,7 @@ GetSpecialSectionString(unsigned int type)
  * Given Heap tuple header, return string buffer with t_infomask or t_infomask2
  * flags.
  *
- * Note:  Caller is responsible for free()ing returned buffer.
+ * Note:  Caller is responsible for pg_free()'ing returned buffer.
  */
 static char *
 GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
@@ -853,15 +855,7 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 	unsigned int	localBitOffset;
 	char		   *flagString = NULL;
 
-	flagString = malloc(512);
-
-	if (!flagString)
-	{
-		fprintf(stderr, "pg_hexedit error: unable to allocate buffer of size 512.\n");
-		/* Call exit() immediately, so caller doesn't have to handle failure */
-		exit(1);
-	}
-
+	flagString = pg_malloc(512);
 	localHoff = htup->t_hoff;
 	localBitOffset = offsetof(HeapTupleHeaderData, t_bits);
 
@@ -968,21 +962,14 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
  * Given IndexTuple, return string buffer with t_info reported tuple length,
  * and flags.
  *
- * Note:  Caller is responsible for free()ing returned buffer.
+ * Note:  Caller is responsible for pg_free()'ing returned buffer.
  */
 static char *
 GetIndexTupleFlags(IndexTuple itup)
 {
 	char		   *flagString = NULL;
 
-	flagString = malloc(128);
-
-	if (!flagString)
-	{
-		fprintf(stderr, "pg_hexedit error: unable to allocate buffer of size 128.\n");
-		/* Call exit() immediately, so caller doesn't have to handle failure */
-		exit(1);
-	}
+	flagString = pg_malloc(512);
 
 	/*
 	 * Place readable versions of the tuple info mask into a buffer.  Assume
@@ -1031,21 +1018,14 @@ GetSpGistStateString(unsigned int code)
  * Given SpGistInnerTuple, return string buffer with tuple-reported state from
  * bitfields.
  *
- * Note:  Caller is responsible for free()ing returned buffer.
+ * Note:  Caller is responsible for pg_free()'ing returned buffer.
  */
 static char *
 GetSpGistInnerTupleState(SpGistInnerTuple itup)
 {
 	char		   *flagString = NULL;
 
-	flagString = malloc(128);
-
-	if (!flagString)
-	{
-		fprintf(stderr, "pg_hexedit error: unable to allocate buffer of size 128.\n");
-		/* Call exit() immediately, so caller doesn't have to handle failure */
-		exit(1);
-	}
+	flagString = pg_malloc(128);
 
 	sprintf(flagString, "tuplestate: %s, allTheSame: %u, nNodes: %u, prefixSize: %u",
 			GetSpGistStateString(itup->tupstate), itup->allTheSame, itup->nNodes, itup->prefixSize);
@@ -1057,21 +1037,14 @@ GetSpGistInnerTupleState(SpGistInnerTuple itup)
  * Given SpGistLeafTuple, return string buffer with tuple-reported state from
  * bitfields.
  *
- * Note:  Caller is responsible for free()ing returned buffer.
+ * Note:  Caller is responsible for pg_free()'ing returned buffer.
  */
 static char *
 GetSpGistLeafTupleState(SpGistLeafTuple itup)
 {
 	char		   *flagString = NULL;
 
-	flagString = malloc(128);
-
-	if (!flagString)
-	{
-		fprintf(stderr, "pg_hexedit error: unable to allocate buffer of size 128.\n");
-		/* Call exit() immediately, so caller doesn't have to handle failure */
-		exit(1);
-	}
+	flagString = pg_malloc(128);
 
 	sprintf(flagString, "tuplestate: %s, size: %u",
 			GetSpGistStateString(itup->tupstate), itup->size);
@@ -1083,7 +1056,7 @@ GetSpGistLeafTupleState(SpGistLeafTuple itup)
  * Given BrinTuple, return string buffer with bt_info reported data offset, and
  * tuple flags.
  *
- * Note:  Caller is responsible for free()ing returned buffer.
+ * Note:  Caller is responsible for pg_free()'ing returned buffer.
  */
 #if PG_VERSION_NUM >= 90500
 static char *
@@ -1091,14 +1064,7 @@ GetBrinTupleFlags(BrinTuple *itup)
 {
 	char		   *flagString = NULL;
 
-	flagString = malloc(128);
-
-	if (!flagString)
-	{
-		fprintf(stderr, "pg_hexedit error: unable to allocate buffer of size 128.\n");
-		/* Call exit() immediately, so caller doesn't have to handle failure */
-		exit(1);
-	}
+	flagString = pg_malloc(128);
 
 	/*
 	 * Place readable versions of the tuple info mask into a buffer.  Assume
@@ -1450,13 +1416,13 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	relfileOffNext += sizeof(uint16);
 	EmitXmlTupleTag(blkno, offset, flagString, COLOR_GREEN_LIGHT, relfileOff,
 					relfileOffNext - 1);
-	free(flagString);
+	pg_free(flagString);
 	flagString = GetHeapTupleHeaderFlags(htup, false);
 	relfileOff = relfileOffNext;
 	relfileOffNext += sizeof(uint16);
 	EmitXmlTupleTag(blkno, offset, flagString, COLOR_GREEN_DARK, relfileOff,
 					relfileOffNext - 1);
-	free(flagString);
+	pg_free(flagString);
 
 	/*
 	 * Metadata about the tuple shape and width is COLOR_YELLOW_DARK, in line
@@ -1577,7 +1543,7 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	flagString = GetIndexTupleFlags(tuple);
 	EmitXmlTupleTag(blkno, offset, flagString, COLOR_YELLOW_DARK, relfileOff,
 					relfileOffNext - 1);
-	free(flagString);
+	pg_free(flagString);
 	relfileOff = relfileOffNext;
 
 	/*
@@ -1692,7 +1658,7 @@ EmitXmlSpGistInnerTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	relfileOffNext = relfileOff + sizeof(unsigned int);
 	EmitXmlTupleTag(blkno, offset, flagString, COLOR_YELLOW_LIGHT, relfileOff,
 					relfileOffNext - 1);
-	free(flagString);
+	pg_free(flagString);
 
 	relfileOff = relfileOffNext;
 	relfileOffNext = relfileOff + sizeof(uint16);
@@ -1738,7 +1704,7 @@ EmitXmlSpGistLeafTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	relfileOffNext = relfileOff + sizeof(unsigned int);
 	EmitXmlTupleTag(blkno, offset, flagString, COLOR_YELLOW_LIGHT, relfileOff,
 					relfileOffNext - 1);
-	free(flagString);
+	pg_free(flagString);
 
 	relfileOff = relfileOffNext;
 	relfileOffNext = relfileOff + sizeof(OffsetNumber);
@@ -1820,7 +1786,7 @@ EmitXmlBrinTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	flagString = GetBrinTupleFlags(tuple);
 	EmitXmlTupleTag(blkno, offset, flagString, COLOR_YELLOW_DARK, relfileOff,
 					relfileOffNext - 1);
-	free(flagString);
+	pg_free(flagString);
 	relfileOff = relfileOffNext;
 
 	/*
@@ -2912,15 +2878,8 @@ main(int argv, char **argc)
 		 */
 		if (blockSize > 0)
 		{
-			buffer = (char *) malloc(blockSize);
-			if (buffer)
-				EmitXmlFile();
-			else
-			{
-				fprintf(stderr, "pg_hexedit error: unable to allocate buffer of size %d.\n",
-					   blockSize);
-				exitCode = 1;
-			}
+			buffer = (char *) pg_malloc(blockSize);
+			EmitXmlFile();
 		}
 	}
 
@@ -2929,7 +2888,7 @@ main(int argv, char **argc)
 		fclose(fp);
 
 	if (buffer)
-		free(buffer);
+		pg_free(buffer);
 
 	exit(exitCode);
 }
