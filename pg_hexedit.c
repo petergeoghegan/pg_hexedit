@@ -257,7 +257,7 @@ static void EmitXmlPostingTreeTids(Page page, BlockNumber blkno);
 static void EmitXmlRevmap(Page page, BlockNumber blkno);
 #endif
 static void EmitXmlSpecial(BlockNumber blkno, uint32 level);
-static void EmitXmlFile(void);
+static void EmitXmlBody(void);
 
 
 /*	Send properly formed usage information to the user. */
@@ -654,7 +654,7 @@ GetOptionXlogRecPtr(char *optionString)
 
 /*
  * Read the page header off of block 0 to determine the block size used in this
- * file.  Can be overridden using the -S option.  The returned value is the
+ * file.  Can be overridden using the -s option.  The returned value is the
  * block size of block 0 on disk.
  */
 static unsigned int
@@ -1246,6 +1246,9 @@ EmitXmlDocHeader(int numOptions, char **options)
 	printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
 	printf("<!-- Dump created on: %s -->\n", timeStr);
 	printf("<!-- Options used: %s -->\n", (strlen(optionBuffer)) ? optionBuffer : "None");
+	printf("<!-- Block size: %u -->\n", blockSize);
+	printf("<!-- pg_hexedit version: %s -->\n", HEXEDIT_VERSION);
+	printf("<!-- pg_hexedit build PostgreSQL version: %s -->\n", PG_VERSION);
 	printf("<wxHexEditor_XML_TAG>\n");
 	printf("  <filename path=\"%s\">\n", fileName);
 }
@@ -2783,10 +2786,11 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 }
 
 /*
- * Control the dumping of the blocks within the file
+ * Dump the main body of XML tags (does not include header, header comments, or
+ * footer.)
  */
 static void
-EmitXmlFile(void)
+EmitXmlBody(void)
 {
 	unsigned int initialRead = 1;
 	unsigned int contentsToDump = 1;
@@ -2845,8 +2849,6 @@ EmitXmlFile(void)
 
 		initialRead = 0;
 	}
-
-	EmitXmlFooter();
 }
 
 /*
@@ -2869,18 +2871,19 @@ main(int argv, char **argc)
 		DisplayOptions(validOptions);
 	else
 	{
-		EmitXmlDocHeader(argv, argc);
 		blockSize = GetBlockSize();
 
 		/*
 		 * On a positive block size, allocate a local buffer to store the
-		 * subsequent blocks
+		 * subsequent blocks, and generate main body of XML tags.
 		 */
+		EmitXmlDocHeader(argv, argc);
 		if (blockSize > 0)
 		{
 			buffer = (char *) pg_malloc(blockSize);
-			EmitXmlFile();
+			EmitXmlBody();
 		}
+		EmitXmlFooter();
 	}
 
 	/* Close out the file and get rid of the allocated block buffer */
