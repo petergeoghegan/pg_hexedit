@@ -1,10 +1,13 @@
 # pg_hexedit - Open PostgreSQL relation files in a hex editor with tags and annotations
 
-Copyright (c) 2017, VMware, Inc.
-Copyright (c) 2002-2010 Red Hat, Inc.
-Copyright (c) 2011-2017, PostgreSQL Global Development Group
+Copyright (c) 2017-2018, VMware, Inc.
+
+Copyright (c) 2002-2010, Red Hat, Inc.
+
+Copyright (c) 2011-2018, PostgreSQL Global Development Group
 
 Author: Peter Geoghegan [`<pg@bowt.ie>`](mailto:pg@bowt.ie)
+
 pg_filedump author: Patrick Macdonald [`<patrickm@redhat.com>`](mailto:patrickm@redhat.com)
 
 License: [GNU General Public License version 2](https://opensource.org/licenses/GPL-2.0)
@@ -224,18 +227,18 @@ convenience scripts.
 
 ## Direct invocation
 
-pg_hexedit retains a minority of the flags that appear in pg_filedump:
+pg_hexedit retains a minority of the flags that appear in pg_filedump.  Usage:
 
 ```shell
-  pg_hexedit [-hkzl] [-R startblock [endblock]] [-s segsize] [-n segnumber] [-x lsn] file
+  pg_hexedit [options] file
 ```
 
-Three new flags, `-x`, `-l`, and `-z`, have been added.
+Three new flags, `-x`, `-l`, and `-z`, have been added.  See `pg_hexedit -h`
+for details of these and other flags.
 
-Invoking it directly might be more useful when you want to work on a copy of
-the database that is not under the control of a running PostgreSQL server.
-
-See `pg_hexedit -h` for full details.
+Invoking pg_hexedit directly (not using convenience scripts) might be more
+useful when you want to work on a copy of the database that is not under the
+control of a running PostgreSQL server.
 
 ## Supporting other hex editors
 
