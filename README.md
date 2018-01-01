@@ -189,10 +189,6 @@ also that these convenience scripts limit the range of blocks that are
 summarized, to keep the overhead acceptable.  (This can be changed by modifying
 hexedit.cfg.)
 
-Although only core index access methods are directly supported,
-relation_hexedit may produce reasonably helpful tags and annotations for
-user-defined index AMs, such as contrib/bloom.
-
 If there is concurrent write activity by Postgres, the process of building XML
 tags may error out before finishing.  In practice there is
 unlikely to be trouble.  The scripts perform a `CHECKPOINT` before opening
