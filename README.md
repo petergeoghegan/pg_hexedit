@@ -233,12 +233,13 @@ pg_hexedit retains a minority of the flags that appear in pg_filedump.  Usage:
   pg_hexedit [options] file
 ```
 
-Three new flags, `-x`, `-l`, and `-z`, have been added.  See `pg_hexedit -h`
-for details of these and other flags.
+Three new flags, `-x`, `-l`, and `-z`, have been added (they do not appear in
+pg_filedump).  See `pg_hexedit -h` for details of all available options.
 
-Invoking pg_hexedit directly (not using convenience scripts) might be more
-useful when you want to work on a copy of the database that is not under the
-control of a running PostgreSQL server.
+Invoking pg_hexedit directly (not using convenience scripts) is useful when you
+want to work on a copy of the database that is not under the control of a
+running PostgreSQL server, or when a psql connection to the running PostgreSQL
+server cannot be established.
 
 ## Supporting other hex editors
 
