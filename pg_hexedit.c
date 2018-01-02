@@ -60,7 +60,6 @@
 
 #define COLOR_FONT_STANDARD		"#313739"
 
-#define COLOR_BLACK				"#515A5A"
 #define COLOR_BLUE_DARK			"#2980B9"
 #define COLOR_BLUE_LIGHT		"#3498DB"
 #define COLOR_BROWN				"#97333D"
@@ -1879,7 +1878,7 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 		sprintf(flagString, "LSN: %X/%08X", (uint32) (pageLSN >> 32), (uint32) pageLSN);
 		EmitXmlTag(blkno, level, flagString, COLOR_YELLOW_LIGHT, pageOffset,
 				   (pageOffset + sizeof(PageXLogRecPtr)) - 1);
-		EmitXmlTag(blkno, level, "checksum", COLOR_GREEN_BRIGHT,
+		EmitXmlTag(blkno, level, "checksum", COLOR_GREEN_DARK,
 				   pageOffset + offsetof(PageHeaderData, pd_checksum),
 				   (pageOffset + offsetof(PageHeaderData, pd_flags)) - 1);
 
@@ -2512,7 +2511,10 @@ EmitXmlRevmap(Page page, BlockNumber blkno)
 
 /*
  * On blocks that have special sections, print the contents according to
- * previously determined special section type
+ * previously determined special section type.
+ *
+ * Color of special section fields should be COLOR_GREEN_BRIGHT, to match
+ * pd_special field in page header.
  */
 static void
 EmitXmlSpecial(BlockNumber blkno, uint32 level)
@@ -2534,7 +2536,7 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 		case SPEC_SECT_SEQUENCE:
 			{
 				/* Special area consists of a single uint32, "magic" */
-				EmitXmlTag(blkno, level, "magic", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "magic", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset,
 						   (pageOffset + specialOffset + sizeof(uint32) - 1));
 			}
@@ -2544,13 +2546,13 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 			{
 				BTPageOpaque btreeSection = (BTPageOpaque) (buffer + specialOffset);
 
-				EmitXmlTag(blkno, level, "btpo_prev", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "btpo_prev", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_prev),
 						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_next)) - 1);
-				EmitXmlTag(blkno, level, "btpo_next", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "btpo_next", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_next),
 						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo)) - 1);
-				EmitXmlTag(blkno, level, "btpo.level", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "btpo.level", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo),
 						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_flags)) - 1);
 
@@ -2575,10 +2577,10 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 				if (strlen(flagString))
 					flagString[strlen(flagString) - 1] = '\0';
 
-				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_flags),
 						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_cycleid)) - 1);
-				EmitXmlTag(blkno, level, "btpo_cycleid", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "btpo_cycleid", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_cycleid),
 						   (pageOffset + specialOffset + sizeof(BTPageOpaqueData) - 1));
 			}
@@ -2588,13 +2590,13 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 			{
 				HashPageOpaque hashSection = (HashPageOpaque) (buffer + specialOffset);
 
-				EmitXmlTag(blkno, level, "hasho_prevblkno", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "hasho_prevblkno", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_prevblkno),
 						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_nextblkno)) - 1);
-				EmitXmlTag(blkno, level, "hasho_nextblkno", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "hasho_nextblkno", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_nextblkno),
 						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_bucket)) - 1);
-				EmitXmlTag(blkno, level, "hasho_bucket", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "hasho_bucket", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_bucket),
 						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_flag)) - 1);
 
@@ -2621,10 +2623,10 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 				if (strlen(flagString))
 					flagString[strlen(flagString) - 1] = '\0';
 
-				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_flag),
 						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_page_id)) - 1);
-				EmitXmlTag(blkno, level, "hasho_page_id", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "hasho_page_id", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_page_id),
 						   (pageOffset + specialOffset + sizeof(HashPageOpaqueData) - 1));
 			}
@@ -2634,10 +2636,10 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 			{
 				GISTPageOpaque gistSection = (GISTPageOpaque) (buffer + specialOffset);
 
-				EmitXmlTag(blkno, level, "nsn", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "nsn", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(GISTPageOpaqueData, nsn),
 						   (pageOffset + specialOffset + offsetof(GISTPageOpaqueData, rightlink)) - 1);
-				EmitXmlTag(blkno, level, "rightlink", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "rightlink", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(GISTPageOpaqueData, rightlink),
 						   (pageOffset + specialOffset + offsetof(GISTPageOpaqueData, flags)) - 1);
 
@@ -2658,10 +2660,10 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 				if (strlen(flagString))
 					flagString[strlen(flagString) - 1] = '\0';
 
-				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(GISTPageOpaqueData, flags),
 						   (pageOffset + specialOffset + offsetof(GISTPageOpaqueData, gist_page_id)) - 1);
-				EmitXmlTag(blkno, level, "gist_page_id", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "gist_page_id", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(GISTPageOpaqueData, gist_page_id),
 						   (pageOffset + specialOffset + sizeof(GISTPageOpaqueData) - 1));
 			}
@@ -2671,10 +2673,10 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 			{
 				GinPageOpaque ginSection = (GinPageOpaque) (buffer + specialOffset);
 
-				EmitXmlTag(blkno, level, "rightlink", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "rightlink", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, rightlink),
 						   (pageOffset + specialOffset + offsetof(GinPageOpaqueData, maxoff)) - 1);
-				EmitXmlTag(blkno, level, "maxoff", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "maxoff", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, maxoff),
 						   (pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags)) - 1);
 
@@ -2699,7 +2701,7 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 				if (strlen(flagString))
 					flagString[strlen(flagString) - 1] = '\0';
 
-				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags),
 						   (pageOffset + specialOffset + sizeof(GinPageOpaqueData) - 1));
 			}
@@ -2722,17 +2724,17 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 				if (strlen(flagString))
 					flagString[strlen(flagString) - 1] = '\0';
 
-				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, flags),
 						   (pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, nRedirection)) - 1);
 
-				EmitXmlTag(blkno, level, "nRedirection", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "nRedirection", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, nRedirection),
 						   (pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, nPlaceholder)) - 1);
-				EmitXmlTag(blkno, level, "nPlaceholder", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "nPlaceholder", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, nPlaceholder),
 						   (pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, spgist_page_id)) - 1);
-				EmitXmlTag(blkno, level, "spgist_page_id", COLOR_BLACK,
+				EmitXmlTag(blkno, level, "spgist_page_id", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, spgist_page_id),
 						   (pageOffset + specialOffset + sizeof(SpGistPageOpaqueData) - 1));
 			}
@@ -2753,7 +2755,7 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 					strcat(flagString, "BRIN_EVACUATE_PAGE|");
 				if (strlen(flagString))
 					flagString[strlen(flagString) - 1] = '\0';
-				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(BrinSpecialSpace, vector[MAXALIGN(1) / sizeof(uint16) - 2]),
 						   (pageOffset + specialOffset + offsetof(BrinSpecialSpace, vector[MAXALIGN(1) / sizeof(uint16) - 1])) - 1);
 
@@ -2769,7 +2771,7 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 				if (strlen(flagString))
 					flagString[strlen(flagString) - 1] = '\0';
 
-				EmitXmlTag(blkno, level, flagString, COLOR_BLACK,
+				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(BrinSpecialSpace, vector[MAXALIGN(1) / sizeof(uint16) - 1]),
 						   (pageOffset + specialOffset + sizeof(BrinSpecialSpace) - 1));
 			}
