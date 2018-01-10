@@ -14,8 +14,6 @@ License: [GNU General Public License version 2](https://opensource.org/licenses/
 
 Supported versions: PostgreSQL 9.4+
 
-Supported platforms: Linux + libwxgtk (though MacOS probably also works)
-
 ## Overview
 
 pg_hexedit is an experimental toolkit to format PostgreSQL heap, sequence, and
@@ -63,9 +61,16 @@ available within your $PATH:
 
 ### Obtaining wxHexEditor
 
-It is recommended that you build wxHexEditor's master branch from source.
-There are general stability issues with wxHexEditor, especially with the tag
-feature that pg_hexedit targets.  It's worth having all recent bug fixes. See:
+It is highly recommended that you use wxHexEditor version 0.24 or higher, since
+that version has numerous bug fixes for the tag feature that pg_hexedit
+targets.  Packages are available for all major platforms from Sourceforge:
+
+[https://sourceforge.net/projects/wxhexeditor/](https://sourceforge.net/projects/wxhexeditor/)
+
+If using those packages is not an option, there may be no conveniently
+available packages for wxHexEditor 0.24 from your system package manager.  The
+most practical option may be to build wxHexEditor's master branch from source.
+See:
 
 [https://github.com/EUA/wxHexEditor](https://github.com/EUA/wxHexEditor)
 
