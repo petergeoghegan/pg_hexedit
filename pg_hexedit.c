@@ -1469,7 +1469,7 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	/*
 	 * Tuple contents (all attributes/columns) is slightly off-white, to
 	 * suggest that we can't parse it due to not having access to catalog
-	 * metadata, but consider it to be "payload", in constrast to the plain
+	 * metadata, but consider it to be "payload", in contrast to the plain
 	 * white area in the "hole" between the upper and lower sections of each
 	 * page.
 	 */
@@ -1490,7 +1490,7 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
  * pages don't compress TIDs, and posting tree pages are dealt with in special
  * GIN-only paths).
  *
- * This fuaction is not used for BrinTuples, because they share nothing with
+ * This function is not used for BrinTuples, because they share nothing with
  * IndexTuples in terms of layout, despite being conceptually similar (BRIN
  * tuples store blocks, not exact TIDs).
  *
@@ -1614,7 +1614,7 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 /*
  * Emit a wxHexEditor tag for internal SP-GiST page tuple.
  *
- * This is similar to ExmitXmlIndexTuple(), but SP-GiST never directly uses
+ * This is similar to EmitXmlIndexTuple(), but SP-GiST never directly uses
  * IndexTuple representation, so requires this custom tuple formatting
  * function.  (Actually, SP-GiST internal/inner tuples end up reusing the
  * IndexTuple representation internally, which we must deal with here.)
@@ -1752,7 +1752,7 @@ EmitXmlSpGistLeafTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 /*
  * Emit a wxHexEditor tag for entire BRIN regular page tuple.
  *
- * This is similar to ExmitXmlIndexTuple(), but BRIN never uses IndexTuple
+ * This is similar to EmitXmlIndexTuple(), but BRIN never uses IndexTuple
  * representation, so requires this custom tuple formatting function.
  */
 #if PG_VERSION_NUM >= 90500
