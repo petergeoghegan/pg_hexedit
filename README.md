@@ -75,7 +75,7 @@ See:
 [https://github.com/EUA/wxHexEditor](https://github.com/EUA/wxHexEditor)
 
 It's generally only mildly inconvenient to build wxHexEditor on a modern
-desktop Linux system.  On Debian-based systems with source repositories setup,
+desktop Linux system.  On Debian-based systems with source repositories set up,
 obtaining all build dependencies quickly should be straightforward:
 
 ```shell
@@ -133,19 +133,22 @@ corruption__, especially when the PostgreSQL server is actually running
 throughout.  The scripts were designed with backend development convenience in
 mind, where __the database should only contain disposable test data__.
 
-Convenience script requirements:
+Convenience script assumptions:
 
-* The scripts are built on the assumption that they're invoked by a user that
-  has the operating system level permissions needed to open PostgreSQL relation
-  files, and Postgres superuser permissions.  The user invoking the script should
-  have access to the same filesystem, through the same absolute paths. (Be very
-  careful if the Postgres data directory is containerized; that's untested and
-  unsupported.)
+* The scripts assume that they're run as an OS user that has the operating
+  system level permissions needed to open/read all PostgreSQL relation files,
+  using the same absolute paths as PostgreSQL.  Be very careful if the Postgres
+  data directory is containerized; a convenience script might open relation
+  files from an unrelated installation if this assumption is not fully met.
 
 * Most convenience scripts rely on `CREATE EXTENSION IF NOT EXISTS pageinspect`
   running and making available various SQL-callable functions.  These functions
   are used to generate interesting offsets, or to display hints on index
   structure.  (This is highly recommended, but not actually required.)
+
+* `psql` must connect using a PostgreSQL role with superuser permissions.  This
+  is needed to determine the path of Postgres relfiles (and to install
+  `contrib/pageinspect`).
 
 [`contrib/pageinspect`](https://www.postgresql.org/docs/current/static/pageinspect.html)
 must be available (the extensions supporting files must be installed) to use
