@@ -27,7 +27,7 @@ available for educational purposes.  It is an *experimental* tool, originally
 used for simulating corruption/corruption analysis.
 
 The type of file (heap/index) is determined automatically by the content of the
-blocks within the file, using pg_filedump-style hueristics.  The default is to
+blocks within the file, using pg_filedump-style heuristics.  The default is to
 format the entire file using the block size listed in block 0 as wxHexEditor
 tag XML.  These defaults can be modified using run-time options.  However,
 pg_hexedit is typically invoked using the packaged convenience scripts.
