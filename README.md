@@ -1,18 +1,16 @@
-# pg_hexedit - Open PostgreSQL relation files in a hex editor with tags and annotations
+pg_hexedit
+==========
 
-Copyright (c) 2017-2018, VMware, Inc.
+## Open PostgreSQL relation files in a hex editor with tags and annotations
 
-Copyright (c) 2002-2010, Red Hat, Inc.
-
+Copyright (c) 2017-2018, VMware, Inc.  
+Copyright (c) 2002-2010, Red Hat, Inc.  
 Copyright (c) 2011-2018, PostgreSQL Global Development Group
 
-Author: Peter Geoghegan [`<pg@bowt.ie>`](mailto:pg@bowt.ie)
-
-pg_filedump author: Patrick Macdonald [`<patrickm@redhat.com>`](mailto:patrickm@redhat.com)
+Author: Peter Geoghegan [`<pg@bowt.ie>`](mailto:pg@bowt.ie)  
+Author (pg_filedump): Patrick Macdonald [`<patrickm@redhat.com>`](mailto:patrickm@redhat.com)
 
 License: [GNU General Public License version 2](https://opensource.org/licenses/GPL-2.0)
-
-Supported versions: PostgreSQL 9.4+
 
 ## Overview
 
@@ -20,9 +18,8 @@ pg_hexedit is an experimental toolkit to format PostgreSQL heap, sequence, and
 index files (B-Tree, GiST, GIN, hash, BRIN, and SP-GiST indexes) when opened
 within the open source GUI hex editor
 [wxHexEditor](https://github.com/EUA/wxHexEditor).  It makes viewing and
-editing PostgreSQL relation files *significantly* easier.
-
-![Image of wxHexEditor with pg_hexedit tags](./screenshot1.png)
+editing PostgreSQL relation files *significantly* easier.  PostgreSQL versions
+9.4+ are supported.
 
 __CAUTION:__ Do not use pg_hexedit with a PostgreSQL data directory if you are
 not prepared to have it __corrupt data__!  pg_hexedit is primarily made
@@ -34,6 +31,12 @@ blocks within the file, using pg_filedump-style hueristics.  The default is to
 format the entire file using the block size listed in block 0 as wxHexEditor
 tag XML.  These defaults can be modified using run-time options.  However,
 pg_hexedit is typically invoked using the packaged convenience scripts.
+
+![wxHexEditor with pg_type](./pg_type.png)
+*wxHexEditor with pg_type system catalog table*
+
+![wxHexEditor with pg_type_typname_nsp_index](./pg_type_typname_nsp_index.png)
+*wxHexEditor with pg_type_typname_nsp_index system catalog index*
 
 ## Initial setup
 
