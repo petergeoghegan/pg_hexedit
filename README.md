@@ -26,11 +26,11 @@ not prepared to have it __corrupt data__!  pg_hexedit is primarily made
 available for educational purposes.  It is an *experimental* tool, originally
 used for simulating corruption/corruption analysis.
 
-The type of file (heap/index) is determined automatically by the content of the
-blocks within the file, using pg_filedump-style heuristics.  The default is to
-format the entire file using the block size listed in block 0 as wxHexEditor
-tag XML.  These defaults can be modified using run-time options.  However,
-pg_hexedit is typically invoked using the packaged convenience scripts.
+The type of each block (whether it's a heap block, B-Tree index block, or other
+type of index block) is determined automatically based on the contents of the
+page's special section.  Heuristics are used to identify the page type of each
+and every block.  The block size listed in block 0 is assumed for the entire
+input file.
 
 ![wxHexEditor with pg_type](./pg_type.png)
 *wxHexEditor with pg_type system catalog table*

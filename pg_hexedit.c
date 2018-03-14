@@ -114,6 +114,9 @@ typedef enum specialSectionTypes
 	SPEC_SECT_ERROR_BOUNDARY	/* Boundary error */
 } specialSectionTypes;
 
+/* Special section type that was encountered first */
+static unsigned int firstType = SPEC_SECT_ERROR_UNKNOWN;
+/* Current block special section type */
 static unsigned int specialType = SPEC_SECT_NONE;
 
 /*
@@ -1119,7 +1122,26 @@ EmitXmlPage(BlockNumber blkno)
 	if (PageIsNew(page))
 		return;
 
+	/* Get details of page first */
 	pageOffset = blockSize * currentBlock;
+	specialType = GetSpecialSectionType(page);
+
+	/*
+	 * A Postgres segment file should consists of blocks that are all of the
+	 * same special section reported type (excluding those blocks that have yet
+	 * to be initialized by PageInit()).  Raise error when this expectation is
+	 * not met.
+	 */
+	if (firstType == SPEC_SECT_ERROR_UNKNOWN)
+		firstType = specialType;
+
+	if (firstType != specialType)
+	{
+		fprintf(stderr, "pg_hexedit error: special section indicated type unexpectedly changed from \"%s\" to \"%s\" at block %u.\n",
+				GetSpecialSectionString(firstType),
+				GetSpecialSectionString(specialType), blkno);
+		exitCode = 1;
+	}
 
 	/*
 	 * Check to see if we must skip this block due to it falling behind
@@ -1135,8 +1157,6 @@ EmitXmlPage(BlockNumber blkno)
 			return;
 		}
 	}
-
-	specialType = GetSpecialSectionType(page);
 
 	/*
 	 * We optionally itemize leaf blocks as whole tags, in order to limit the
