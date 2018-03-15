@@ -1866,8 +1866,7 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 		PageHeader	pageHeader = (PageHeader) page;
 		XLogRecPtr	pageLSN = GetPageLsn(page);
 		int			maxOffset = PageGetMaxOffsetNumber(page);
-		char		flagString[100];
-
+		char	   *flagString;
 
 		headerBytes = offsetof(PageHeaderData, pd_linp[0]);
 		blockVersion = (unsigned int) PageGetPageLayoutVersion(page);
@@ -1895,6 +1894,7 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 		 * case, we choose to make LSN a single field here, because we don't
 		 * want to have two tooltips with the format value for each field.
 		 */
+		flagString = pg_malloc(128);
 		sprintf(flagString, "LSN: %X/%08X", (uint32) (pageLSN >> 32), (uint32) pageLSN);
 		EmitXmlTag(blkno, level, flagString, COLOR_YELLOW_LIGHT, pageOffset,
 				   (pageOffset + sizeof(PageXLogRecPtr)) - 1);
@@ -1902,7 +1902,7 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 				   pageOffset + offsetof(PageHeaderData, pd_checksum),
 				   (pageOffset + offsetof(PageHeaderData, pd_flags)) - 1);
 
-		/* Generate generic page header flags */
+		/* Generate generic page header flags (reuse buffer) */
 		flagString[0] = '\0';
 		strcat(flagString, "pd_flags - ");
 		if (pageHeader->pd_flags & PD_HAS_FREE_LINES)
@@ -1917,6 +1917,7 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 		EmitXmlTag(blkno, level, flagString, COLOR_YELLOW_DARK,
 				   pageOffset + offsetof(PageHeaderData, pd_flags),
 				   (pageOffset + offsetof(PageHeaderData, pd_lower)) - 1);
+		pg_free(flagString);
 		EmitXmlTag(blkno, level, "pd_lower", COLOR_MAROON,
 				   pageOffset + offsetof(PageHeaderData, pd_lower),
 				   (pageOffset + offsetof(PageHeaderData, pd_upper)) - 1);
@@ -2537,9 +2538,12 @@ EmitXmlRevmap(Page page, BlockNumber blkno)
 static void
 EmitXmlSpecial(BlockNumber blkno, uint32 level)
 {
-	PageHeader	pageHeader = (PageHeader) buffer;
-	char		flagString[100] = "\0";
-	unsigned int specialOffset = pageHeader->pd_special;
+	PageHeader		pageHeader = (PageHeader) buffer;
+	unsigned int	specialOffset = pageHeader->pd_special;
+	char		   *flagString;
+
+	flagString = pg_malloc(256);
+	flagString[0] = '\0';
 
 	switch (specialType)
 	{
@@ -2803,6 +2807,8 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 						GetSpecialSectionString(specialType));
 			exitCode = 1;
 	}
+
+	pg_free(flagString);
 }
 
 /*
