@@ -246,7 +246,77 @@ pg_filedump).  See `pg_hexedit -h` for details of all available options.
 Invoking pg_hexedit directly (not using convenience scripts) is useful when you
 want to work on a copy of the database that is not under the control of a
 running PostgreSQL server, or when a psql connection to the running PostgreSQL
-server cannot be established.
+server cannot be established.  wxHexEditor will automatically open tags for a
+target file when it is opened, provided the tag file has the same name as the
+target file with a ".tags" extension postfixed (the convenience scripts rely on
+this).  Alternatively, tags can be directly imported once wxHexEditor has
+opened a file.
+
+### Determining catalog relation file mappings without a database connection
+
+pg_filenodemapdata is a program that prints the contents of a specified catalog
+relation to relfile mapping (pg_filenode.map) file.  It is distributed with
+pg_hexedit.  pg_filenodemapdata can be used to determine which system catalog
+relfiles to examine in cases where a database connection cannot be established
+due to severe system catalog corruption.  It's usually easier to figure this
+out using the generic SQL-based approach that the convenience scripts take, but
+that isn't always possible.
+
+To print the mappings for the database with pg_database OID 12389 (and
+verify the pg_filenode.map checksum in passing):
+
+```shell
+  $ cd $PGDATA
+  $ pg_relfilenodemapdata base/12389/pg_filenode.map
+    magic:               0x00592717
+    num_mappings:        15
+
+     0) 1259 - pg_class:                                  1259
+     1) 1249 - pg_attribute:                              1249
+     2) 1255 - pg_proc:                                   1255
+     3) 1247 - pg_type:                                   1247
+     4) 2836 - pg_toast_1255:                             2836
+     5) 2837 - pg_toast_1255_index:                       2837
+     6) 2658 - pg_attribute_relid_attnam_index:           2658
+     7) 2659 - pg_attribute_relid_attnum_index:           2659
+     8) 2662 - pg_class_oid_index:                        2662
+     9) 2663 - pg_class_relname_nsp_index:                2663
+    10) 3455 - pg_class_tblspc_relfilenode_index:         3455
+    11) 2690 - pg_proc_oid_index:                         2690
+    12) 2691 - pg_proc_proname_args_nsp_index:            2691
+    13) 2703 - pg_type_oid_index:                         2703
+    14) 2704 - pg_type_typname_nsp_index:                 2704
+
+    file checksum:       0x3AA59965
+```
+
+In this example, all mapped system catalog relations within the database have
+relfilenode numbers that match their universal, fixed pg_class OID identifiers.
+This is often not the case, though.  Operations like VACUUM FULL will assign a
+new relfilenode to the target table relation, and to all associated index
+relations.
+
+Installations with many small databases may require an additional step.  It may
+be unclear which subdirectory of the base directory corresponds to a database
+that happens to be of interest.  The relevant metadata is stored in the
+pg_database *shared* system catalog: the names of base subdirectories
+correspond to a pg_database entry OID.  The location of the relfile for the
+global pg_database table might need to be determined first, so that a
+particular base directory can be identified:
+
+```shell
+  $ pg_relfilenodemapdata global/pg_filenode.map | grep pg_database
+     0) 1262 - pg_database:                               1262
+    21) 2671 - pg_database_datname_index:                 2671
+    22) 2672 - pg_database_oid_index:                     2672
+```
+
+The file global/1262 can now be opened using wxHexEditor, to examine the
+contents of pg_database.  pg_database tuples contain a database name, so it
+should be possible to search for the entry of interest using the wxHexEditor
+search dialog.  The OID for each tuple/database is a 4 byte unsigned integer
+that is embedded at the end of the t_bits field, immediately before the
+beginning of the tuple contents proper.
 
 ## Supporting other hex editors
 
