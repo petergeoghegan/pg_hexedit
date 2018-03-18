@@ -292,6 +292,7 @@ GetCatalogNameFromOid(Oid classOid)
 static void
 PrintRelMapContents(RelMapFile *map)
 {
+	int32		num_mappings = Min(MAX_MAPPINGS, map->num_mappings);
 	int			i;
 
 	/* Print pg_filenode.map file's header */
@@ -299,7 +300,7 @@ PrintRelMapContents(RelMapFile *map)
 		   "num_mappings:        %d\n\n", map->magic, map->num_mappings);
 
 	/* Print mappings from file */
-	for (i = 0; i < map->num_mappings; i++)
+	for (i = 0; i < num_mappings; i++)
 	{
 		Oid				reloid = map->mappings[i].mapoid;
 		Oid				relfilenode = map->mappings[i].mapfilenode;
@@ -341,9 +342,10 @@ VerifyRelMapContents(RelMapFile *map)
 	/* Raise error if they don't match */
 	if (!PORT_EQ_CRC32(crc, map->crc))
 	{
-		fprintf(stderr, "calculated checksum 0x%.8X does not match file checksum.\n"
-				"If the pg_filenode.map file is from " PORT_FAIL_HINT ", this is probably harmless.\n",
+		fprintf(stderr, "calculated checksum 0x%.8X does not match file checksum\n",
 				crc);
+		if (exitCode != 0)
+			fprintf(stderr, "if the pg_filenode.map file is from " PORT_FAIL_HINT ", this may be harmless.\n");
 		exitCode = 1;
 	}
 }
