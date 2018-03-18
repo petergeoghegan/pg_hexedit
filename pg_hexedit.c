@@ -218,6 +218,7 @@ static char *GetSpGistLeafTupleState(SpGistLeafTuple itup);
 static char *GetBrinTupleFlags(BrinTuple *itup);
 #endif
 static bool IsBrinPage(Page page);
+static bool IsHashBitmapPage(Page page);
 static void EmitXmlPage(BlockNumber blkno);
 static void EmitXmlDocHeader(int numOptions, char **options);
 static void EmitXmlFooter(void);
@@ -233,10 +234,10 @@ static void EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset,
 							uint32 relfileOffEnd);
 static void EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 							 HeapTupleHeader htup, uint32 relfileOff,
-							 unsigned int itemSize);
+							 int itemSize);
 static void EmitXmlIndexTuple(Page page, BlockNumber blkno,
 							  OffsetNumber offset, IndexTuple tuple,
-							  uint32 relfileOff);
+							  uint32 relfileOff, int itemSize);
 static void EmitXmlSpGistInnerTuple(Page page, BlockNumber blkno,
 									OffsetNumber offset,
 									SpGistInnerTuple tuple,
@@ -248,13 +249,14 @@ static void EmitXmlSpGistLeafTuple(Page page, BlockNumber blkno,
 #if PG_VERSION_NUM >= 90500
 static void EmitXmlBrinTuple(Page page, BlockNumber blkno,
 							 OffsetNumber offset, BrinTuple *tuple,
-							 uint32 relfileOff, unsigned int itemSize);
+							 uint32 relfileOff, int itemSize);
 #endif
 static int EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level);
 static void EmitXmlPageMeta(BlockNumber blkno, uint32 level);
 static void EmitXmlPageItemIdArray(Page page, BlockNumber blkno);
 static void EmitXmlTuples(Page page, BlockNumber blkno);
 static void EmitXmlPostingTreeTids(Page page, BlockNumber blkno);
+static void EmitXmlHashBitmap(Page page, BlockNumber blkno);
 #if PG_VERSION_NUM >= 90500
 static void EmitXmlRevmap(Page page, BlockNumber blkno);
 #endif
@@ -1109,6 +1111,25 @@ IsBrinPage(Page page)
 	return false;
 }
 
+/*	Check whether page is a hash bitmap page */
+static bool
+IsHashBitmapPage(Page page)
+{
+	HashPageOpaque	opaque;
+
+	/* Defensive */
+	if (bytesToFormat != blockSize)
+		return false;
+	if (specialType != SPEC_SECT_INDEX_HASH)
+		return false;
+
+	opaque = (HashPageOpaque) PageGetSpecialPointer(page);
+	if (opaque->hasho_flag & LH_BITMAP_PAGE)
+		return true;
+
+	return false;
+}
+
 /*
  * For each block, dump out formatted header and content information
  */
@@ -1207,6 +1228,19 @@ EmitXmlPage(BlockNumber blkno)
 		{
 			/* If it's a meta page, the meta block will have no tuples */
 			EmitXmlPageMeta(blkno, level);
+		}
+		else if (specialType == SPEC_SECT_INDEX_HASH && IsHashBitmapPage(page))
+		{
+			/* Hash bitmap pages don't use IndexTuple or ItemId */
+			EmitXmlHashBitmap(page, blkno);
+		}
+		else if (specialType == SPEC_SECT_INDEX_GIN && GinPageIsDeleted(page))
+		{
+			/*
+			 * Unfortunately, GIN_DELETED pages don't have page state needed by
+			 * GinPageIsData().  Don't attempt to emit tags for tuples on
+			 * deleted GIN pages.
+			 */
 		}
 		else if (specialType == SPEC_SECT_INDEX_GIN && GinPageIsData(page))
 		{
@@ -1337,7 +1371,13 @@ static void
 EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset, const char *name,
 				const char *color, uint32 relfileOff, uint32 relfileOffEnd)
 {
-	Assert(relfileOff <= relfileOffEnd);
+	if (relfileOff > relfileOffEnd)
+	{
+		fprintf(stderr, "pg_hexedit error: (%u,%u) tuple tag \"%s\" is malformed (%u > %u)\n",
+				blkno, offset, name, relfileOff, relfileOffEnd);
+		exitCode = 1;
+		return;
+	}
 
 	printf("    <TAG id=\"%u\">\n", tagNumber++);
 	printf("      <start_offset>%u</start_offset>\n", relfileOff);
@@ -1357,7 +1397,7 @@ EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset, const char *name,
 static void
 EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 				 HeapTupleHeader htup, uint32 relfileOff,
-				 unsigned int itemSize)
+				 int itemSize)
 {
 	char	   *flagString;
 	uint32		relfileOffNext = 0;
@@ -1516,45 +1556,67 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
  *
  * Note: Caller does not need to pass itemSize from ItemId, because that's
  * redundant in the case of IndexTuples, and because SP-GiST callers will not
- * be able to pass an lp_len for an inner-node-contained IndexTuple.
+ * be able to pass an lp_len for an inner-node-contained IndexTuple.  However,
+ * most still pass it, since it's a useful cross-check in the event of a torn
+ * page.
  */
 static void
 EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
-				  IndexTuple tuple, uint32 relfileOff)
+				  IndexTuple tuple, uint32 relfileOff, int itemSize)
 {
 	uint32		relfileOffNext = 0;
 	uint32		relfileOffOrig = relfileOff;
 	char	   *flagString;
 
-	/*
-	 * Emit t_tid tags.  TID tag style should be kept consistent with
-	 * EmitXmlHeapTuple().
-	 *
-	 * Note: Leaf-level GIN pages are rather similar to nbtree leaf pages (and
-	 * nbtree internal pages) in that they consist of keys of a cataloged type
-	 * (which pg_hexedit, as a front-end utility, cannot reason about), plus a
-	 * simple t_tid pointer.  However, posting tree entries, non-leaf entries,
-	 * and pending list entries perform special punning of t_tid within
-	 * IndexTuples, which we currently don't highlight in any way.  See
-	 * GinFormTuple() and its callers.
-	 *
-	 * TODO: We should decode the meaning of t_tid when this GIN-private t_tid
-	 * offset number punning has taken place, and cut this information into
-	 * finer detail.  We could do this for main entry key B-Tree leaf pages,
-	 * where these fields are abused (they are not abused within
-	 * internal/non-leaf pages).
-	 */
-	relfileOffNext = relfileOff + sizeof(uint16);
-	EmitXmlTupleTag(blkno, offset, "t_tid->bi_hi", COLOR_BLUE_LIGHT, relfileOff,
-					relfileOffNext - 1);
-	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(uint16);
-	EmitXmlTupleTag(blkno, offset, "t_tid->bi_lo", COLOR_BLUE_LIGHT, relfileOff,
-					relfileOffNext - 1);
-	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(uint16);
-	EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber", COLOR_BLUE_DARK,
-					relfileOff, relfileOffNext - 1);
+	if (itemSize < 0)
+		itemSize = IndexTupleSize(tuple);
+	else if (itemSize != IndexTupleSize(tuple))
+	{
+		fprintf(stderr, "pg_hexedit error: (%u,%u) lp_len %u does not equal IndexTupleSize() %lu\n",
+				blkno, offset, itemSize, IndexTupleSize(tuple));
+		exitCode = 1;
+		itemSize = Max(sizeof(IndexTupleData),
+					   Min(itemSize, IndexTupleSize(tuple)));
+	}
+
+	if (specialType != SPEC_SECT_INDEX_GIN || !GinPageIsLeaf(page) ||
+		GinIsPostingTree(tuple))
+	{
+		/*
+		 * Emit t_tid tags.  TID tag style should be kept consistent with
+		 * EmitXmlHeapTuple().
+		 */
+		relfileOffNext = relfileOff + sizeof(uint16);
+		EmitXmlTupleTag(blkno, offset, "t_tid->bi_hi", COLOR_BLUE_LIGHT, relfileOff,
+						relfileOffNext - 1);
+		relfileOff = relfileOffNext;
+		relfileOffNext += sizeof(uint16);
+		EmitXmlTupleTag(blkno, offset, "t_tid->bi_lo", COLOR_BLUE_LIGHT, relfileOff,
+						relfileOffNext - 1);
+		/* For posting tree pointers, offsetNumber is GIN_TREE_POSTING */
+		relfileOff = relfileOffNext;
+		relfileOffNext += sizeof(uint16);
+		EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber", COLOR_BLUE_DARK,
+						relfileOff, relfileOffNext - 1);
+	}
+	else
+	{
+		/*
+		 * We decode the meaning of t_tid when GIN has abused the item pointer
+		 * offset to support posting lists
+		 */
+		relfileOffNext = relfileOff + sizeof(uint16);
+		EmitXmlTupleTag(blkno, offset, "t_tid->bi_hi/GinItupIsCompressed()",
+						COLOR_BLUE_LIGHT, relfileOff, relfileOffNext - 1);
+		relfileOff = relfileOffNext;
+		relfileOffNext += sizeof(uint16);
+		EmitXmlTupleTag(blkno, offset, "t_tid->bi_lo/GinGetPostingOffset()",
+						COLOR_BLUE_LIGHT, relfileOff, relfileOffNext - 1);
+		relfileOff = relfileOffNext;
+		relfileOffNext += sizeof(uint16);
+		EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber/GinGetNPosting()",
+						COLOR_BLUE_DARK, relfileOff, relfileOffNext - 1);
+	}
 
 	/*
 	 * Metadata about the tuple shape and width is COLOR_YELLOW_DARK, which
@@ -1588,45 +1650,61 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	}
 
 	/*
-	 * Tuple contents.
+	 * Tuple contents, plus possible posting list for GIN leaf pages.
 	 *
 	 * All-attributes-NULL IndexTuples will not have any contents here, so we
 	 * avoid creating a tuple content tag entirely.  The same applies to "minus
 	 * infinity" items from nbtree internal pages (though they don't have a
 	 * NULL bitmap).
-	 *
-	 * We don't use the lp_len value here, though we could do it that way
-	 * instead (we do use lp_len at the same point within EmitXmlHeapTuple()).
-	 * The lp_len field is redundant for B-Tree indexes, and somebody might
-	 * take advantage of that fact in the future, so this seems more
-	 * future-proof.
-	 *
-	 * For GIN, we've already determined that this tuple is from the main key
-	 * B-Tree (posting trees don't use IndexTuples at all).  We should only
-	 * treat it as containing a compressed posting list if it's definitely from
-	 * a leaf page, and definitely was compressed.  Old Postgres versions have
-	 * old-style uncompressed lists of TIDs in leaf pages, and we don't bother
-	 * doing anything special there (we treat the posting list as "contents").
-	 * See Postgres commit 36a35c55, which added compression to posting lists
-	 * in the main B-Tree.
 	 */
-	relfileOffNext = relfileOffOrig + IndexTupleSize(tuple);
+	relfileOffNext = relfileOffOrig + itemSize;
 	if (relfileOff < relfileOffNext)
 	{
+		/*
+		 * If this is a GIN page, we've already determined that this tuple is
+		 * from the main key B-Tree (posting trees don't use IndexTuples at
+		 * all).  We should only treat it as containing a posting list (in
+		 * addition to tuple contents) if:
+		 *
+		 * 1. It does not point to a posting tree.  Pointers to posting trees
+		 * are always simple block numbers (the posting tree root page block)
+		 * with magic offset number GIN_TREE_POSTING.
+		 *
+		 * 2. The posting list consists of one or more items.  See
+		 * ginReadTuple().
+		 *
+		 * 3. This isn't an internal page IndexTuple.  These use the item
+		 * pointer representation in the conventional way.
+		 *
+		 * 4. This isn't a pending list page.  These also don't abuse the item
+		 * pointer representation.
+		 *
+		 * The !GinIsLeaf() part of the test handles points 3 and 4.
+		 */
 		if (specialType != SPEC_SECT_INDEX_GIN || !GinPageIsLeaf(page) ||
-			!GinItupIsCompressed(tuple))
+			GinIsPostingTree(tuple) || GinGetNPosting(tuple) == 0)
 			EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
 							relfileOff, relfileOffNext - 1);
 		else
 		{
-			Size postoffset = IndexTupleSize(tuple) - GinGetPostingOffset(tuple);
+			Size			postoffset = itemSize - GinGetPostingOffset(tuple);
+			const char	   *color;
 
 			EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
-							relfileOff, (relfileOffNext - postoffset) - 1);
+							relfileOff, relfileOffNext - postoffset - 1);
 			relfileOff = relfileOffNext - postoffset;
-			/* Compressed TIDs are orange */
-			EmitXmlTupleTag(blkno, offset, "posting list", COLOR_ORANGE,
-							relfileOff, relfileOffNext - 1);
+
+			/*
+			 * Compressed TIDs are orange.  Old Postgres versions have
+			 * old-style uncompressed lists of TIDs in leaf pages, so their
+			 * posting lists should be blue instead of orange, like regular
+			 * block number item pointer fields.  See ginPostingListDecode()
+			 * for details on how this representation is decompressed.
+			 */
+			color =
+				GinItupIsCompressed(tuple) ? COLOR_ORANGE : COLOR_BLUE_LIGHT;
+			EmitXmlTupleTag(blkno, offset, "posting list", color, relfileOff,
+							relfileOffNext - 1);
 		}
 	}
 }
@@ -1694,7 +1772,8 @@ EmitXmlSpGistInnerTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	SGITITERATE(tuple, i, node)
 	{
 		EmitXmlIndexTuple(page, blkno, offset, node,
-						  relfileOffOrig + ((char *) node - (char *) tuple));
+						  relfileOffOrig + ((char *) node - (char *) tuple),
+						  -1);
 	}
 }
 
@@ -1778,7 +1857,7 @@ EmitXmlSpGistLeafTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 #if PG_VERSION_NUM >= 90500
 static void
 EmitXmlBrinTuple(Page page, BlockNumber blkno, OffsetNumber offset,
-				 BrinTuple *tuple, uint32 relfileOff, unsigned int itemSize)
+				 BrinTuple *tuple, uint32 relfileOff, int itemSize)
 {
 	uint32		relfileOffNext = 0;
 	uint32		relfileOffOrig = relfileOff;
@@ -2205,13 +2284,19 @@ EmitXmlPageItemIdArray(Page page, BlockNumber blkno)
 
 /*
  * Emit formatted tuples that reside on this block.
+ *
+ * This is responsible for emitting tuples from all pages that use an ItemId
+ * array.  This includes heapam, sequences, B-Tree, GiST, hash, regular BRIN
+ * pages, and GIN pages for the main B-Tree over key values (not data/posting
+ * tree pages).  It's also responsible for pending list GIN pages, which are
+ * similar to GIN pages for the main B-Tree.
  */
 static void
 EmitXmlTuples(Page page, BlockNumber blkno)
 {
 	OffsetNumber offset;
-	unsigned int itemSize;
-	unsigned int itemOffset;
+	int			itemSize;
+	int			itemOffset;
 	unsigned int itemFlags;
 	ItemId		itemId;
 	int			formatAs;
@@ -2272,8 +2357,8 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 		 offset = OffsetNumberNext(offset))
 	{
 		itemId = PageGetItemId(page, offset);
-		itemSize = (unsigned int) ItemIdGetLength(itemId);
-		itemOffset = (unsigned int) ItemIdGetOffset(itemId);
+		itemSize = (int) ItemIdGetLength(itemId);
+		itemOffset = (int) ItemIdGetOffset(itemId);
 		itemFlags = (unsigned int) ItemIdGetFlags(itemId);
 
 		/* LD_DEAD items may have storage, so we go by lp_len alone */
@@ -2307,9 +2392,8 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 			 (itemOffset + itemSize > bytesToFormat)))
 		{
 			fprintf(stderr, "pg_hexedit error: (%u,%u) item contents extend beyond block.\n"
-				   "blocksize %d  bytes read  %d  item start %d .\n",
-				   blkno, offset, blockSize, bytesToFormat,
-				   itemOffset + itemSize);
+					"blocksize %d bytes read %d item start %d.\n", blkno,
+					offset, blockSize, bytesToFormat, itemOffset + itemSize);
 			exitCode = 1;
 			continue;
 		}
@@ -2330,7 +2414,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 			tuple = (IndexTuple) PageGetItem(page, itemId);
 
 			EmitXmlIndexTuple(page, blkno, offset, tuple,
-							  pageOffset + itemOffset);
+							  pageOffset + itemOffset, itemSize);
 		}
 		else if (formatAs == ITEM_SPG_INN)
 		{
@@ -2430,16 +2514,13 @@ EmitXmlPostingTreeTids(Page page, BlockNumber blkno)
 		 * See description of posting page/data page format at top of
 		 * ginpostlinglist.c for more information.
 		 *
-		 * TODO: Add support for pre-9.4 uncompressed data pages.  We don't
-		 * support those versions, but arguably we should at least support the
-		 * format across pg_upgrade.
+		 * We don't emit anything for pre-9.4 uncompressed data pages versions,
+		 * since those versions are unsupported by pg_hexedit.  They could
+		 * still be encountered if the database underwent pg_upgrade, but that
+		 * should be rare.
 		 */
 		if (!GinPageIsCompressed(page))
-		{
-			fprintf(stderr, "pg_hexedit error: uncompressed GIN leaf pages unsupported\n");
-			exitCode = 1;
 			return;
-		}
 
 		itemOffset = GinDataPageGetData(page) - page;
 		offsetnum = FirstOffsetNumber;
@@ -2480,6 +2561,22 @@ EmitXmlPostingTreeTids(Page page, BlockNumber blkno)
 		}
 		while ((Pointer) nextseg <= endptr);
 	}
+}
+
+/*
+ * Emit hash bitmap page.
+ *
+ * This is just a matter of emitting a single tag for everything after the page
+ * header, but before pd_lower.
+ */
+static void
+EmitXmlHashBitmap(Page page, BlockNumber blkno)
+{
+	uint32			relfileOff = pageOffset + (PageGetContents(page) - page);
+	uint32			relfileOffNext = pageOffset + ((PageHeader) (page))->pd_lower;
+
+	EmitXmlTag(blkno, UINT_MAX, "hash bitmap", COLOR_YELLOW_DARK, relfileOff,
+			   relfileOffNext - 1);
 }
 
 /*
