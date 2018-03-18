@@ -308,7 +308,7 @@ PrintRelMapContents(RelMapFile *map)
 
 		catalogname = GetCatalogNameFromOid(reloid);
 
-		printf("%*d) %d - %s: %*d\n", ENTRY_NUM_COLS, i, reloid, catalogname,
+		printf("%*d) %u - %s: %*u\n", ENTRY_NUM_COLS, i, reloid, catalogname,
 			   CATALOG_NAME_COLS - (int) strlen(catalogname), relfilenode);
 	}
 
