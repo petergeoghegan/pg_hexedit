@@ -1320,7 +1320,8 @@ EmitXmlFooter(void)
  * callers generally pass (relfileOff + length) - 1.  This is slightly less
  * verbose than getting callers to pass length.
  *
- * B-Tree index callers may optionally pass a "level"
+ * B-Tree index callers may optionally pass a "level".  Passing
+ * InvalidBlockNumber avoids emitting any block number.
  */
 static void
 EmitXmlTag(BlockNumber blkno, uint32 level, const char *name, const char *color,
@@ -1333,8 +1334,10 @@ EmitXmlTag(BlockNumber blkno, uint32 level, const char *name, const char *color,
 	printf("      <end_offset>%u</end_offset>\n", relfileOffEnd);
 	if (level != UINT_MAX)
 		printf("      <tag_text>block %u (level %u) %s</tag_text>\n", blkno, level, name);
-	else
+	else if (blkno != InvalidBlockNumber)
 		printf("      <tag_text>block %u %s</tag_text>\n", blkno, name);
+	else
+		printf("      <tag_text>%s</tag_text>\n", name);
 	printf("      <font_colour>" COLOR_FONT_STANDARD "</font_colour>\n");
 	printf("      <note_colour>%s</note_colour>\n", color);
 	printf("    </TAG>\n");
@@ -2089,106 +2092,106 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 
 	if (specialType == SPEC_SECT_INDEX_BTREE && blkno == BTREE_METAPAGE)
 	{
-		EmitXmlTag(blkno, level, "btm_magic", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "btm_magic", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_magic),
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_version) - 1));
-		EmitXmlTag(blkno, level, "btm_version", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "btm_version", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_version),
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_root) - 1));
-		EmitXmlTag(blkno, level, "btm_root", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "btm_root", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_root),
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_level) - 1));
-		EmitXmlTag(blkno, level, "btm_level", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "btm_level", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_level),
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_fastroot) - 1));
-		EmitXmlTag(blkno, level, "btm_fastroot", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "btm_fastroot", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_fastroot),
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) - 1));
-		EmitXmlTag(blkno, level, "btm_fastlevel", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "btm_fastlevel", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel),
 				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
 	}
 	else if (specialType == SPEC_SECT_INDEX_HASH && blkno == HASH_METAPAGE)
 	{
-		EmitXmlTag(blkno, level, "hashm_magic", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_magic", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_magic),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_version) - 1));
-		EmitXmlTag(blkno, level, "hashm_version", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_version", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_version),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_ntuples) - 1));
-		EmitXmlTag(blkno, level, "hashm_ntuples", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_ntuples", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_ntuples),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_ffactor) - 1));
-		EmitXmlTag(blkno, level, "hashm_ffactor", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_ffactor", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_ffactor),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_bsize) - 1));
-		EmitXmlTag(blkno, level, "hashm_bsize", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_bsize", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_bsize),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_bmsize) - 1));
-		EmitXmlTag(blkno, level, "hashm_bmsize", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_bmsize", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_bmsize),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_bmshift) - 1));
-		EmitXmlTag(blkno, level, "hashm_bmshift", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_bmshift", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_bmshift),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_maxbucket) - 1));
-		EmitXmlTag(blkno, level, "hashm_maxbucket", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_maxbucket", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_maxbucket),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_highmask) - 1));
-		EmitXmlTag(blkno, level, "hashm_highmask", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_highmask", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_highmask),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_lowmask) - 1));
-		EmitXmlTag(blkno, level, "hashm_lowmask", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_lowmask", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_lowmask),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_ovflpoint) - 1));
-		EmitXmlTag(blkno, level, "hashm_ovflpoint", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_ovflpoint", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_ovflpoint),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_firstfree) - 1));
-		EmitXmlTag(blkno, level, "hashm_firstfree", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_firstfree", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_firstfree),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_nmaps) - 1));
-		EmitXmlTag(blkno, level, "hashm_nmaps", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_nmaps", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_nmaps),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_procid) - 1));
-		EmitXmlTag(blkno, level, "hashm_procid", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_procid", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_procid),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_spares) - 1));
-		EmitXmlTag(blkno, level, "hashm_spares", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_spares", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_spares),
 				   (metaStartOffset + offsetof(HashMetaPageData, hashm_mapp) - 1));
-		EmitXmlTag(blkno, level, "hashm_mapp", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "hashm_mapp", COLOR_PINK,
 				   metaStartOffset + offsetof(HashMetaPageData, hashm_mapp),
 				   (metaStartOffset + sizeof(HashMetaPageData)) - 1);
 	}
 	else if (specialType == SPEC_SECT_INDEX_GIN && blkno == GIN_METAPAGE_BLKNO)
 	{
-		EmitXmlTag(blkno, level, "head", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "head", COLOR_PINK,
 				   metaStartOffset + offsetof(GinMetaPageData, head),
 				   (metaStartOffset + offsetof(GinMetaPageData, tail) - 1));
-		EmitXmlTag(blkno, level, "tail", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "tail", COLOR_PINK,
 				   metaStartOffset + offsetof(GinMetaPageData, tail),
 				   (metaStartOffset + offsetof(GinMetaPageData, tailFreeSize) - 1));
-		EmitXmlTag(blkno, level, "tailFreeSize", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "tailFreeSize", COLOR_PINK,
 				   metaStartOffset + offsetof(GinMetaPageData, tailFreeSize),
 				   (metaStartOffset + offsetof(GinMetaPageData, nPendingPages) - 1));
-		EmitXmlTag(blkno, level, "nPendingPages", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "nPendingPages", COLOR_PINK,
 				   metaStartOffset + offsetof(GinMetaPageData, nPendingPages),
 				   (metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples) - 1));
-		EmitXmlTag(blkno, level, "nPendingHeapTuples", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "nPendingHeapTuples", COLOR_PINK,
 				   metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples),
 				   (metaStartOffset + offsetof(GinMetaPageData, nTotalPages) - 1));
-		EmitXmlTag(blkno, level, "nTotalPages", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "nTotalPages", COLOR_PINK,
 				   metaStartOffset + offsetof(GinMetaPageData, nTotalPages),
 				   (metaStartOffset + offsetof(GinMetaPageData, nEntryPages) - 1));
-		EmitXmlTag(blkno, level, "nEntryPages", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "nEntryPages", COLOR_PINK,
 				   metaStartOffset + offsetof(GinMetaPageData, nEntryPages),
 				   (metaStartOffset + offsetof(GinMetaPageData, nDataPages) - 1));
-		EmitXmlTag(blkno, level, "nDataPages", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "nDataPages", COLOR_PINK,
 				   metaStartOffset + offsetof(GinMetaPageData, nDataPages),
 				   (metaStartOffset + offsetof(GinMetaPageData, nEntries) - 1));
-		EmitXmlTag(blkno, level, "nEntries", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "nEntries", COLOR_PINK,
 				   metaStartOffset + offsetof(GinMetaPageData, nEntries),
 				   (metaStartOffset + offsetof(GinMetaPageData, ginVersion) - 1));
-		EmitXmlTag(blkno, level, "ginVersion", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "ginVersion", COLOR_PINK,
 				   metaStartOffset + offsetof(GinMetaPageData, ginVersion),
 				   (metaStartOffset + sizeof(GinMetaPageData)) - 1);
 	}
@@ -2197,7 +2200,7 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 		uint32		cachedOffset = metaStartOffset;
 		int			i;
 
-		EmitXmlTag(blkno, level, "magicNumber", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "magicNumber", COLOR_PINK,
 				   metaStartOffset + offsetof(SpGistMetaPageData, magicNumber),
 				   (metaStartOffset + offsetof(SpGistMetaPageData, lastUsedPages) - 1));
 
@@ -2205,11 +2208,11 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 
 		for (i = 0; i < SPGIST_CACHED_PAGES; i++)
 		{
-			EmitXmlTag(blkno, level, "lastUsedPages.blkno", COLOR_PINK,
+			EmitXmlTag(InvalidBlockNumber, level, "lastUsedPages.blkno", COLOR_PINK,
 					   cachedOffset,
 					   (cachedOffset + offsetof(SpGistLastUsedPage, freeSpace)) - 1);
 			cachedOffset += offsetof(SpGistLastUsedPage, freeSpace);
-			EmitXmlTag(blkno, level, "lastUsedPages.freeSpace", COLOR_PINK,
+			EmitXmlTag(InvalidBlockNumber, level, "lastUsedPages.freeSpace", COLOR_PINK,
 					   cachedOffset,
 					   (cachedOffset + sizeof(int) - 1));
 			cachedOffset += sizeof(int);
@@ -2218,16 +2221,16 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 #if PG_VERSION_NUM >= 90500
 	else if (specialType == SPEC_SECT_INDEX_BRIN && blkno == BRIN_METAPAGE_BLKNO)
 	{
-		EmitXmlTag(blkno, level, "brinMagic", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "brinMagic", COLOR_PINK,
 				   metaStartOffset + offsetof(BrinMetaPageData, brinMagic),
 				   (metaStartOffset + offsetof(BrinMetaPageData, brinVersion) - 1));
-		EmitXmlTag(blkno, level, "brinVersion", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "brinVersion", COLOR_PINK,
 				   metaStartOffset + offsetof(BrinMetaPageData, brinVersion),
 				   (metaStartOffset + offsetof(BrinMetaPageData, pagesPerRange) - 1));
-		EmitXmlTag(blkno, level, "pagesPerRange", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "pagesPerRange", COLOR_PINK,
 				   metaStartOffset + offsetof(BrinMetaPageData, pagesPerRange),
 				   (metaStartOffset + offsetof(BrinMetaPageData, lastRevmapPage) - 1));
-		EmitXmlTag(blkno, level, "lastRevmapPage", COLOR_PINK,
+		EmitXmlTag(InvalidBlockNumber, level, "lastRevmapPage", COLOR_PINK,
 				   metaStartOffset + offsetof(BrinMetaPageData, lastRevmapPage),
 				   (metaStartOffset + sizeof(BrinMetaPageData)) - 1);
 	}
