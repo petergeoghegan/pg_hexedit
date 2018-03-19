@@ -1031,7 +1031,7 @@ GetSpGistInnerTupleState(SpGistInnerTuple itup)
 
 	flagString = pg_malloc(128);
 
-	sprintf(flagString, "tuplestate: %s, allTheSame: %u, nNodes: %u, prefixSize: %u",
+	sprintf(flagString, "tupstate: %s, allTheSame: %u, nNodes: %u, prefixSize: %u",
 			GetSpGistStateString(itup->tupstate), itup->allTheSame, itup->nNodes, itup->prefixSize);
 
 	return flagString;
@@ -1050,7 +1050,7 @@ GetSpGistLeafTupleState(SpGistLeafTuple itup)
 
 	flagString = pg_malloc(128);
 
-	sprintf(flagString, "tuplestate: %s, size: %u",
+	sprintf(flagString, "tupstate: %s, size: %u",
 			GetSpGistStateString(itup->tupstate), itup->size);
 
 	return flagString;
@@ -1638,8 +1638,14 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	 * GIN has special rules for multicolumn indexes.  We don't break down the
 	 * structure of GIN's special representation of NULLness because doing so
 	 * requires access to catalog metadata.  See the GIN README for details.
+	 *
+	 * SP-GiST node tuples (from internal SP-GiST pages) do not have a NULL
+	 * bitmap, since there is implicitly only ever one attribute that could be
+	 * NULL, so the bit alone suffices.  See comments above
+	 * SpGistNodeTupleData.
 	 */
-	if (IndexTupleHasNulls(tuple))
+	Assert(specialType != SPEC_SECT_INDEX_SPGIST || !SpGistPageIsLeaf(page));
+	if (IndexTupleHasNulls(tuple) && specialType != SPEC_SECT_INDEX_SPGIST)
 	{
 		relfileOffNext +=
 			(IndexInfoFindDataOffset(tuple->t_info) - (relfileOff - relfileOffOrig));
@@ -1766,6 +1772,16 @@ EmitXmlSpGistInnerTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 					relfileOff, relfileOffNext - 1);
 
 	/*
+	 * Emit node tuple's contents (prefix).  The prefix value is optional.
+	 * Some SP-GiST operator classes never use them.  See spgist/README.
+	 */
+	relfileOff = relfileOffOrig + SGNTHDRSZ;
+	relfileOffNext = relfileOffOrig + SGNTHDRSZ + tuple->prefixSize;
+	if (relfileOff < relfileOffNext)
+		EmitXmlTupleTag(blkno, offset, "contents (prefix)", COLOR_WHITE,
+						relfileOff, relfileOffNext - 1);
+
+	/*
 	 * Print all SpGistNodeTuple entries, which actually share IndexTuple
 	 * representation
 	 */
@@ -1781,9 +1797,6 @@ EmitXmlSpGistInnerTuple(Page page, BlockNumber blkno, OffsetNumber offset,
  * Emit a wxHexEditor tag for leaf SP-GiST page tuple.
  *
  * We are prepared for the possibility that tuple is actually SpGistDeadTuple.
- *
- * Note that lp_len isn't needed here, since it's redundant, just as it is with
- * the IndexTuple representation.
  */
 static void
 EmitXmlSpGistLeafTuple(Page page, BlockNumber blkno, OffsetNumber offset,
