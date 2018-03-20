@@ -1,12 +1,14 @@
 /*
- * pg_relfilenodemapdata.c - PostgreSQL utility
- *                           that reads the data from pg_filenode.map files.
+ * pg_filenodemapdata.c - PostgreSQL utility
+ *                        that prints the contents of pg_filenode.map files.
  *
  * Copyright (c) 2018, VMware, Inc.
  * Copyright (c) 2018, PostgreSQL Global Development Group
  *
  * This is a standalone utlity for displaying the mappings within either a
- * global or per-database pg_filenode.map.
+ * global or per-database pg_filenode.map.  It is heavily based on the native
+ * PostgreSQL logic for reading pg_filenode.map files, which can be found
+ * within cache/relfilenodemap.c
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,7 +24,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
- * pg_relfilenodemapdata author: Peter Geoghegan <pg@bowt.ie>
+ * pg_filenodemapdata author: Peter Geoghegan <pg@bowt.ie>
  */
 #include "postgres.h"
 
@@ -140,11 +142,12 @@ DisplayOptions(unsigned int validOptions)
 {
 	if (validOptions == OPT_RC_COPYRIGHT)
 		printf
-			("pg_relfilenodemapdata %s (for PostgreSQL %s)"
-			 "\nCopyright (c) 2018, VMware, Inc.\n",
+			("pg_filenodemapdata %s (for PostgreSQL %s)\n"
+			 "Copyright (c) 2018, VMware, Inc.\n"
+			 "Copyright (c) 2018, PostgreSQL Global Development Group\n",
 			 HEXEDIT_VERSION, PG_VERSION);
 	printf
-		("\nUsage: pg_relfilenodemapdata file\n\n"
+		("\nUsage: pg_filenodemapdata file\n\n"
 		 "Displays details from a PostgreSQL pg_filenode.map file\n"
 		 "\nReport bugs to <pg@bowt.ie>\n");
 }

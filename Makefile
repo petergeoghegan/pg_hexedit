@@ -19,21 +19,21 @@ PGSQL_LDFLAGS = $(shell $(PG_CONFIG) --ldflags)
 PGSQL_LIB_DIR = $(shell $(PG_CONFIG) --libdir)
 PGSQL_BIN_DIR = $(shell $(PG_CONFIG) --bindir)
 
-DISTFILES= README.md Makefile pg_hexedit.c pg_relfilenodemapdata.c
+DISTFILES= README.md Makefile pg_hexedit.c pg_filenodemapdata.c
 
-all: pg_hexedit pg_relfilenodemapdata
+all: pg_hexedit pg_filenodemapdata
 
 pg_hexedit: pg_hexedit.o
 	${CC} ${PGSQL_LDFLAGS} ${LDFLAGS} -o pg_hexedit pg_hexedit.o -L${PGSQL_LIB_DIR} -lpgcommon
 
-pg_relfilenodemapdata: pg_relfilenodemapdata.o
-	${CC} ${PGSQL_LDFLAGS} ${LDFLAGS} -o pg_relfilenodemapdata pg_relfilenodemapdata.o -L${PGSQL_LIB_DIR} -lpgport
+pg_filenodemapdata: pg_filenodemapdata.o
+	${CC} ${PGSQL_LDFLAGS} ${LDFLAGS} -o pg_filenodemapdata pg_filenodemapdata.o -L${PGSQL_LIB_DIR} -lpgport
 
 pg_hexedit.o: pg_hexedit.c
 	${CC} ${PGSQL_CFLAGS} ${CFLAGS} -I${PGSQL_INCLUDE_DIR} pg_hexedit.c -c
 
-pg_relfilenodemapdata.o: pg_relfilenodemapdata.c
-	${CC} ${PGSQL_CFLAGS} ${CFLAGS} -I${PGSQL_INCLUDE_DIR} pg_relfilenodemapdata.c -c
+pg_filenodemapdata.o: pg_filenodemapdata.c
+	${CC} ${PGSQL_CFLAGS} ${CFLAGS} -I${PGSQL_INCLUDE_DIR} pg_filenodemapdata.c -c
 
 dist:
 	rm -rf pg_hexedit-${HEXEDIT_VERSION} pg_hexedit-${HEXEDIT_VERSION}.tar.gz
@@ -45,15 +45,15 @@ dist:
 install:
 	mkdir -p $(DESTDIR)$(PGSQL_BIN_DIR)
 	install pg_hexedit $(DESTDIR)$(PGSQL_BIN_DIR)
-	install pg_relfilenodemapdata $(DESTDIR)$(PGSQL_BIN_DIR)
+	install pg_filenodemapdata $(DESTDIR)$(PGSQL_BIN_DIR)
 
 uninstall:
 	rm -f '$(DESTDIR)$(PGSQL_BIN_DIR)/pg_hexedit$(X)'
-	rm -f '$(DESTDIR)$(PGSQL_BIN_DIR)/pg_relfilenodemapdata$(X)'
+	rm -f '$(DESTDIR)$(PGSQL_BIN_DIR)/pg_filenodemapdata$(X)'
 
 clean:
-	rm -f *.o pg_hexedit pg_relfilenodemapdata
+	rm -f *.o pg_hexedit pg_filenodemapdata
 
 distclean:
-	rm -f *.o pg_hexedit pg_relfilenodemapdata
+	rm -f *.o pg_hexedit pg_filenodemapdata
 	rm -rf pg_hexedit-${HEXEDIT_VERSION} pg_hexedit-${HEXEDIT_VERSION}.tar.gz

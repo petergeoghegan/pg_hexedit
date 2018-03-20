@@ -267,7 +267,7 @@ verify the pg_filenode.map checksum in passing):
 
 ```shell
   $ cd $PGDATA
-  $ pg_relfilenodemapdata base/12389/pg_filenode.map
+  $ pg_filenodemapdata base/12389/pg_filenode.map
     magic:               0x00592717
     num_mappings:        15
 
@@ -305,7 +305,7 @@ global pg_database table might need to be determined first, so that a
 particular base directory can be identified:
 
 ```shell
-  $ pg_relfilenodemapdata global/pg_filenode.map | grep pg_database
+  $ pg_filenodemapdata global/pg_filenode.map | grep pg_database
      0) 1262 - pg_database:                               1262
     21) 2671 - pg_database_datname_index:                 2671
     22) 2672 - pg_database_oid_index:                     2672
