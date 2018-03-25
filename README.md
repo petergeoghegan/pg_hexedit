@@ -29,8 +29,8 @@ used for simulating corruption/corruption analysis.
 The type of each block (whether it's a heap block, B-Tree index block, or other
 type of index block) is determined automatically based on the contents of the
 page's special section.  Heuristics are used to identify the page type of each
-and every block.  The block size listed in block 0 is assumed for the entire
-input file.
+and every block.  The block size listed in the first block found in the input
+file is assumed for the entire file.
 
 ![wxHexEditor with pg_type](./pg_type.png)
 *wxHexEditor with pg_type system catalog table*

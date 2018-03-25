@@ -173,6 +173,9 @@ static unsigned int currentBlock = 0;
 /* Segment size in bytes */
 static unsigned int segmentSize = RELSEG_SIZE * BLCKSZ;
 
+/* Relation-relative block offset to beginning of the segment (our file) */
+static unsigned int segmentBlockDelta = 0;
+
 /* Number of current segment */
 static unsigned int segmentNumber = 0;
 
@@ -372,7 +375,7 @@ ConsumeOptions(int numOptions, char **options)
 			{
 				rc = OPT_RC_INVALID;
 				fprintf(stderr, "pg_hexedit error: invalid range start identifier \"%s\"\n",
-					   optionString);
+						optionString);
 				exitCode = 1;
 				break;
 			}
@@ -423,7 +426,7 @@ ConsumeOptions(int numOptions, char **options)
 			if (x >= (numOptions - 2))
 			{
 				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: missing lsn\n");
+				fprintf(stderr, "pg_hexedit error: missing LSN\n");
 				exitCode = 1;
 				break;
 			}
@@ -436,8 +439,8 @@ ConsumeOptions(int numOptions, char **options)
 			if ((afterThreshold = GetOptionXlogRecPtr(optionString)) == InvalidXLogRecPtr)
 			{
 				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: invalid lsn identifier \"%s\"\n",
-					   optionString);
+				fprintf(stderr, "pg_hexedit error: invalid LSN identifier \"%s\"\n",
+						optionString);
 				exitCode = 1;
 				break;
 			}
@@ -470,7 +473,7 @@ ConsumeOptions(int numOptions, char **options)
 			{
 				rc = OPT_RC_INVALID;
 				fprintf(stderr, "pg_hexedit error: invalid segment size requested \"%s\"\n",
-					   optionString);
+						optionString);
 				exitCode = 1;
 				break;
 			}
@@ -507,7 +510,7 @@ ConsumeOptions(int numOptions, char **options)
 			{
 				rc = OPT_RC_INVALID;
 				fprintf(stderr, "pg_hexedit error: invalid segment number requested \"%s\"\n",
-					   optionString);
+						optionString);
 				exitCode = 1;
 				break;
 			}
@@ -528,7 +531,8 @@ ConsumeOptions(int numOptions, char **options)
 				else
 				{
 					rc = OPT_RC_FILE;
-					fprintf(stderr, "pg_hexedit error: could not open file \"%s\"\n", optionString);
+					fprintf(stderr, "pg_hexedit error: could not open file \"%s\"\n",
+							optionString);
 					exitCode = 1;
 					break;
 				}
@@ -558,7 +562,8 @@ ConsumeOptions(int numOptions, char **options)
 			if (optionString[0] != '-')
 			{
 				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: invalid option string \"%s\"\n", optionString);
+				fprintf(stderr, "pg_hexedit error: invalid option string \"%s\"\n",
+						optionString);
 				exitCode = 1;
 				break;
 			}
@@ -593,7 +598,8 @@ ConsumeOptions(int numOptions, char **options)
 
 					default:
 						rc = OPT_RC_INVALID;
-						fprintf(stderr, "pg_hexedit error: unknown option '%c'\n", optionString[y]);
+						fprintf(stderr, "pg_hexedit error: unknown option '%c'\n",
+								optionString[y]);
 						exitCode = 1;
 						break;
 				}
@@ -677,8 +683,8 @@ GetBlockSize(void)
 		localSize = (unsigned int) PageGetPageSize(&localCache);
 	else
 	{
-		fprintf(stderr, "pg_hexedit error: unable to read full page header from block 0\n"
-			   "read %u bytes\n", bytesRead);
+		fprintf(stderr, "pg_hexedit error: unable to read full page header from first block\n"
+				"read %u bytes\n", bytesRead);
 		exitCode = 1;
 	}
 
@@ -1158,15 +1164,15 @@ EmitXmlPage(BlockNumber blkno)
 
 	if (firstType != specialType)
 	{
-		fprintf(stderr, "pg_hexedit error: special section indicated type unexpectedly changed from \"%s\" to \"%s\" at block %u\n",
+		fprintf(stderr, "pg_hexedit error: special section indicated type unexpectedly changed from \"%s\" to \"%s\" at file block %u\n",
 				GetSpecialSectionString(firstType),
 				GetSpecialSectionString(specialType), blkno);
 		exitCode = 1;
 	}
 
 	/*
-	 * Check to see if we must skip this block due to it falling behind
-	 * LSN threshold.
+	 * Check to see if we must skip this block due to it falling behind LSN
+	 * threshold
 	 */
 	if ((blockOptions & BLOCK_SKIP_LSN))
 	{
@@ -1332,12 +1338,14 @@ EmitXmlTag(BlockNumber blkno, uint32 level, const char *name, const char *color,
 	printf("    <TAG id=\"%u\">\n", tagNumber++);
 	printf("      <start_offset>%u</start_offset>\n", relfileOff);
 	printf("      <end_offset>%u</end_offset>\n", relfileOffEnd);
-	if (level != UINT_MAX)
-		printf("      <tag_text>block %u (level %u) %s</tag_text>\n", blkno, level, name);
-	else if (blkno != InvalidBlockNumber)
-		printf("      <tag_text>block %u %s</tag_text>\n", blkno, name);
-	else
+	if (blkno == InvalidBlockNumber)
 		printf("      <tag_text>%s</tag_text>\n", name);
+	else if (level != UINT_MAX)
+		printf("      <tag_text>block %u (level %u) %s</tag_text>\n",
+			   blkno + segmentBlockDelta, level, name);
+	else
+		printf("      <tag_text>block %u %s</tag_text>\n",
+			   blkno + segmentBlockDelta, name);
 	printf("      <font_colour>" COLOR_FONT_STANDARD "</font_colour>\n");
 	printf("      <note_colour>%s</note_colour>\n", color);
 	printf("    </TAG>\n");
@@ -1355,7 +1363,8 @@ EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
 	printf("      <start_offset>%u</start_offset>\n", relfileOff);
 	printf("      <end_offset>%lu</end_offset>\n", (relfileOff + sizeof(ItemIdData)) - 1);
 	printf("      <tag_text>(%u,%d) lp_len: %u, lp_off: %u, lp_flags: %s</tag_text>\n",
-		   blkno, offset, ItemIdGetLength(itemId), ItemIdGetOffset(itemId), textFlags);
+		   blkno + segmentBlockDelta, offset, ItemIdGetLength(itemId),
+		   ItemIdGetOffset(itemId), textFlags);
 	printf("      <font_colour>" COLOR_FONT_STANDARD "</font_colour>\n");
 	printf("      <note_colour>" COLOR_BLUE_LIGHT "</note_colour>\n");
 	printf("    </TAG>\n");
@@ -1377,7 +1386,8 @@ EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset, const char *name,
 	if (relfileOff > relfileOffEnd)
 	{
 		fprintf(stderr, "pg_hexedit error: (%u,%u) tuple tag \"%s\" is malformed (%u > %u)\n",
-				blkno, offset, name, relfileOff, relfileOffEnd);
+				blkno + segmentBlockDelta, offset, name, relfileOff,
+				relfileOffEnd);
 		exitCode = 1;
 		return;
 	}
@@ -1385,7 +1395,8 @@ EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset, const char *name,
 	printf("    <TAG id=\"%u\">\n", tagNumber++);
 	printf("      <start_offset>%u</start_offset>\n", relfileOff);
 	printf("      <end_offset>%u</end_offset>\n", relfileOffEnd);
-	printf("      <tag_text>(%u,%u) %s</tag_text>\n", blkno, offset, name);
+	printf("      <tag_text>(%u,%u) %s</tag_text>\n",
+		   blkno + segmentBlockDelta, offset, name);
 	printf("      <font_colour>" COLOR_FONT_STANDARD "</font_colour>\n");
 	printf("      <note_colour>%s</note_colour>\n", color);
 	printf("    </TAG>\n");
@@ -1524,7 +1535,7 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	else if (itemSize < (relfileOffNext - relfileOffOrig))
 	{
 		fprintf(stderr, "pg_hexedit error: lp_len %d from (%u,%u) is undersized\n",
-				itemSize, blkno, offset);
+				itemSize, blkno + segmentBlockDelta, offset);
 		exitCode = 1;
 		return;
 	}
@@ -1576,7 +1587,8 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	else if (itemSize != IndexTupleSize(tuple))
 	{
 		fprintf(stderr, "pg_hexedit error: (%u,%u) lp_len %u does not equal IndexTupleSize() %lu\n",
-				blkno, offset, itemSize, IndexTupleSize(tuple));
+				blkno + segmentBlockDelta, offset, itemSize,
+				IndexTupleSize(tuple));
 		exitCode = 1;
 		itemSize = Max(sizeof(IndexTupleData),
 					   Min(itemSize, IndexTupleSize(tuple)));
@@ -2056,13 +2068,13 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 		if (blockOptions & BLOCK_CHECKSUMS ||
 			((blockOptions & BLOCK_ZEROSUMS) && pageHeader->pd_checksum != 0))
 		{
-			uint32		delta = (segmentSize / blockSize) * segmentNumber;
-			uint16		calc_checksum = pg_checksum_page(page, delta + blkno);
+			uint16		calc_checksum;
 
+			calc_checksum = pg_checksum_page(page, blkno + segmentBlockDelta);
 			if (calc_checksum != pageHeader->pd_checksum)
 			{
 				fprintf(stderr, "pg_hexedit error: checksum failure: calculated 0x%04x\n",
-					   calc_checksum);
+						calc_checksum);
 				exitCode = 1;
 			}
 		}
@@ -2287,7 +2299,7 @@ EmitXmlPageItemIdArray(Page page, BlockNumber blkno)
 			default:
 				sprintf(textFlags, "0x%02x", itemFlags);
 				fprintf(stderr, "pg_hexedit error: invalid item pointer flags for (%u,%u): %s\n",
-						blkno, offset, textFlags);
+						blkno + segmentBlockDelta, offset, textFlags);
 				exitCode = 1;
 				break;
 		}
@@ -2320,19 +2332,11 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 
 	/* Loop through the items on the block */
 	if (maxOffset == 0)
-	{
-		if (specialType == SPEC_SECT_INDEX_BTREE)
-		{
-			fprintf(stderr, "pg_hexedit error: empty nbtree block %u - no items listed\n",
-					blkno);
-			exitCode = 1;
-		}
 		return;
-	}
 	else if ((maxOffset < 0) || (maxOffset > blockSize))
 	{
-		fprintf(stderr, "pg_hexedit error: corrupt PageGetMaxOffsetNumber() offset %d found on block %u\n",
-			   maxOffset, blkno);
+		fprintf(stderr, "pg_hexedit error: corrupt PageGetMaxOffsetNumber() offset %d found on file block %u\n",
+				maxOffset, blkno);
 		exitCode = 1;
 		return;
 	}
@@ -2383,7 +2387,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 			if (itemFlags == LP_NORMAL)
 			{
 				fprintf(stderr, "pg_hexedit error: (%u,%u) LP_NORMAL item has lp_len 0\n",
-						blkno, offset);
+						blkno + segmentBlockDelta, offset);
 				exitCode = 1;
 			}
 			continue;
@@ -2392,7 +2396,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 		if (itemFlags == LP_REDIRECT || itemFlags == LP_UNUSED)
 		{
 			fprintf(stderr, "pg_hexedit error: (%u,%u) LP_REDIRECT or LP_UNUSED item has lp_len %u\n",
-					blkno, offset, itemSize);
+					blkno + segmentBlockDelta, offset, itemSize);
 			exitCode = 1;
 			continue;
 		}
@@ -2408,8 +2412,9 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 			 (itemOffset + itemSize > bytesToFormat)))
 		{
 			fprintf(stderr, "pg_hexedit error: (%u,%u) item contents extend beyond block.\n"
-					"blocksize %d bytes read %d item start %d.\n", blkno,
-					offset, blockSize, bytesToFormat, itemOffset + itemSize);
+					"blocksize %d bytes read %d item start %d.\n",
+					blkno + segmentBlockDelta, offset, blockSize,
+					bytesToFormat, itemOffset + itemSize);
 			exitCode = 1;
 			continue;
 		}
@@ -2933,6 +2938,22 @@ EmitXmlBody(void)
 {
 	unsigned int initialRead = 1;
 	unsigned int contentsToDump = 1;
+
+	/*
+	 * Calculate an offset in blocks to the segment file, from the start of the
+	 * logical relation (or from the start of segment 0, if you prefer).  This
+	 * is needed so that annotations and error messages do not emit
+	 * file-relative block numbers within TIDs.
+	 *
+	 * Relation-relative block numbers should always be used in annotations,
+	 * including when a raw block number is required, but should only be used
+	 * for TIDs in error messages.  If an error message references a block
+	 * number, then it is naturally file-relative; otherwise, a TID would have
+	 * been used.  The distinction between relation-relative and file-relative
+	 * block numbers is not just an implementation detail, since input options
+	 * like BLOCK_RANGE are always in terms of file-relative block numbers.
+	 */
+	segmentBlockDelta = (segmentSize / blockSize) * segmentNumber;
 
 	/*
 	 * If the user requested a block range, seek to the correct position
