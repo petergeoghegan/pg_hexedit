@@ -2403,16 +2403,13 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 
 		/*
 		 * Make sure the item can physically fit on this block before
-		 * formatting.  Since in a future pg version lp_len might be used
-		 * for abbreviated keys in indexes, only insist on this for heap
-		 * pages
+		 * formatting
 		 */
-		if (formatAs == ITEM_HEAP &&
-			((itemOffset + itemSize > blockSize) ||
-			 (itemOffset + itemSize > bytesToFormat)))
+		if (itemOffset + itemSize > blockSize ||
+			itemOffset + itemSize > bytesToFormat)
 		{
 			fprintf(stderr, "pg_hexedit error: (%u,%u) item contents extend beyond block.\n"
-					"blocksize %d bytes read %d item start %d.\n",
+					"blocksize %d bytes, read %d bytes, item start offset %d.\n",
 					blkno + segmentBlockDelta, offset, blockSize,
 					bytesToFormat, itemOffset + itemSize);
 			exitCode = 1;
