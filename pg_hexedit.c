@@ -2509,7 +2509,7 @@ EmitXmlPostingTreeTids(Page page, BlockNumber blkno)
 			 * These TIDs are white because within this page (an internal
 			 * posting tree page) they are keys, not pointers
 			 */
-			EmitXmlTupleTag(blkno, offsetnum, "PostingItem->key->hi_lo", COLOR_WHITE,
+			EmitXmlTupleTag(blkno, offsetnum, "PostingItem->key->bi_hi", COLOR_WHITE,
 							pageOffset + itemOffset,
 							(pageOffset + itemOffset + sizeof(uint16)) - 1);
 			itemOffset += sizeof(uint16);
