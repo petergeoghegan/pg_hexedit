@@ -989,15 +989,33 @@ GetIndexTupleFlags(IndexTuple itup)
 	sprintf(flagString, "t_info IndexTupleSize(): %zu",
 			IndexTupleSize(itup));
 
-	if (itup->t_info & (INDEX_VAR_MASK | INDEX_NULL_MASK))
+	if (itup->t_info & ~INDEX_SIZE_MASK)
 		strcat(flagString, ", (");
 
+	/*
+	 * Bit 0x2000 is reserved for index-AM specific usage.
+	 *
+	 * Theoretically, we should only find this status bit set within a hash
+	 * IndexTuple.  However, we assume that it relates to some future use when
+	 * encountered in an IndexTuple from an index associated with some other
+	 * AM.  It seems worthwhile to try to be forward compatible.
+	 *
+	 * INDEX_MOVED_BY_SPLIT_MASK only appeared in Postgres v10, but there
+	 * doesn't seem to be much point in taking that into account.
+	 */
+	if (itup->t_info & 0x2000)
+	{
+		if (specialType != SPEC_SECT_INDEX_HASH)
+			strcat(flagString, "0x2000 - reserved bit|");
+		else
+			strcat(flagString, "INDEX_MOVED_BY_SPLIT_MASK|");
+	}
 	if (itup->t_info & INDEX_VAR_MASK)
 		strcat(flagString, "INDEX_VAR_MASK|");
 	if (itup->t_info & INDEX_NULL_MASK)
 		strcat(flagString, "INDEX_NULL_MASK|");
 
-	if (itup->t_info & (INDEX_VAR_MASK | INDEX_NULL_MASK))
+	if (itup->t_info & ~INDEX_SIZE_MASK)
 	{
 		flagString[strlen(flagString) - 1] = '\0';
 		strcat(flagString, ")");
