@@ -2139,7 +2139,21 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) - 1));
 		EmitXmlTag(InvalidBlockNumber, level, "btm_fastlevel", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel),
+#if PG_VERSION_NUM < 11000
 				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
+#else
+				   (metaStartOffset + offsetof(BTMetaPageData, btm_oldest_btpo_xact) - 1));
+		/*
+		 * These fields are only actually active when btm_version >= 3 (which
+		 * is v11's standard BTREE_VERSION)
+		 */
+		EmitXmlTag(InvalidBlockNumber, level, "btm_oldest_btpo_xact", COLOR_PINK,
+				   metaStartOffset + offsetof(BTMetaPageData, btm_oldest_btpo_xact),
+				   (metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_heap_tuples) - 1));
+		EmitXmlTag(InvalidBlockNumber, level, "btm_last_cleanup_num_heap_tuples", COLOR_PINK,
+				   metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_heap_tuples),
+				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
+#endif
 	}
 	else if (specialType == SPEC_SECT_INDEX_HASH && blkno == HASH_METAPAGE)
 	{
