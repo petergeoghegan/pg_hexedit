@@ -1628,17 +1628,52 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		relfileOffNext += sizeof(uint16);
 		EmitXmlTupleTag(blkno, offset, "t_tid->bi_lo", COLOR_BLUE_LIGHT, relfileOff,
 						relfileOffNext - 1);
-		/* For posting tree pointers, offsetNumber is GIN_TREE_POSTING */
+
+		/*
+		 * Handle cases where item pointer offset is abused, but t_tid still
+		 * contains a valid block number.  These cases are handled here because
+		 * they involve IndexTuples that contain a t_tid that is still
+		 * essentially a conventional TID.  These cases are:
+		 *
+		 * 1. GIN posting tree pointers (within the leaf level of the main
+		 * entry tree).  The fact that it's a posting tree pointer (and not the
+		 * start of a posting list) is indicated by using the magic offset
+		 * number GIN_TREE_POSTING.  We use GinIsPostingTree() to test this.
+		 *
+		 * 2. nbtree pivot tuples that have undergone truncation (PostgreSQL
+		 * v11+ only).  This is indicated by the INDEX_ALT_TID_MASK bit having
+		 * been set.  The offset field holds the actual number of attributes.
+		 * The nbtree code uses BTreeTupGetNAtts() to test this.
+		 */
 		relfileOff = relfileOffNext;
 		relfileOffNext += sizeof(uint16);
-		EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber", COLOR_BLUE_DARK,
-						relfileOff, relfileOffNext - 1);
+		if (specialType == SPEC_SECT_INDEX_GIN && GinIsPostingTree(tuple))
+			EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber/GinIsPostingTree()",
+							COLOR_BLUE_DARK, relfileOff, relfileOffNext - 1);
+#if PG_VERSION_NUM >= 11000
+		else if (specialType == SPEC_SECT_INDEX_BTREE &&
+				 (tuple->t_info & INDEX_ALT_TID_MASK) != 0)
+			EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber/BTreeTupGetNAtts()",
+							COLOR_BLUE_DARK, relfileOff, relfileOffNext - 1);
+#endif
+		/*
+		 * Regular/common case, where offset number is actually intended to be
+		 * accessed as a conventional offset (i.e. accessed using macros such
+		 * as ItemPointerGetOffsetNumber())
+		 */
+		else
+			EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber", COLOR_BLUE_DARK,
+							relfileOff, relfileOffNext - 1);
 	}
 	else
 	{
 		/*
-		 * We decode the meaning of t_tid when GIN has abused the item pointer
-		 * offset to support posting lists
+		 * GIN posting lists (within the leaf level of the main entry tree)
+		 * abuse every item pointer field, so everything is handled here all at
+		 * once.  Naturally, there are block numbers (as well as offset
+		 * numbers) contained within posting lists, since a posting list is
+		 * literally a list of TIDs.  However, none of this information is
+		 * accessed in the conventional manner.
 		 */
 		relfileOffNext = relfileOff + sizeof(uint16);
 		EmitXmlTupleTag(blkno, offset, "t_tid->bi_hi/GinItupIsCompressed()",
