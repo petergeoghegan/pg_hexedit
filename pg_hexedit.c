@@ -993,22 +993,24 @@ GetIndexTupleFlags(IndexTuple itup)
 		strcat(flagString, ", (");
 
 	/*
-	 * Bit 0x2000 is reserved for index-AM specific usage.
+	 * Bit 0x2000/INDEX_AM_RESERVED_BIT is reserved for AM-specific usage.  The
+	 * INDEX_AM_RESERVED_BIT flag was only added in Postgres v11, so 0x2000 is
+	 * used to support earlier versions that lack the flag but still use the
+	 * status bit.
 	 *
-	 * Theoretically, we should only find this status bit set within a hash
-	 * IndexTuple.  However, we assume that it relates to some future use when
-	 * encountered in an IndexTuple from an index associated with some other
-	 * AM.  It seems worthwhile to try to be forward compatible.
-	 *
-	 * INDEX_MOVED_BY_SPLIT_MASK only appeared in Postgres v10, but there
-	 * doesn't seem to be much point in taking that into account.
+	 * Theoretically, we should only find this status bit set within a hash or
+	 * nbtree IndexTuple (and only on versions 10+ and 11+ respectively).
+	 * However, it's easy to maintain forwards compatibility when pg_hexedit is
+	 * built against earlier Postgres versions, so do so.
 	 */
 	if (itup->t_info & 0x2000)
 	{
-		if (specialType != SPEC_SECT_INDEX_HASH)
-			strcat(flagString, "0x2000 - reserved bit|");
-		else
+		if (specialType == SPEC_SECT_INDEX_HASH)
 			strcat(flagString, "INDEX_MOVED_BY_SPLIT_MASK|");
+		else if (specialType == SPEC_SECT_INDEX_BTREE)
+			strcat(flagString, "INDEX_ALT_TID_MASK|");
+		else
+			strcat(flagString, "INDEX_AM_RESERVED_BIT|");
 	}
 	if (itup->t_info & INDEX_VAR_MASK)
 		strcat(flagString, "INDEX_VAR_MASK|");
