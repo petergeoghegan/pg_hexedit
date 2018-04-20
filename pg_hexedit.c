@@ -1643,7 +1643,7 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		 * 2. nbtree pivot tuples that have undergone truncation (PostgreSQL
 		 * v11+ only).  This is indicated by the INDEX_ALT_TID_MASK bit having
 		 * been set.  The offset field holds the actual number of attributes.
-		 * The nbtree code uses BTreeTupGetNAtts() to test this.
+		 * The nbtree code uses BTreeTupleGetNAtts() to test this.
 		 */
 		relfileOff = relfileOffNext;
 		relfileOffNext += sizeof(uint16);
@@ -1653,7 +1653,7 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 #if PG_VERSION_NUM >= 11000
 		else if (specialType == SPEC_SECT_INDEX_BTREE &&
 				 (tuple->t_info & INDEX_ALT_TID_MASK) != 0)
-			EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber/BTreeTupGetNAtts()",
+			EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber/BTreeTupleGetNAtts()",
 							COLOR_BLUE_DARK, relfileOff, relfileOffNext - 1);
 #endif
 		/*
