@@ -184,7 +184,8 @@ Replacing /home/pg/code/pg_hexedit/.wxHexEditor with pg_hexedit optimized settin
 
 The advantage of using the btree_hexedit script for B-Tree indexes over the
 generic relation_hexedit script is that btree_hexedit sets offsets for every
-block that is a direct child of the root page.
+non-leaf block that is a direct child of the root page (and for the root page
+itself).
 
 There is also a gin_hexedit convenience script.  This does not set offsets
 automatically.  Instead, it runs an SQL query that summarizes contiguous ranges

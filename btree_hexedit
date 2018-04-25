@@ -39,8 +39,10 @@ fi
 # forgotten.  This is also where we generate convenience "Go to Offset" dialog
 # offsets in the registry/cache.
 #
-# For B-Tree indexes, generate offsets to all child of the root pages in "Go to
-# Offset" dialog cache.  The root page is also added as a separate offset.
+# For B-Tree indexes, generate offsets to all non-leaf children of the root
+# pages in "Go to Offset" dialog cache (only do this when they're non-leaf
+# pages to avoid having an offset to every page in the index).  The root page
+# is also added as a separate offset.
 #
 # Note that the query will return NULL for very small tables, which leaves us
 # without any such cached offsets.
@@ -51,11 +53,11 @@ if [ ! $? -eq 0 ]; then
 fi
 ROOT_CHILD_OFFSETS=$(psql --no-psqlrc -tA -c "WITH offset_strings(string) AS (
   SELECT 'GoToOffset' || ROW_NUMBER() OVER() || '=' || (substring(ctid::text from '([0-9]+)')::int8 * (2^13))
-  FROM bt_page_items('$relname', (SELECT root::int4 FROM bt_metap('$relname')))
+  FROM bt_page_items('$relname', (SELECT root::int4 FROM bt_metap('$relname') where level > 1))
 )
 SELECT string_agg(string, chr(10)) FROM offset_strings;")
 if [ ! $? -eq 0 ]; then
-  echo "obtaining children of root block for offset dialog failed"
+  echo "obtaining non-leaf children of root block for offset dialog failed"
   exit
 fi
 
