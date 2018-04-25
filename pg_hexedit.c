@@ -1755,7 +1755,7 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		 * 4. This isn't a pending list page.  These also don't abuse the item
 		 * pointer representation.
 		 *
-		 * The !GinIsLeaf() part of the test handles points 3 and 4.
+		 * The !GinPageIsLeaf() part of the test handles points 3 and 4.
 		 */
 		if (specialType != SPEC_SECT_INDEX_GIN || !GinPageIsLeaf(page) ||
 			GinIsPostingTree(tuple) || GinGetNPosting(tuple) == 0)
