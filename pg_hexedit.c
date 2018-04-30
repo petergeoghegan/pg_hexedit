@@ -1561,11 +1561,9 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	}
 
 	/*
-	 * Tuple contents (all attributes/columns) is slightly off-white, to
-	 * suggest that we can't parse it due to not having access to catalog
-	 * metadata, but consider it to be "payload", in contrast to the plain
-	 * white area in the "hole" between the upper and lower sections of each
-	 * page.
+	 * Tuple content are slightly off-white.  This is intended to suggest that
+	 * we can't parse the contents due to not having access to catalog
+	 * metadata, but consider it to be "payload".
 	 */
 	relfileOff = relfileOffNext;
 	EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE, relfileOff,
