@@ -2126,8 +2126,8 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 			calc_checksum = pg_checksum_page(page, blkno + segmentBlockDelta);
 			if (calc_checksum != pageHeader->pd_checksum)
 			{
-				fprintf(stderr, "pg_hexedit error: checksum failure: calculated 0x%04x\n",
-						calc_checksum);
+				fprintf(stderr, "pg_hexedit error: checksum failure in block %u (calculated 0x%04x)\n",
+						blkno, calc_checksum);
 				exitCode = 1;
 			}
 		}
