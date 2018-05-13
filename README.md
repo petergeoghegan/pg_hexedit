@@ -235,23 +235,43 @@ convenience scripts.
 
 ## Direct invocation
 
+Invoking pg_hexedit directly (not using convenience scripts) is useful when you
+want to work on a copy of the database that is not under the control of a
+running PostgreSQL server, or when a psql connection to the running PostgreSQL
+server cannot be established.  pg_hexedit should have stdout redirected to a
+file.  wxHexEditor will automatically open tags for a target file when it is
+opened and a tag file is found in the same directory (provided the tag file has
+the same name as the target file with a ".tags" extension postfixed).
+Alternatively, tags can be directly imported once wxHexEditor has opened a
+file.
+
 pg_hexedit retains a minority of the flags that appear in pg_filedump.  Usage:
 
 ```shell
   pg_hexedit [options] file
 ```
 
-Three new flags, `-x`, `-l`, and `-z`, have been added (they do not appear in
-pg_filedump).  See `pg_hexedit -h` for details of all available options.
+The `-D` flag can be used to decode tuples.  The flag should be followed by a
+tuple descriptor string in pg_hexedit's "attrlist" format.  Decoding allows
+pg_hexedit to generate distinct tags for each user attribute/column value in
+each tuple, rather than just creating a single tag for all column data within
+each tuple.  The attrlist format consists of a list with an entry for each
+pg_attribute entry's attlen, attname, and attalign, which should be specified
+as:
 
-Invoking pg_hexedit directly (not using convenience scripts) is useful when you
-want to work on a copy of the database that is not under the control of a
-running PostgreSQL server, or when a psql connection to the running PostgreSQL
-server cannot be established.  wxHexEditor will automatically open tags for a
-target file when it is opened, provided the tag file has the same name as the
-target file with a ".tags" extension postfixed (the convenience scripts rely on
-this).  Alternatively, tags can be directly imported once wxHexEditor has
-opened a file.
+`-D 'attlen,attname,attalign,attlen,attname,attalign,...'`
+
+Each attribute's triple of metadata should appear in pg_attribute.attnum order.
+The convenience scripts use an SQL query to form the string.  The attrlist SQL
+query will produce a correct `-D` argument when run against a relation with the
+same schema as the target relation/file, even when run against an unrelated
+PostgreSQL installation, provided a compatible CPU architecture is used.  Note
+that dropped columns need to be represented in the attrlist string.  Elements
+that contain whitespace or comma characters can be parsed as a single element
+by appearing within double quotes.  It's good practice to use single quotes for
+the attrlist argument as a whole.
+
+See `pg_hexedit -h` for full details of all available options.
 
 ### Determining catalog relation file mappings without a database connection
 
@@ -338,76 +358,6 @@ EmitXmlTupleTag()
 
 These routines could be changed to call a per-hexeditor callback.  Each
 supported hex editor could have its own "provider" routines.
-
-## Interpreting tuple contents with pageinspect
-
-Because the pg_hexedit executable is a frontend utility that doesn't have
-direct access to catalog metadata, tuple contents are not broken up into
-multiple attribute/column tags.  The frontend utility has no way of determining
-what the "shape" of tuples ought to be.
-
-[`contrib/pageinspect`](https://www.postgresql.org/docs/current/static/pageinspect.html)
-provides a solution -- it can split up the contents of the tuple further.
-
-Suppose that you want to interpret the contents of the tuple for the `pg_type`
-`int4` type's entry. This tuple (most columns omitted for brevity):
-
-```sql
-postgres=# select ctid, oid from  pg_type where typname = 'int4';
- ctid  | oid
--------+-----
- (0,8) |  23
-(1 row)
-```
-
-We need to build a set of arguments to the pageinspect function
-`tuple_data_split()`.  There are some subtleties that we go over now.
-
-Copy all 140 bytes of the tuple contents within wxHexEditor into the system
-clipboard (Ctrl + C). These are colored off-white or light gray.  Do not copy
-header bytes, and do not copy the NUL bytes between the next tuple (alignment
-padding), if any, which are *plain* white.
-
-You should now be able to paste something close to the raw tuple contents
-into a scratch buffer in your text editor.
-
-`69 6E 74 34 00 00 ...` (Truncated for brevity.)
-
-Copy and paste the "DataInterpreter" values for both `t_infomask2` and
-`t_infomask` in plain decimal in the same scratch buffer file (N.B.: the
-physical order of fields on the page *is* `t_infomask2` followed by
-`t_infomask`, the opposite order to the order of corresponding
-`tuple_data_split()` arguments).
-
-You're probably using a little-endian machine (x86 is little-endian), and
-that's what "DataInterpreter" will show as decimal by default.  Don't bother
-trying to use bitstrings and integer casts (e.g. `SELECT x'1E00'::int4`),
-because Postgres interprets that as having big-endian byte order, regardless of
-the system's actual byte order.  It's best to just use interpreted decimal
-values everywhere that an int4 argument is required.
-
-Finally, we'll need to figure out a `t_bits` argument to give to
-`tuple_data_split()`, which is a bit tricky with alignment considerations.
-Putting it all together:
-
-```sql
-postgres=# SELECT tuple_data_split(
-    rel_oid => 'pg_type'::regclass,
-    t_data => E'\\x69 6E 74 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0B 00 00 00 0A 00 00 00
-04 00 01 62 4E 00 01 2C 00 00 00 00 00 00 00 00 EF 03 00 00 2A 00 00 00 2B 00
-00 00 66 09 00 00 67 09 00 00 00 00 00 00 00 00 00 00 00 00 00 00 69 70 00 00
-00 00 00 00 FF FF FF FF 00 00 00 00 00 00 00 00',
-    t_infomask2 => 30,
-    t_infomask => 2313,
-    t_bits => '11111111111111111111111111100000');
-```
-
-This will return a bytea array, with one element per tuple.  Note that this
-doesn't count the Oid value as an attribute, because it's a system column.
-The first element returned in our `bytea` array is the name of the type,
-`int4`.
 
 ## Areas that might be improved someday
 

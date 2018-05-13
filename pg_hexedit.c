@@ -72,6 +72,7 @@
 #define COLOR_RED_DARK			"#912C21"
 #define COLOR_RED_LIGHT			"#E74C3C"
 #define COLOR_WHITE				"#CCD1D1"
+#define COLOR_OFF_WHITE			"#989B9B"
 #define COLOR_YELLOW_DARK		"#F1C40F"
 #define COLOR_YELLOW_LIGHT		"#E9E850"
 
@@ -81,7 +82,8 @@ typedef enum blockSwitches
 	BLOCK_CHECKSUMS =		0x00000040,	/* -k: verify block checksums */
 	BLOCK_ZEROSUMS =		0x00000080,	/* -z: verify block checksums when non-zero */
 	BLOCK_SKIP_LEAF =		0x00000100,	/* -l: Skip leaf pages (use whole page tag) */
-	BLOCK_SKIP_LSN =		0x00000200	/* -x: Skip pages before LSN */
+	BLOCK_SKIP_LSN =		0x00000200,	/* -x: Skip pages before LSN */
+	BLOCK_DECODE =			0x00000400	/* -D: Decode tuple attributes */
 } blockSwitches;
 
 typedef enum segmentSwitches
@@ -191,6 +193,18 @@ static unsigned int bytesToFormat = 0;
 /* Block version number */
 static unsigned int blockVersion = 0;
 
+/* Number of attributes (used when decoding) */
+static int		nrelatts = 0;
+
+/* attlen catalog metadata for relation (used when decoding) */
+static int	   *attlenrel = NULL;
+
+/* attnamerel catalog metadata for relation (used when decoding) */
+static char	  **attnamerel = NULL;
+
+/* attalign catalog metadata for relation (used when decoding) */
+static char		*attalignrel = NULL;
+
 /* Program exit code */
 static int	exitCode = 0;
 
@@ -208,6 +222,7 @@ static unsigned int GetSegmentNumberFromFileName(const char *fileName);
 static unsigned int ConsumeOptions(int numOptions, char **options);
 static int GetOptionValue(char *optionString);
 static XLogRecPtr GetOptionXlogRecPtr(char *optionString);
+static bool ParseAttributeListString(const char *str);
 static unsigned int GetBlockSize(void);
 static unsigned int GetSpecialSectionType(Page page);
 static const char *GetSpecialSectionString(unsigned int type);
@@ -235,6 +250,15 @@ static void EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset,
 							const char *name, const char *color,
 							uint32 relfileOff,
 							uint32 relfileOffEnd);
+static void EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
+								  uint32 relfileOff, HeapTupleHeader htup,
+								  int itemSize);
+static void EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
+								   uint32 relfileOff, IndexTuple itup,
+								   int itemSize);
+static void EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
+								  uint32 relfileOff, unsigned char *tupdata,
+								  bits8 *t_bits, int nattrs, int datalen);
 static void EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 							 HeapTupleHeader htup, uint32 relfileOff,
 							 int itemSize);
@@ -280,22 +304,21 @@ DisplayOptions(unsigned int validOptions)
 			 HEXEDIT_VERSION, PG_VERSION);
 
 	printf
-		("\nUsage: pg_hexedit [-hkzl] [-R startblock [endblock]] [-s segsize] [-n segnumber] file\n\n"
-		 "Display formatted contents of a PostgreSQL heap/index/control file\n"
-		 "Defaults are: relative addressing, range of the entire file, block\n"
-		 "              size as listed on block 0 in the file\n\n"
-		 "The following options are valid for heap and index files:\n"
+		("\nUsage: pg_hexedit [-hkzl] [-R startblock [endblock]] [-D attrlist] [-s segsize] [-n segnumber] file\n\n"
+		 "Output contents of PostgreSQL relation file as wxHexEditor XML tags\n"
+		 "  -D  Decode tuples using given comma separated list of attribute metadata\n"
+		 "      See README.md for an explanation of the attrlist format\n"
 		 "  -h  Display this information\n"
 		 "  -k  Verify all block checksums\n"
-		 "  -z  Verify block checksums when non-zero\n"
 		 "  -l  Skip non-root B-Tree leaf pages\n"
-		 "  -x  Skip pages whose LSN is before [lsn]\n"
+		 "  -n  Force segment number to [segnumber]\n"
 		 "  -R  Display specific block ranges within the file (Blocks are\n"
 		 "      indexed from 0)\n" "        [startblock]: block to start at\n"
 		 "        [endblock]: block to end at\n"
 		 "      A startblock without an endblock will format the single block\n"
 		 "  -s  Force segment size to [segsize]\n"
-		 "  -n  Force segment number to [segnumber]\n"
+		 "  -x  Skip pages whose LSN is before [lsn]\n"
+		 "  -z  Verify block checksums when non-zero\n"
 		 "\nReport bugs to <pg@bowt.ie>\n");
 }
 
@@ -408,6 +431,44 @@ ConsumeOptions(int numOptions, char **options)
 						break;
 					}
 				}
+			}
+		}
+
+		/* Check for the special case where the user requires tuple decoding */
+		else if ((optionStringLength == 2)
+				 && (strcmp(optionString, "-D") == 0))
+		{
+			SET_OPTION(blockOptions, BLOCK_DECODE, 'D');
+			/* Only accept the decode option once */
+			if (rc == OPT_RC_DUPLICATE)
+				break;
+
+			/*
+			 * The string immediately following -D is a list of attlen,
+			 * attname, and attalign tokens separated by commas.  There is one
+			 * set of each per attribute (i.e. there should be three times as
+			 * many entries in the list as there are user attributes in the
+			 * relation).
+			 */
+			if (x >= (numOptions - 2))
+			{
+				rc = OPT_RC_INVALID;
+				fprintf(stderr, "pg_hexedit error: missing attrlist string\n");
+				exitCode = 1;
+				break;
+			}
+
+			/* Next option encountered must be attribute metadata string */
+			optionString = options[++x];
+
+			if (!ParseAttributeListString(optionString))
+			{
+				/* Give details of problem in ParseAttributeListString() */
+				rc = OPT_RC_INVALID;
+				fprintf(stderr, "invalid attrlist string %s\n",
+						optionString);
+				exitCode = 1;
+				break;
 			}
 		}
 
@@ -660,6 +721,119 @@ GetOptionXlogRecPtr(char *optionString)
 		value = (uint64) xlogid << 32 | xrecoff;
 
 	return value;
+}
+
+/*
+ * Given an attrlist string (pg_hexedit -D argument string), deserialize into
+ * data structures used by tuple decoding to create per-tuple, per-attribute
+ * tags.
+ *
+ * Returns false on failure, allowing caller to set exitCode and print
+ * supplemental information common to all parse failures.
+ */
+static bool
+ParseAttributeListString(const char *arg)
+{
+	char	   *attrlist;
+	int			lennamealign;
+	char	   *curropt;
+	char	   *nextopt;
+
+	/* Allocate space for decoding state */
+	attlenrel = pg_malloc(sizeof(int) * MaxTupleAttributeNumber);
+	attnamerel = pg_malloc(sizeof(char *) * MaxTupleAttributeNumber);
+	attalignrel = pg_malloc(sizeof(char) * MaxTupleAttributeNumber);
+
+	/* Create copy of argument string to scribble on */
+	attrlist = pg_strdup(arg);
+
+	nrelatts = 0;
+	lennamealign = 0;
+	curropt = attrlist;
+	while (curropt)
+	{
+		if (*curropt == '"')
+		{
+			/* Move past leading " character, omitting it */
+			curropt++;
+			/* Find terminating " character, skipping any contained ',' char */
+			nextopt = strchr(curropt, '"');
+			if (!nextopt)
+				return false;
+			/* Eliminate trailing " character from current option */
+			*nextopt = '\0';
+			/* Prepare next option */
+			nextopt++;
+			nextopt = strchr(nextopt, ',');
+		}
+		else
+			nextopt = strchr(curropt, ',');
+
+		if (nextopt)
+		{
+			/* Eliminate , character from current option */
+			*nextopt = '\0';
+			nextopt++;
+		}
+
+		if (lennamealign == 0)
+		{
+			int		attlen;
+
+			if (sscanf(curropt, "%d", &attlen) != 1)
+			{
+				fprintf(stderr, "pg_hexedit error: could not parse attlen from attrlist argument\n");
+				return false;
+			}
+			attlenrel[nrelatts] = attlen;
+			/* Prepare for next item */
+			lennamealign++;
+		}
+		else if (lennamealign == 1)
+		{
+			attnamerel[nrelatts] = pg_strdup(curropt);
+			/* Prepare for next item */
+			lennamealign++;
+		}
+		else
+		{
+			char	attalign = *curropt;
+
+			if (attalign != 'i' && attalign != 'c' && attalign != 'd' &&
+				attalign != 's')
+			{
+				fprintf(stderr, "pg_hexedit error: invalid attalign value '%c' in attrlist argument\n",
+						attalign);
+				return false;
+			}
+			if (attlenrel[nrelatts] == -2 && attalign != 'c')
+			{
+				fprintf(stderr, "pg_hexedit error: unexpected attalign '%c' for cstring in attrlist argument\n",
+						attalign);
+				return false;
+			}
+			attalignrel[nrelatts] = attalign;
+			/* Prepare for next item, and next attribute in "descriptor" */
+			if (nrelatts >= MaxTupleAttributeNumber)
+			{
+				fprintf(stderr, "pg_hexedit error: too many attributes represented in attrlist argument\n");
+				return false;
+			}
+			lennamealign = 0;
+			nrelatts++;
+		}
+
+		curropt = nextopt;
+	}
+
+	/* Be tidy */
+	pg_free(attrlist);
+
+	/*
+	 * Should be at least one attribute, and should have attlen, attname, and
+	 * attalign for each attribute
+	 */
+	return nrelatts > 0 && lennamealign == 0;
 }
 
 /*
@@ -1423,6 +1597,144 @@ EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset, const char *name,
 }
 
 /*
+ * Emit wxHexEditor tags for individual non-NULL attributes in heap tuple
+ */
+static void
+EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
+					  uint32 relfileOff, HeapTupleHeader htup, int itemSize)
+{
+	unsigned char  *tupdata = (unsigned char *) htup + htup->t_hoff;
+	bits8		   *t_bits;
+	int				nattrs = HeapTupleHeaderGetNatts(htup);
+	int				datalen = itemSize - htup->t_hoff;
+
+	/*
+	 * If an argument describing the relation's tuples was not provided, just
+	 * create a single tag
+	 */
+	if (nrelatts == 0)
+	{
+		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE, relfileOff,
+						(relfileOff + itemSize) - 1);
+		return;
+	}
+
+	t_bits = (htup->t_infomask & HEAP_HASNULL) != 0 ? htup->t_bits : NULL;
+
+	EmitXmlAttributesData(blkno, offset, relfileOff, tupdata, t_bits, nattrs,
+						  datalen);
+}
+
+/*
+ * Emit wxHexEditor tags for individual non-NULL attributes in index tuple
+ */
+static void
+EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
+					   uint32 relfileOff, IndexTuple itup, int itemSize)
+{
+	unsigned char  *tupdata;
+	bits8		   *t_bits;
+	int				datalen;
+
+	/*
+	 * If an argument describing the relation's tuples was not provided, just
+	 * create a single tag.
+	 *
+	 * Multi-column GIN entries have two attributes in main entry key tuples:
+	 * an implicit int16 leading attribute that indicates which pg_attribute
+	 * listing the entry relates to, as well as the actual value.  This isn't
+	 * something that we currently support, though, so just treat this case as
+	 * if we had no catalog metadata.
+	 */
+	if (nrelatts == 0 || (specialType == SPEC_SECT_INDEX_GIN && nrelatts > 1))
+	{
+		uint32		relfileOffEnd;
+
+		relfileOffEnd =
+			relfileOff + itemSize - IndexInfoFindDataOffset(itup->t_info);
+
+		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
+						relfileOff, relfileOffEnd - 1);
+		return;
+	}
+
+	tupdata = (unsigned char *) itup + IndexInfoFindDataOffset(itup->t_info);
+	t_bits = IndexTupleHasNulls(itup) ?
+		(bits8 *) ((unsigned char *) itup + sizeof(IndexTupleData)) : NULL;
+	datalen = itemSize - IndexInfoFindDataOffset(itup->t_info);
+
+	EmitXmlAttributesData(blkno, offset, relfileOff, tupdata, t_bits, nrelatts,
+						  datalen);
+}
+
+/*
+ * Emit wxHexEditor tags for individual non-NULL attributes.
+ *
+ * This relies on catalog metadata passed by user, since frontend code cannot
+ * use tuple descriptors or access system catalog metadata itself.
+ *
+ * This code is loosely based on nocachegetattr(), though it works with both
+ * heap and index tuple data areas.
+ */
+static void
+EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
+					  uint32 relfileOff, unsigned char *tupdata, bits8 *t_bits,
+					  int nattrs, int datalen)
+{
+	int			off = 0;
+	int			i;
+
+	for (i = 0; i < nattrs; i++)
+	{
+		int			attlen = attlenrel[i];
+		char	   *attname = attnamerel[i];
+		char		attalign = attalignrel[i];
+		int			truelen;
+
+		if (t_bits && att_isnull(i, t_bits))
+			continue;
+
+		if (attlen == -1)
+		{
+			off = att_align_pointer(off, attalign, -1, tupdata + off);
+			/* Work around use of backend code */
+#define TrapMacro(a,b) (true)
+			truelen = VARSIZE_ANY(tupdata + off);
+#undef TrapMacro
+		}
+		else if (attlen == -2)
+		{
+			off = att_align_nominal(off, attalign);
+			truelen = strnlen((char *) tupdata + off, datalen - off) + 1;
+		}
+		else
+		{
+			off = att_align_nominal(off, attalign);
+			truelen = attlen;
+		}
+
+		if (datalen < off + attlen)
+		{
+			fprintf(stderr, "pg_hexedit error: unexpected end of tuple data in (%u,%u)\n",
+					blkno, offset);
+			exitCode = 1;
+			return;
+		}
+
+		/* Tuple content are alternately white and slightly off-white */
+		EmitXmlTupleTag(blkno, offset, attname,
+						i % 2 == 0 ? COLOR_WHITE : COLOR_OFF_WHITE,
+						relfileOff + off,
+						relfileOff + off + truelen - 1);
+
+		/* Work around use of backend code */
+#define TrapMacro(a,b) (true)
+		off = att_addlength_pointer(off, attlen, tupdata + off);
+#undef TrapMacro
+	}
+}
+
+/*
  * Emit a wxHexEditor tag for entire heap tuple.
  *
  * Note: Caller passes itemSize from ItemId because that's the only place that
@@ -1560,14 +1872,8 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 		return;
 	}
 
-	/*
-	 * Tuple content are slightly off-white.  This is intended to suggest that
-	 * we can't parse the contents due to not having access to catalog
-	 * metadata, but consider it to be "payload".
-	 */
 	relfileOff = relfileOffNext;
-	EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE, relfileOff,
-					(relfileOffOrig + itemSize) - 1);
+	EmitXmlAttributesHeap(blkno, offset, relfileOff, htup, itemSize);
 }
 
 /*
@@ -1757,15 +2063,14 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		 */
 		if (specialType != SPEC_SECT_INDEX_GIN || !GinPageIsLeaf(page) ||
 			GinIsPostingTree(tuple) || GinGetNPosting(tuple) == 0)
-			EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
-							relfileOff, relfileOffNext - 1);
+			EmitXmlAttributesIndex(blkno, offset, relfileOff, tuple, itemSize);
 		else
 		{
 			Size			postoffset = itemSize - GinGetPostingOffset(tuple);
 			const char	   *color;
 
-			EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
-							relfileOff, relfileOffNext - postoffset - 1);
+			EmitXmlAttributesIndex(blkno, offset, relfileOff, tuple,
+								   GinGetPostingOffset(tuple));
 			relfileOff = relfileOffNext - postoffset;
 
 			/*
