@@ -36,6 +36,15 @@
  */
 #undef FRONTEND
 
+/*
+ * Define TrapMacro() as a no-op expression on builds that have assertions
+ * enabled.  This is redundant though harmless when building without
+ * assertions, since the same macro definition happens to be visible there.  It
+ * is only visible there because no-op definitions for all assert-related
+ * macros happen to be shared by frontend and backend code.
+ */
+#define TrapMacro(condition, errorType) (true)
+
 #include <time.h>
 
 #if PG_VERSION_NUM >= 90500
@@ -1697,10 +1706,7 @@ EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 		if (attlen == -1)
 		{
 			off = att_align_pointer(off, attalign, -1, tupdata + off);
-			/* Work around use of backend code */
-#define TrapMacro(a,b) (true)
 			truelen = VARSIZE_ANY(tupdata + off);
-#undef TrapMacro
 		}
 		else if (attlen == -2)
 		{
@@ -1727,10 +1733,7 @@ EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 						relfileOff + off,
 						relfileOff + off + truelen - 1);
 
-		/* Work around use of backend code */
-#define TrapMacro(a,b) (true)
 		off = att_addlength_pointer(off, attlen, tupdata + off);
-#undef TrapMacro
 	}
 }
 
