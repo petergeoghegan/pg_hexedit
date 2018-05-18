@@ -1954,7 +1954,7 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		if (specialType == SPEC_SECT_INDEX_GIN && GinIsPostingTree(tuple))
 			EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber/GinIsPostingTree()",
 							COLOR_BLUE_DARK, relfileOff, relfileOffNext - 1);
-#if PG_VERSION_NUM >= 11000
+#if PG_VERSION_NUM >= 110000
 		else if (specialType == SPEC_SECT_INDEX_BTREE &&
 				 (tuple->t_info & INDEX_ALT_TID_MASK) != 0)
 			EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber/BTreeTupleGetNAtts()",
@@ -2479,7 +2479,7 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) - 1));
 		EmitXmlTag(InvalidBlockNumber, level, "btm_fastlevel", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel),
-#if PG_VERSION_NUM < 11000
+#if PG_VERSION_NUM < 110000
 				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
 #else
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_oldest_btpo_xact) - 1));
