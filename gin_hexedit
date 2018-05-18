@@ -133,6 +133,12 @@ if [ ! $? -eq 0 ]; then
   exit
 fi
 
+if [ ! -f $HEXEDITOR ]; then
+  echo "\"$HEXEDITOR\" executable not found"
+  echo "\"$FULLPATH.tags\" annotation file was still created"
+  exit 1
+fi
+
 echo "Opening $FULLPATH with $HEXEDITOR..."
 # Output from wxHexEditor is verbose, and not terribly useful, so we redirect:
 $HEXEDITOR $FULLPATH &> /dev/null
