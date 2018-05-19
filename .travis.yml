@@ -1,0 +1,35 @@
+language: c
+
+compiler: gcc
+
+env:
+   matrix:
+      - PGBRANCH=master
+      - PGBRANCH=REL_10_STABLE
+      - PGBRANCH=REL9_6_STABLE
+      - PGBRANCH=REL9_5_STABLE
+      - PGBRANCH=REL9_4_STABLE
+
+before_install:
+   - CURDIR=$(pwd)
+   - PGHOME=${CURDIR}/${PGBRANCH}
+   - git clone https://github.com/postgres/postgres.git
+   - cd postgres
+   - git checkout ${PGBRANCH}
+   - ./configure --prefix=${PGHOME} --enable-debug --enable-cassert
+   - make -j 2
+   - make install
+   - export PATH=${PATH}:${PGHOME}/bin
+
+before_script:
+   - cd ${CURDIR}
+   - make PG_CONFIG=${PGHOME}/bin/pg_config
+   - make PG_CONFIG=${PGHOME}/bin/pg_config dist
+
+script:
+   - make check
+
+notifications:
+   email:
+      on_success: change
+      on_failure: always

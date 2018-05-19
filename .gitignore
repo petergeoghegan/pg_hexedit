@@ -1,4 +1,5 @@
-/*.o
-/pg_hexedit
-.wxHexEditor
 *.swp
+.wxHexEditor
+/*.o
+/pg_filenodemapdata
+/pg_hexedit

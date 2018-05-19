@@ -1,0 +1,44 @@
+#!/bin/bash
+#
+# Simple pg_hexedit smoke tests.  These are intended to be run by "make check",
+# with the root directory as current working directory.
+#
+# The 1249 input file comes from the first block of pg_attribute after initdb.
+# This just tests the heap annotation functions, since the heapam hasn't really
+# changed across Postgres versions supported by pg_hexedit.
+
+# Generate tags with no attributes:
+set -x
+./pg_hexedit t/1249 > t/output_no_attributes.tags
+set +x
+
+# Normalize ouput_no_attributes.tag:
+sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_no_attributes.tags
+sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_no_attributes.tags
+diff t/expected_no_attributes.tags t/output_no_attributes.tags > t/no_attributes.diff
+error=$?
+if [ $error -ne 0 ]
+then
+  echo "Failed to generate correct pg_attribute tag file":
+  cat t/no_attributes.diff
+  exit 1
+fi
+
+# Generate tags with attributes:
+set -x
+./pg_hexedit -D '4,"attrelid",i,64,"attname",c,4,"atttypid",i,4,"attstattarget",i,2,"attlen",s,2,"attnum",s,4,"attndims",i,4,"attcacheoff",i,4,"atttypmod",i,1,"attbyval",c,1,"attstorage",c,1,"attalign",c,1,"attnotnull",c,1,"atthasdef",c,1,"atthasmissing",c,1,"attidentity",c,1,"attisdropped",c,1,"attislocal",c,4,"attinhcount",i,4,"attcollation",i,-1,"attacl",i,-1,"attoptions",i,-1,"attfdwoptions",i,-1,"attmissingval",d' t/1249 > t/output_attributes.tags
+set +x
+
+# Normalize ouput_attributes.tag
+sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_attributes.tags
+sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_attributes.tags
+diff t/expected_attributes.tags t/output_attributes.tags > t/attributes.diff
+error=$?
+if [ $error -ne 0 ]
+then
+  echo "Failed to generate correct pg_attribute tag file (with attributes)":
+  cat t/attributes.diff
+  exit 1
+fi
+
+echo "All tests pass"

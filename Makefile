@@ -20,6 +20,8 @@ PGSQL_LIB_DIR = $(shell $(PG_CONFIG) --libdir)
 PGSQL_BIN_DIR = $(shell $(PG_CONFIG) --bindir)
 
 DISTFILES= README.md Makefile pg_hexedit.c pg_filenodemapdata.c
+TESTFILES= t/1249 t/expected_attributes.tags t/expected_no_attributes.tags \
+	t/test_pg_hexedit
 
 all: pg_hexedit pg_filenodemapdata
 
@@ -35,10 +37,15 @@ pg_hexedit.o: pg_hexedit.c
 pg_filenodemapdata.o: pg_filenodemapdata.c
 	${CC} ${PGSQL_CFLAGS} ${CFLAGS} -I${PGSQL_INCLUDE_DIR} pg_filenodemapdata.c -c
 
+check:
+	t/test_pg_hexedit
+
 dist:
 	rm -rf pg_hexedit-${HEXEDIT_VERSION} pg_hexedit-${HEXEDIT_VERSION}.tar.gz
 	mkdir pg_hexedit-${HEXEDIT_VERSION}
 	cp -p ${DISTFILES} pg_hexedit-${HEXEDIT_VERSION}
+	mkdir pg_hexedit-${HEXEDIT_VERSION}/t
+	cp -p ${TESTFILES} pg_hexedit-${HEXEDIT_VERSION}/t
 	tar cfz pg_hexedit-${HEXEDIT_VERSION}.tar.gz pg_hexedit-${HEXEDIT_VERSION}
 	rm -rf pg_hexedit-${HEXEDIT_VERSION}
 
@@ -53,7 +60,11 @@ uninstall:
 
 clean:
 	rm -f *.o pg_hexedit pg_filenodemapdata
+	rm -f t/*diff
+	rm -f t/output*tags
 
 distclean:
 	rm -f *.o pg_hexedit pg_filenodemapdata
+	rm -f t/*diff
+	rm -f t/output*tags
 	rm -rf pg_hexedit-${HEXEDIT_VERSION} pg_hexedit-${HEXEDIT_VERSION}.tar.gz

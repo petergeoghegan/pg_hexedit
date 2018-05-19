@@ -38,6 +38,10 @@ file is assumed for the entire file.
 ![wxHexEditor with pg_type_typname_nsp_index](./pg_type_typname_nsp_index.png)
 *wxHexEditor with pg_type_typname_nsp_index system catalog index*
 
+### Test status
+
+[![Build Status](https://travis-ci.org/petergeoghegan/pg_hexedit.svg?branch=master)](https://travis-ci.org/petergeoghegan/pg_hexedit)
+
 ## Initial setup
 
 ### Building pg_hexedit
