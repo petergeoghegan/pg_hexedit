@@ -1624,7 +1624,7 @@ EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
 	if (nrelatts == 0)
 	{
 		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE, relfileOff,
-						(relfileOff + itemSize) - 1);
+						(relfileOff + datalen) - 1);
 		return;
 	}
 

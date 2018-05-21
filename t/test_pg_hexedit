@@ -12,7 +12,7 @@ set -x
 ./pg_hexedit t/1249 > t/output_no_attributes.tags
 set +x
 
-# Normalize ouput_no_attributes.tag:
+# Normalize output_no_attributes.tag:
 sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_no_attributes.tags
 sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_no_attributes.tags
 diff t/expected_no_attributes.tags t/output_no_attributes.tags > t/no_attributes.diff
@@ -29,7 +29,7 @@ set -x
 ./pg_hexedit -D '4,"attrelid",i,64,"attname",c,4,"atttypid",i,4,"attstattarget",i,2,"attlen",s,2,"attnum",s,4,"attndims",i,4,"attcacheoff",i,4,"atttypmod",i,1,"attbyval",c,1,"attstorage",c,1,"attalign",c,1,"attnotnull",c,1,"atthasdef",c,1,"atthasmissing",c,1,"attidentity",c,1,"attisdropped",c,1,"attislocal",c,4,"attinhcount",i,4,"attcollation",i,-1,"attacl",i,-1,"attoptions",i,-1,"attfdwoptions",i,-1,"attmissingval",d' t/1249 > t/output_attributes.tags
 set +x
 
-# Normalize ouput_attributes.tag
+# Normalize output_attributes.tag:
 sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_attributes.tags
 sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_attributes.tags
 diff t/expected_attributes.tags t/output_attributes.tags > t/attributes.diff
