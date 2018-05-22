@@ -84,5 +84,5 @@ then
 fi
 
 echo -e "\nAll tests pass\n"
-echo "Tip: the file t/1249 can be opened within wxHexEditor.  Import tags from either \"output_no_attributes.tags\" or \"output_attributes.tags\""
-echo "Tip: the file t/2685 can be opened within wxHexEditor.  Import tags from either \"output_no_attributes_idx.tags\" or \"output_attributes_idx.tags\""
+echo "Tip: the file t/1249 can be opened within wxHexEditor.  Import tags from either \"output_no_attributes.tags\" or \"output_attributes.tags\"."
+echo "Tip: the file t/2685 can be opened within wxHexEditor.  Import tags from either \"output_no_attributes_idx.tags\" or \"output_attributes_idx.tags\"."

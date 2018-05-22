@@ -848,13 +848,14 @@ ParseAttributeListString(const char *arg)
 /*
  * Read the page header off of block 0 to determine the block size used in this
  * file.  Can be overridden using the -s option.  The returned value is the
- * block size of block 0 on disk.
+ * block size of block 0 on disk.  If a valid page size could not be read,
+ * assumes BLCKSZ.
  */
 static unsigned int
 GetBlockSize(void)
 {
 	unsigned int pageHeaderSize = sizeof(PageHeaderData);
-	unsigned int localSize = 0;
+	unsigned int localSize = BLCKSZ;
 	int			bytesRead = 0;
 	char		localCache[pageHeaderSize];
 
@@ -871,7 +872,15 @@ GetBlockSize(void)
 		exitCode = 1;
 	}
 
-	return (localSize);
+	if (localSize == 0 || ((localSize - 1) & localSize) != 0)
+	{
+		fprintf(stderr, "pg_hexedit error: invalid block size %u encountered in first block\n",
+				localSize);
+		exitCode = 1;
+		localSize = BLCKSZ;
+	}
+
+	return localSize;
 }
 
 /*
