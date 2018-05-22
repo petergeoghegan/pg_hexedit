@@ -313,7 +313,7 @@ DisplayOptions(unsigned int validOptions)
 			 HEXEDIT_VERSION, PG_VERSION);
 
 	printf
-		("\nUsage: pg_hexedit [-hkzl] [-R startblock [endblock]] [-D attrlist] [-s segsize] [-n segnumber] file\n\n"
+		("\nUsage: pg_hexedit [-hklz] [-D attrlist] [-n segnumber] [-R startblock [endblock]] [-s segsize] [-x lsn] file\n\n"
 		 "Output contents of PostgreSQL relation file as wxHexEditor XML tags\n"
 		 "  -D  Decode tuples using given comma separated list of attribute metadata\n"
 		 "      See README.md for an explanation of the attrlist format\n"
