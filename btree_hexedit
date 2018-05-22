@@ -35,6 +35,9 @@ if [ ! $? -eq 0 ]; then
   exit
 fi
 
+# wxHexEditor XML encoding is always UTF-8
+export PGCLIENTENCODING="UTF8"
+
 # Put minimal .wxHexEditor registry style config file in place, so old tags are
 # forgotten.  This is also where we generate convenience "Go to Offset" dialog
 # offsets in the registry/cache.
@@ -69,8 +72,8 @@ CustomHexFormat=xx
 UseBytesPerLineLimit=1
 BytesPerLineLimit=$BYTES_PER_LINE_LIMIT
 FontSize=$FONTSIZE
-CharacterEncodingFamily=DOS
-CharacterEncoding=OEM - IBM PC/DOS CP437 - MS-DOS Latin US
+CharacterEncodingFamily=Code for Information Interchange
+CharacterEncoding=ASCII - American Standard Code for Information Interchange
 ScreenFullScreen=1
 AutoShowTagPanel=0
 GoToOptions=7
