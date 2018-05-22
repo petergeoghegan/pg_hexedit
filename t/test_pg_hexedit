@@ -7,12 +7,13 @@
 # This just tests the heap annotation functions, since the heapam hasn't really
 # changed across Postgres versions supported by pg_hexedit.
 
-# Generate tags with no attributes:
+# Generate tags with no attributes, using -x option equal to page's LSN (this
+# -x option does not affect output):
 set -x
-./pg_hexedit t/1249 > t/output_no_attributes.tags
+./pg_hexedit -x "0/00000028" t/1249 > t/output_no_attributes.tags
 set +x
 
-# Normalize output_no_attributes.tag:
+# Normalize:
 sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_no_attributes.tags
 sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_no_attributes.tags
 diff t/expected_no_attributes.tags t/output_no_attributes.tags > t/no_attributes.diff
@@ -30,7 +31,7 @@ set -x
 ./pg_hexedit -D "$ATTRLIST" t/1249 > t/output_attributes.tags
 set +x
 
-# Normalize output_attributes.tag:
+# Normalize:
 sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_attributes.tags
 sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_attributes.tags
 diff t/expected_attributes.tags t/output_attributes.tags > t/attributes.diff
@@ -39,6 +40,23 @@ if [ $error -ne 0 ]
 then
   echo "Failed to generate correct pg_attribute tag file (with attributes)":
   cat t/attributes.diff
+  exit 1
+fi
+
+# Generate almost-empty tag file by avoiding page LSN:
+set -x
+./pg_hexedit -x "0/00000029" t/1249 > t/output_empty_lsn.tags
+set +x
+
+# Normalize:
+sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_empty_lsn.tags
+sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_empty_lsn.tags
+diff t/expected_empty_lsn.tags t/output_empty_lsn.tags > t/empty_lsn.diff
+error=$?
+if [ $error -ne 0 ]
+then
+  echo "Failed to generate correct pg_attribute tag file (-x test)":
+  cat t/empty_lsn.diff
   exit 1
 fi
 
@@ -53,7 +71,7 @@ set -x
 ./pg_hexedit -n 1 t/2685 > t/output_no_attributes_idx.tags
 set +x
 
-# Normalize output_no_attributes_idx.tag:
+# Normalize:
 sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_no_attributes_idx.tags
 sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_no_attributes_idx.tags
 diff t/expected_no_attributes_idx.tags t/output_no_attributes_idx.tags > t/no_attributes_idx.diff
@@ -71,7 +89,7 @@ set -x
 ./pg_hexedit -n 1 -D "$ATTRLIST"  t/2685 > t/output_attributes_idx.tags
 set +x
 
-# Normalize output_attributes_idx.tag:
+# Normalize:
 sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_attributes_idx.tags
 sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_attributes_idx.tags
 diff t/expected_attributes_idx.tags t/output_attributes_idx.tags > t/attributes_idx.diff
@@ -89,7 +107,7 @@ set -x
 ./pg_hexedit -n 1 -l t/2685 > t/output_leaf_idx.tags
 set +x
 
-# Normalize output_leaf_idx.tags:
+# Normalize:
 sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_leaf_idx.tags
 sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_leaf_idx.tags
 diff t/expected_leaf_idx.tags t/output_leaf_idx.tags > t/leaf_idx.diff
@@ -103,6 +121,6 @@ fi
 
 echo -e "\nAll tests pass\n"
 echo -e "Tip: the file t/1249 can be opened within wxHexEditor.
-Import tags from either \"output_no_attributes.tags\" or \"output_attributes.tags\".\n"
+Import tags from either \"output_no_attributes.tags\" or \"output_attributes.tags\" or \"output_empty_lsn.tags\".\n"
 echo -e "Tip: the file t/2685 can be opened within wxHexEditor.
 Import tags from either \"output_no_attributes_idx.tags\" or \"output_attributes_idx.tags\" or \"output_leaf_idx.tags\".\n"
