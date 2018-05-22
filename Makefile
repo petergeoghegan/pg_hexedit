@@ -20,8 +20,9 @@ PGSQL_LIB_DIR = $(shell $(PG_CONFIG) --libdir)
 PGSQL_BIN_DIR = $(shell $(PG_CONFIG) --bindir)
 
 DISTFILES= README.md Makefile pg_hexedit.c pg_filenodemapdata.c
-TESTFILES= t/1249 t/expected_attributes.tags t/expected_no_attributes.tags \
-	t/test_pg_hexedit
+TESTFILES= t/1249 t/2685 t/expected_attributes.tags \
+	t/expected_attributes_idx.tags t/expected_no_attributes.tags \
+	t/expected_no_attributes_idx.tags t/test_pg_hexedit
 
 all: pg_hexedit pg_filenodemapdata
 

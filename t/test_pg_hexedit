@@ -2,7 +2,7 @@
 #
 # Simple pg_hexedit smoke tests.  These are intended to be run by "make check",
 # with the root directory as current working directory.
-#
+
 # The 1249 input file comes from the first block of pg_attribute after initdb.
 # This just tests the heap annotation functions, since the heapam hasn't really
 # changed across Postgres versions supported by pg_hexedit.
@@ -25,8 +25,9 @@ then
 fi
 
 # Generate tags with attributes:
+ATTRLIST='4,"attrelid",i,64,"attname",c,4,"atttypid",i,4,"attstattarget",i,2,"attlen",s,2,"attnum",s,4,"attndims",i,4,"attcacheoff",i,4,"atttypmod",i,1,"attbyval",c,1,"attstorage",c,1,"attalign",c,1,"attnotnull",c,1,"atthasdef",c,1,"atthasmissing",c,1,"attidentity",c,1,"attisdropped",c,1,"attislocal",c,4,"attinhcount",i,4,"attcollation",i,-1,"attacl",i,-1,"attoptions",i,-1,"attfdwoptions",i,-1,"attmissingval",d'
 set -x
-./pg_hexedit -D '4,"attrelid",i,64,"attname",c,4,"atttypid",i,4,"attstattarget",i,2,"attlen",s,2,"attnum",s,4,"attndims",i,4,"attcacheoff",i,4,"atttypmod",i,1,"attbyval",c,1,"attstorage",c,1,"attalign",c,1,"attnotnull",c,1,"atthasdef",c,1,"atthasmissing",c,1,"attidentity",c,1,"attisdropped",c,1,"attislocal",c,4,"attinhcount",i,4,"attcollation",i,-1,"attacl",i,-1,"attoptions",i,-1,"attfdwoptions",i,-1,"attmissingval",d' t/1249 > t/output_attributes.tags
+./pg_hexedit -D "$ATTRLIST" t/1249 > t/output_attributes.tags
 set +x
 
 # Normalize output_attributes.tag:
@@ -41,4 +42,47 @@ then
   exit 1
 fi
 
-echo "All tests pass"
+# The 2685 input file comes from the first non-metapage block of
+# pg_attribute_relid_attnam_index after initdb.  This block doesn't have any
+# explicitly truncated attributes on PostgreSQL 11, allowing it to work on all
+# supported PostgreSQL versions without special consideration.
+
+# Generate tags with no attributes, forcing the segment number to 1 to avoid
+# interpreting this page as a metapage:
+set -x
+./pg_hexedit -n 1 t/2685 > t/output_no_attributes_idx.tags
+set +x
+
+# Normalize output_no_attributes_idx.tag:
+sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_no_attributes_idx.tags
+sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_no_attributes_idx.tags
+diff t/expected_no_attributes_idx.tags t/output_no_attributes_idx.tags > t/no_attributes_idx.diff
+error=$?
+if [ $error -ne 0 ]
+then
+  echo "Failed to generate correct pg_attribute_relid_attnam_index tag file":
+  cat t/no_attributes_idx.diff
+  exit 1
+fi
+
+# Generate tags with attributes, forcing the segment number to 1:
+ATTRLIST='4,"attrelid",i,-2,"attname",c'
+set -x
+./pg_hexedit -n 1 -D "$ATTRLIST"  t/2685 > t/output_attributes_idx.tags
+set +x
+
+# Normalize output_attributes_idx.tag:
+sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_attributes_idx.tags
+sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_attributes_idx.tags
+diff t/expected_attributes_idx.tags t/output_attributes_idx.tags > t/attributes_idx.diff
+error=$?
+if [ $error -ne 0 ]
+then
+  echo "Failed to generate correct pg_attribute_relid_attnam_index tag file (with attributes)":
+  cat t/attributes_idx.diff
+  exit 1
+fi
+
+echo -e "\nAll tests pass\n"
+echo "Tip: the file t/1249 can be opened within wxHexEditor.  Import tags from either \"output_no_attributes.tags\" or \"output_attributes.tags\""
+echo "Tip: the file t/2685 can be opened within wxHexEditor.  Import tags from either \"output_no_attributes_idx.tags\" or \"output_attributes_idx.tags\""
