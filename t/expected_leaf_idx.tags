@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->
+<!-- Options used: -n 1 -l  -->
+<!-- Block size: 8192 -->
+<!-- pg_hexedit version: 0.1 -->
+<!-- pg_hexedit build PostgreSQL version: all -->
+<wxHexEditor_XML_TAG>
+  <filename path="t/2685">
+    <TAG id="0">
+      <start_offset>0</start_offset>
+      <end_offset>8191</end_offset>
+      <tag_text>block 131072 (level 0) leaf page</tag_text>
+      <font_colour>#313739</font_colour>
+      <note_colour>#16A085</note_colour>
+    </TAG>
+  </filename>
+</wxHexEditor_XML_TAG>

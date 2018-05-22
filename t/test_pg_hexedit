@@ -83,6 +83,26 @@ then
   exit 1
 fi
 
+# Generate single leaf page tag with -l option, forcing the segment number to 1
+# to avoid interpreting this page as a metapage:
+set -x
+./pg_hexedit -n 1 -l t/2685 > t/output_leaf_idx.tags
+set +x
+
+# Normalize output_leaf_idx.tags:
+sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_leaf_idx.tags
+sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_leaf_idx.tags
+diff t/expected_leaf_idx.tags t/output_leaf_idx.tags > t/leaf_idx.diff
+error=$?
+if [ $error -ne 0 ]
+then
+  echo "Failed to generate correct pg_attribute_relid_attnam_index tag file (with -l option)":
+  cat t/leaf_idx.diff
+  exit 1
+fi
+
 echo -e "\nAll tests pass\n"
-echo "Tip: the file t/1249 can be opened within wxHexEditor.  Import tags from either \"output_no_attributes.tags\" or \"output_attributes.tags\"."
-echo "Tip: the file t/2685 can be opened within wxHexEditor.  Import tags from either \"output_no_attributes_idx.tags\" or \"output_attributes_idx.tags\"."
+echo -e "Tip: the file t/1249 can be opened within wxHexEditor.
+Import tags from either \"output_no_attributes.tags\" or \"output_attributes.tags\".\n"
+echo -e "Tip: the file t/2685 can be opened within wxHexEditor.
+Import tags from either \"output_no_attributes_idx.tags\" or \"output_attributes_idx.tags\" or \"output_leaf_idx.tags\".\n"
