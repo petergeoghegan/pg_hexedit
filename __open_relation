@@ -28,6 +28,12 @@ then
   exit
 fi
 
+if [ "$RFN" = "" ]
+then
+  echo "relation $relname has no associated relfile"
+  exit
+fi
+
 # Put minimal .wxHexEditor registry style config file in place, so old tags are
 # forgotten.  This is also where we generate convenience "Go to Offset" dialog
 # offsets in the registry/cache (this comes from OFFSETS env var).
@@ -51,9 +57,13 @@ echo "Determined that data directory is $PGDATA"
 # wxHexEditor XML encoding is always UTF-8.  Make sure that attname fields come
 # back as UTF-8.
 export PGCLIENTENCODING="UTF8"
-ATTRLIST=$(psql --no-psqlrc -tA -c "SELECT string_agg(attlen || ',\"' || attname  || '\",' || attalign, ',')
+if ! ATTRLIST=$(psql --no-psqlrc -tA -c "SELECT string_agg(attlen || ',\"' || attname  || '\",' || attalign, ',')
 FROM
 (SELECT * FROM pg_attribute WHERE attrelid = '$relname'::regclass AND attnum > 0 ORDER BY attnum ASC) t;")
+then
+  echo "failed to generate attrlist string for -D option"
+  exit
+fi
 
 # Generate tags at a path that we know wxHexEditor will look for them:
 FULLPATH="$PGDATA/$RFN"
