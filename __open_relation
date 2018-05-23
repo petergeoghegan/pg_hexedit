@@ -40,6 +40,8 @@ fi
 echo "Replacing $wxconfig with pg_hexedit optimized settings..."
 cat > "$wxconfig" <<- EOM
 UpdateCheck=0
+ColourHexBackground=#FFFFFF
+ColourHexBackgroundZebra=#FFFFFF
 UseBytesPerLineLimit=1
 BytesPerLineLimit=$BYTES_PER_LINE_LIMIT
 FontSize=$FONTSIZE

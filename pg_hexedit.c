@@ -81,7 +81,6 @@
 #define COLOR_RED_DARK			"#912C21"
 #define COLOR_RED_LIGHT			"#E74C3C"
 #define COLOR_WHITE				"#CCD1D1"
-#define COLOR_OFF_WHITE			"#989B9B"
 #define COLOR_YELLOW_DARK		"#F1C40F"
 #define COLOR_YELLOW_LIGHT		"#E9E850"
 
@@ -211,6 +210,9 @@ static int	   *attlenrel = NULL;
 /* attnamerel catalog metadata for relation (used when decoding) */
 static char	  **attnamerel = NULL;
 
+/* attcolorrel attribute colors for relation (used when decoding) */
+static char	  **attcolorrel = NULL;
+
 /* attalign catalog metadata for relation (used when decoding) */
 static char		*attalignrel = NULL;
 
@@ -228,6 +230,8 @@ typedef enum formatChoice
 
 static void DisplayOptions(unsigned int validOptions);
 static unsigned int GetSegmentNumberFromFileName(const char *fileName);
+static uint32 sdbmhash(const unsigned char *elem, size_t len);
+static char *GetColorFromAttrname(const char *attrName);
 static unsigned int ConsumeOptions(int numOptions, char **options);
 static int GetOptionValue(char *optionString);
 static XLogRecPtr GetOptionXlogRecPtr(char *optionString);
@@ -354,6 +358,47 @@ GetSegmentNumberFromFileName(const char *fileName)
 		return 0;
 
 	return atoi(&fileName[segnumOffset + 1]);
+}
+
+/*
+ * Hash function is taken from sdbm, a public-domain reimplementation of the
+ * ndbm database library.
+ */
+static uint32
+sdbmhash(const unsigned char *elem, size_t len)
+{
+	uint32	hash = 0;
+	int		i;
+
+	for (i = 0; i < len; elem++, i++)
+	{
+		hash = (*elem) + (hash << 6) + (hash << 16) - hash;
+	}
+
+	return hash;
+}
+
+/*
+ * Return a cstring of an html color that is a function of attrName argument.
+ */
+static char *
+GetColorFromAttrname(const char *attrName)
+{
+	uint32	hash;
+	uint8	red;
+	uint8	green;
+	uint8	blue;
+	char   *colorStr = pg_malloc(8);
+
+	hash = sdbmhash((const unsigned char *) attrName, strlen(attrName) + 1);
+
+	/* Use muted pastel shades for user attributes */
+	red = 150 + ((uint8) hash % 90);
+	green = 150 + ((uint8) (hash >> 8) % 90);
+	blue = 150 + ((uint8) (hash >> 16) % 90);
+	snprintf(colorStr, 8, "#%02X%02X%02X", red, green, blue);
+
+	return colorStr;
 }
 
 /*
@@ -751,6 +796,7 @@ ParseAttributeListString(const char *arg)
 	/* Allocate space for decoding state */
 	attlenrel = pg_malloc(sizeof(int) * MaxTupleAttributeNumber);
 	attnamerel = pg_malloc(sizeof(char *) * MaxTupleAttributeNumber);
+	attcolorrel = pg_malloc(sizeof(char *) * MaxTupleAttributeNumber);
 	attalignrel = pg_malloc(sizeof(char) * MaxTupleAttributeNumber);
 
 	/* Create copy of argument string to scribble on */
@@ -800,7 +846,12 @@ ParseAttributeListString(const char *arg)
 		}
 		else if (lennamealign == 1)
 		{
+			/*
+			 * Copy attribute name, and dynamically generate color for
+			 * attribute
+			 */
 			attnamerel[nrelatts] = pg_strdup(curropt);
+			attcolorrel[nrelatts] = GetColorFromAttrname(curropt);
 			/* Prepare for next item */
 			lennamealign++;
 		}
@@ -1706,6 +1757,7 @@ EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 	{
 		int			attlen = attlenrel[i];
 		char	   *attname = attnamerel[i];
+		char	   *attcolor = attcolorrel[i];
 		char		attalign = attalignrel[i];
 		int			truelen;
 
@@ -1736,10 +1788,7 @@ EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 			return;
 		}
 
-		/* Tuple content are alternately white and slightly off-white */
-		EmitXmlTupleTag(blkno, offset, attname,
-						i % 2 == 0 ? COLOR_WHITE : COLOR_OFF_WHITE,
-						relfileOff + off,
+		EmitXmlTupleTag(blkno, offset, attname, attcolor, relfileOff + off,
 						relfileOff + off + truelen - 1);
 
 		off = att_addlength_pointer(off, attlen, tupdata + off);
