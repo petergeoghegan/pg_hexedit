@@ -1,4 +1,9 @@
 #!/bin/bash
+#
+# relation_hexedit:  Sets generic decile offsets in wxHexEditor cache/registry,
+# before opening relation.  Unlike the other convenience scripts, this works
+# with any kind of relation, and has no dependency on contrib/pageinspect.
+
 usage() {
   cat <<EOM
   Usage:
@@ -14,35 +19,12 @@ source ./hexedit.cfg
 
 relname=$1
 
-# Spoof home director, to avoid clobbering real /.wxHexEditor file
-export HOME=`pwd`
-wxconfig="$HOME/.wxHexEditor"
-
-psql --no-psqlrc -c "CHECKPOINT"
-if [ ! $? -eq 0 ]; then
-  echo "CHECKPOINT failed"
-  exit
-fi
-
-RFN=$(psql --no-psqlrc -tA -c "SELECT pg_relation_filepath('$relname')")
-if [ ! $? -eq 0 ]; then
-  echo "invoking pg_relation_filepath() failed"
-  exit
-fi
-
-# wxHexEditor XML encoding is always UTF-8
-export PGCLIENTENCODING="UTF8"
-
-# Put minimal .wxHexEditor registry style config file in place, so old tags are
-# forgotten.  This is also where we generate convenience "Go to Offset" dialog
-# offsets in the registry/cache.
-#
 # Generate 9 points that divide 10 deciles in Go to offsets dialog cache.
 # These are offsets into the first segment, not the relation as a whole.
 #
 # Note that the query will return NULL for very small relations, which leaves
-# us without any such cached offsets.
-DECILE_SPLITS=$(psql --no-psqlrc -tA -c "WITH offsets (block_offset) AS (
+# us without any cached offsets.
+export OFFSETS=$(psql --no-psqlrc -tA -c "WITH offsets (block_offset) AS (
   SELECT unnest(percentile_cont(array[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) WITHIN GROUP (ORDER BY i))::int8 * (2^13)
   FROM
   (SELECT i FROM generate_series(1, LEAST(131071, (SELECT (pg_relation_size('$relname'::regclass) / (2^13))::int4) - 1)) i ) s
@@ -54,43 +36,5 @@ nums (num, bb_offset) AS (
 )
 SELECT string_agg('GoToOffset' || num || '=' || bb_offset, chr(10)) FROM nums;")
 
-echo "Replacing $wxconfig with pg_hexedit optimized settings..."
-cat > $wxconfig <<- EOM
-UpdateCheck=0
-UseBytesPerLineLimit=1
-BytesPerLineLimit=$BYTES_PER_LINE_LIMIT
-FontSize=$FONTSIZE
-CharacterEncodingFamily=Code for Information Interchange
-CharacterEncoding=ASCII - American Standard Code for Information Interchange
-ScreenFullScreen=1
-AutoShowTagPanel=0
-GoToOptions=7
-$DECILE_SPLITS
-EOM
-
-PGDATA=$(psql --no-psqlrc -tA -c "SELECT setting FROM pg_settings WHERE name = 'data_directory'")
-echo "Determined that data directory is $PGDATA"
-ATTRLIST=$(psql --no-psqlrc -tA -c "SELECT string_agg(attlen || ',\"' || attname  || '\",' || attalign, ',')
-FROM
-(SELECT * FROM pg_attribute WHERE attrelid = '$relname'::regclass AND attnum > 0 ORDER BY attnum ASC) t;")
-FULLPATH="$PGDATA/$RFN"
-echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
-echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to keep overhead low"
-./pg_hexedit -D "$ATTRLIST" -z -R $MIN_BLOCK_TAGS $MAX_BLOCK_TAGS $FULLPATH > $FULLPATH.tags
-
-if [ ! $? -eq 0 ]; then
-  echo "Error encountered by pg_hexedit. Could not generate all tags."
-  echo "You may still wish to run: $HEXEDITOR $FULLPATH"
-  exit
-fi
-
-if [ ! -f $HEXEDITOR ]; then
-  echo "\"$HEXEDITOR\" executable not found"
-  echo "\"$FULLPATH.tags\" annotation file was still created"
-  exit 1
-fi
-
-echo "Opening $FULLPATH with $HEXEDITOR..."
-echo "Tip: 'Go to Offset' dialog (shortcut: Ctrl + G) has decile splitter block start positions cached"
-# Output from wxHexEditor is verbose, and not terribly useful, so we redirect:
-$HEXEDITOR $FULLPATH &> /dev/null
+echo "Tip: 'Go to Offset' dialog (shortcut: Ctrl + G) will have decile splitter block start positions cached"
+./__open_relation $relname

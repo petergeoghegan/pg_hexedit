@@ -266,13 +266,14 @@ as:
 `-D 'attlen,attname,attalign,attlen,attname,attalign,...'`
 
 Each attribute's triple of metadata should appear in pg_attribute.attnum order.
-The convenience scripts use an SQL query to form the string.  The attrlist SQL
-query will produce a correct `-D` argument when run against a relation with the
-same schema as the target relation/file, even when run against an unrelated
-PostgreSQL installation, provided a compatible CPU architecture is used.  Note
-that dropped columns need to be represented in the attrlist string.  Elements
-that contain whitespace or comma characters can be parsed as a single element
-by appearing within double quotes.  It's good practice to use single quotes for
+The convenience scripts use an SQL query to form the string (see the
+`__open_relation` utility script).  The attrlist SQL query will produce a
+correct `-D` argument when run against a relation with the same schema as the
+target relation/file, even when run against an unrelated PostgreSQL
+installation, provided a compatible CPU architecture is used.  Note that
+dropped columns need to be represented in the attrlist string.  Elements that
+contain whitespace or comma characters can be parsed as a single element by
+appearing within double quotes.  It's good practice to use single quotes for
 the attrlist argument as a whole.
 
 See `pg_hexedit -h` for full details of all available options.

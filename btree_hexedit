@@ -1,4 +1,8 @@
 #!/bin/bash
+#
+# btree_hexedit: Similar to relation_hexedit, but sets the B-Tree non-leaf
+# children of the root as offsets, as well as an offset to the root itself.
+
 usage() {
   cat <<EOM
   Usage:
@@ -14,42 +18,16 @@ source ./hexedit.cfg
 
 relname=$1
 
-# Spoof home director, to avoid clobbering real /.wxHexEditor file
-export HOME=`pwd`
-wxconfig="$HOME/.wxHexEditor"
-
-psql --no-psqlrc -c "CHECKPOINT"
-if [ ! $? -eq 0 ]; then
-  echo "CHECKPOINT failed"
-  exit
-fi
+# Generate offsets to all non-leaf children of the root pages in "Go to Offset"
+# dialog cache (only do this when they're non-leaf pages to avoid having an
+# offset to every page in the index).
 psql --no-psqlrc -c "CREATE EXTENSION IF NOT EXISTS pageinspect"
 if [ ! $? -eq 0 ]; then
   echo "creating pageinspect extension failed"
   exit
 fi
 
-RFN=$(psql --no-psqlrc -tA -c "SELECT pg_relation_filepath('$relname')")
-if [ ! $? -eq 0 ]; then
-  echo "invoking pg_relation_filepath() failed"
-  exit
-fi
-
-# wxHexEditor XML encoding is always UTF-8
-export PGCLIENTENCODING="UTF8"
-
-# Put minimal .wxHexEditor registry style config file in place, so old tags are
-# forgotten.  This is also where we generate convenience "Go to Offset" dialog
-# offsets in the registry/cache.
-#
-# For B-Tree indexes, generate offsets to all non-leaf children of the root
-# pages in "Go to Offset" dialog cache (only do this when they're non-leaf
-# pages to avoid having an offset to every page in the index).  The root page
-# is also added as a separate offset.
-#
-# Note that the query will return NULL for very small tables, which leaves us
-# without any such cached offsets.
-TRUE_ROOT_OFFSET=$(psql --no-psqlrc -tA -c "SELECT root * 2^13 FROM bt_metap('$relname')")
+TRUE_ROOT_OFFSET=$(psql --no-psqlrc -tA -c "SELECT 'GoToOffset0=' || (root * 2^13)::text FROM bt_metap('$relname')")
 if [ ! $? -eq 0 ]; then
   echo "obtaining true root block for offset dialog failed; is $relname a btree?"
   exit
@@ -59,49 +37,15 @@ ROOT_CHILD_OFFSETS=$(psql --no-psqlrc -tA -c "WITH offset_strings(string) AS (
   FROM bt_page_items('$relname', (SELECT root::int4 FROM bt_metap('$relname') where level > 1))
 )
 SELECT string_agg(string, chr(10)) FROM offset_strings;")
+
 if [ ! $? -eq 0 ]; then
   echo "obtaining non-leaf children of root block for offset dialog failed"
   exit
 fi
 
-echo "Replacing $wxconfig with pg_hexedit optimized settings..."
-cat > $wxconfig <<- EOM
-UpdateCheck=0
-UseBytesPerLineLimit=1
-BytesPerLineLimit=$BYTES_PER_LINE_LIMIT
-FontSize=$FONTSIZE
-CharacterEncodingFamily=Code for Information Interchange
-CharacterEncoding=ASCII - American Standard Code for Information Interchange
-ScreenFullScreen=1
-AutoShowTagPanel=0
-GoToOptions=7
-GotoOffset0=$TRUE_ROOT_OFFSET
-$ROOT_CHILD_OFFSETS
-EOM
+# The root page is also added as a separate offset.
+OFFSETS="${TRUE_ROOT_OFFSET}"$'\n'"${ROOT_CHILD_OFFSETS}"
+export OFFSETS
 
-PGDATA=$(psql --no-psqlrc -tA -c "SELECT setting FROM pg_settings WHERE name = 'data_directory'")
-echo "Determined that data directory is $PGDATA"
-ATTRLIST=$(psql --no-psqlrc -tA -c "SELECT string_agg(attlen || ',\"' || attname  || '\",' || attalign, ',')
-FROM
-(SELECT * FROM pg_attribute WHERE attrelid = '$relname'::regclass AND attnum > 0 ORDER BY attnum ASC) t;")
-FULLPATH="$PGDATA/$RFN"
-echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
-echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to keep overhead low"
-./pg_hexedit -D "$ATTRLIST" -z -R $MIN_BLOCK_TAGS $MAX_BLOCK_TAGS $FULLPATH > $FULLPATH.tags
-
-if [ ! $? -eq 0 ]; then
-  echo "Error encountered by pg_hexedit. Could not generate all tags."
-  echo "You may still wish to run: $HEXEDITOR $FULLPATH"
-  exit
-fi
-
-if [ ! -f $HEXEDITOR ]; then
-  echo "\"$HEXEDITOR\" executable not found"
-  echo "\"$FULLPATH.tags\" annotation file was still created"
-  exit 1
-fi
-
-echo "Opening $FULLPATH with $HEXEDITOR..."
-echo "Tip: 'Go to Offset' dialog (shortcut: Ctrl + G) has children of root and root offsets cached"
-# Output from wxHexEditor is verbose, and not terribly useful, so we redirect:
-$HEXEDITOR $FULLPATH &> /dev/null
+echo "Tip: 'Go to Offset' dialog (shortcut: Ctrl + G) will have children of root and root offsets cached"
+./__open_relation $relname

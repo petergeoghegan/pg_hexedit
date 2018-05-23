@@ -1,0 +1,78 @@
+#!/bin/bash
+#
+# This script contains code that is common to all convenience scripts.
+#
+# Utility scripts mostly consist of some logic for exporting wxHexEditor-format
+# offset cache entries to the OFFSETS environment variable, and/or logic for
+# printing something to stdout that's useful to the user.  Everything else
+# happens here.
+#
+# Most convenience scripts set the $OFFSETS env var to something useful for us.
+# Utility scripts must have run "source ./hexedit.cfg" for us.
+
+relname=$1
+
+# Spoof home director, to avoid clobbering real /.wxHexEditor file
+export HOME=`pwd`
+wxconfig="$HOME/.wxHexEditor"
+
+psql --no-psqlrc -c "CHECKPOINT"
+if [ ! $? -eq 0 ]; then
+  echo "CHECKPOINT failed"
+  exit
+fi
+
+RFN=$(psql --no-psqlrc -tA -c "SELECT pg_relation_filepath('$relname')")
+if [ ! $? -eq 0 ]; then
+  echo "invoking pg_relation_filepath() failed"
+  exit
+fi
+
+# Put minimal .wxHexEditor registry style config file in place, so old tags are
+# forgotten.  This is also where we generate convenience "Go to Offset" dialog
+# offsets in the registry/cache (this comes from OFFSETS env var).
+echo "Replacing $wxconfig with pg_hexedit optimized settings..."
+cat > $wxconfig <<- EOM
+UpdateCheck=0
+UseBytesPerLineLimit=1
+BytesPerLineLimit=$BYTES_PER_LINE_LIMIT
+FontSize=$FONTSIZE
+CharacterEncodingFamily=Code for Information Interchange
+CharacterEncoding=ASCII - American Standard Code for Information Interchange
+ScreenFullScreen=1
+AutoShowTagPanel=0
+GoToOptions=7
+$OFFSETS
+EOM
+
+PGDATA=$(psql --no-psqlrc -tA -c "SELECT setting FROM pg_settings WHERE name = 'data_directory'")
+echo "Determined that data directory is $PGDATA"
+
+# wxHexEditor XML encoding is always UTF-8.  Make sure that attname fields come
+# back as UTF-8.
+export PGCLIENTENCODING="UTF8"
+ATTRLIST=$(psql --no-psqlrc -tA -c "SELECT string_agg(attlen || ',\"' || attname  || '\",' || attalign, ',')
+FROM
+(SELECT * FROM pg_attribute WHERE attrelid = '$relname'::regclass AND attnum > 0 ORDER BY attnum ASC) t;")
+
+# Generate tags at a path that we know wxHexEditor will look for them:
+FULLPATH="$PGDATA/$RFN"
+echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
+echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to keep overhead low"
+./pg_hexedit -D "$ATTRLIST" -z -R $MIN_BLOCK_TAGS $MAX_BLOCK_TAGS $FULLPATH > $FULLPATH.tags
+
+if [ ! $? -eq 0 ]; then
+  echo "Error encountered by pg_hexedit. Could not generate all tags."
+  echo "You may still wish to run: $HEXEDITOR $FULLPATH"
+  exit
+fi
+
+if [ ! -f $HEXEDITOR ]; then
+  echo "\"$HEXEDITOR\" executable not found"
+  echo "\"$FULLPATH.tags\" annotation file was still created"
+  exit 1
+fi
+
+echo "Opening $FULLPATH with $HEXEDITOR..."
+# Output from wxHexEditor is verbose, and not terribly useful, so we redirect:
+$HEXEDITOR $FULLPATH &> /dev/null

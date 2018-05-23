@@ -1,4 +1,11 @@
 #!/bin/bash
+#
+# gin_hexedit:  Don't set any offsets in wxHexEditor cache.  Instead, output
+# a summary of interesting offsets for the GIN index to stdout for user.
+#
+# Unlike relation_hexedit, this script does not set any offsets in the
+# wxHexEditor cache/registry.
+
 usage() {
   cat <<EOM
   Usage:
@@ -14,32 +21,14 @@ source ./hexedit.cfg
 
 relname=$1
 
-# Spoof home director, to avoid clobbering real /.wxHexEditor file
-export HOME=`pwd`
-wxconfig="$HOME/.wxHexEditor"
-
-psql --no-psqlrc -c "CHECKPOINT"
-if [ ! $? -eq 0 ]; then
-  echo "CHECKPOINT failed"
-  exit
-fi
+# Print useful byte offsets for user to stdout:
 psql --no-psqlrc  -c "CREATE EXTENSION IF NOT EXISTS pageinspect"
 if [ ! $? -eq 0 ]; then
   echo "creating pageinspect extension failed"
   exit
 fi
 
-RFN=$(psql --no-psqlrc -tA -c "SELECT pg_relation_filepath('$relname')")
-if [ ! $? -eq 0 ]; then
-  echo "invoking pg_relation_filepath() failed"
-  exit
-fi
-
-# wxHexEditor XML encoding is always UTF-8
-export PGCLIENTENCODING="UTF8"
-
 echo "Contiguous flags in GIN index summary:"
-
 psql --no-psqlrc -P pager=off -c "WITH recursive index_details AS (
   SELECT '$relname'::text AS idx
 ),
@@ -96,50 +85,10 @@ ORDER BY
   first;"
 
 if [ ! $? -eq 0 ]; then
-   echo "displaying contiguous range of blocks failed; is $relname a GIN index?"
+   echo "displaying contiguous range of blocks failed"
    exit
 fi
 
-# Put minimal .wxHexEditor registry style config file in place, so old tags are
-# forgotten.  We don't do anything special for GIN here -- this script leaves
-# it up to the user to manually input offsets, since the context of which range
-# is which is too complicated for automatic offsets to work sensibly.
-
-echo "Replacing $wxconfig with pg_hexedit optimized settings..."
-cat > $wxconfig <<- EOM
-UpdateCheck=0
-UseBytesPerLineLimit=1
-BytesPerLineLimit=$BYTES_PER_LINE_LIMIT
-FontSize=$FONTSIZE
-CharacterEncodingFamily=Code for Information Interchange
-CharacterEncoding=ASCII - American Standard Code for Information Interchange
-ScreenFullScreen=1
-AutoShowTagPanel=0
-GoToOptions=7
-EOM
-
-PGDATA=$(psql --no-psqlrc -tA -c "SELECT setting FROM pg_settings WHERE name = 'data_directory'")
-echo "Determined that data directory is $PGDATA"
-ATTRLIST=$(psql --no-psqlrc -tA -c "SELECT string_agg(attlen || ',\"' || attname  || '\",' || attalign, ',')
-FROM
-(SELECT * FROM pg_attribute WHERE attrelid = '$relname'::regclass AND attnum > 0 ORDER BY attnum ASC) t;")
-FULLPATH="$PGDATA/$RFN"
-echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
-echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to keep overhead low"
-./pg_hexedit -D "$ATTRLIST" -z -R $MIN_BLOCK_TAGS $MAX_BLOCK_TAGS $FULLPATH > $FULLPATH.tags
-
-if [ ! $? -eq 0 ]; then
-  echo "Error encountered by pg_hexedit. Could not generate all tags."
-  echo "You may still wish to run: $HEXEDITOR $FULLPATH"
-  exit
-fi
-
-if [ ! -f $HEXEDITOR ]; then
-  echo "\"$HEXEDITOR\" executable not found"
-  echo "\"$FULLPATH.tags\" annotation file was still created"
-  exit 1
-fi
-
-echo "Opening $FULLPATH with $HEXEDITOR..."
-# Output from wxHexEditor is verbose, and not terribly useful, so we redirect:
-$HEXEDITOR $FULLPATH &> /dev/null
+export OFFSETS=""
+echo "Note: no offsets are set in cache when using $(basename $0) convenience script"
+./__open_relation $relname
