@@ -9,27 +9,27 @@
 usage() {
   cat <<EOM
   Usage:
-  $(basename $0) relname
+  $(basename "$0") relname
 
 EOM
   exit 0
 }
 
-[ -z $1 ] && { usage; }
+[ -z "$1" ] && { usage; }
 
 source ./hexedit.cfg
 
 relname=$1
 
 # Print useful byte offsets for user to stdout:
-psql --no-psqlrc  -c "CREATE EXTENSION IF NOT EXISTS pageinspect"
-if [ ! $? -eq 0 ]; then
+if ! psql --no-psqlrc -c "CREATE EXTENSION IF NOT EXISTS pageinspect"
+then
   echo "creating pageinspect extension failed"
   exit
 fi
 
 echo "Contiguous flags in GIN index summary:"
-psql --no-psqlrc -P pager=off -c "WITH recursive index_details AS (
+if ! psql --no-psqlrc -P pager=off -c "WITH recursive index_details AS (
   SELECT '$relname'::text AS idx
 ),
 size_in_pages_index AS (
@@ -83,12 +83,11 @@ WHERE
   series = first
 ORDER BY
   first;"
-
-if [ ! $? -eq 0 ]; then
-   echo "displaying contiguous range of blocks failed"
-   exit
+then
+  echo "displaying contiguous range of blocks failed"
+  exit
 fi
 
 export OFFSETS=""
-echo "Note: no offsets are set in cache when using $(basename $0) convenience script"
-./__open_relation $relname
+echo "Note: no offsets are set in cache when using $(basename "$0") convenience script"
+./__open_relation "$relname"

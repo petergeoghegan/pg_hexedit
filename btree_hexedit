@@ -6,13 +6,13 @@
 usage() {
   cat <<EOM
   Usage:
-  $(basename $0) relname
+  $(basename "$0") relname
 
 EOM
   exit 0
 }
 
-[ -z $1 ] && { usage; }
+[ -z "$1" ] && { usage; }
 
 source ./hexedit.cfg
 
@@ -21,31 +21,30 @@ relname=$1
 # Generate offsets to all non-leaf children of the root pages in "Go to Offset"
 # dialog cache (only do this when they're non-leaf pages to avoid having an
 # offset to every page in the index).
-psql --no-psqlrc -c "CREATE EXTENSION IF NOT EXISTS pageinspect"
-if [ ! $? -eq 0 ]; then
+if ! psql --no-psqlrc -c "CREATE EXTENSION IF NOT EXISTS pageinspect"
+then
   echo "creating pageinspect extension failed"
   exit
 fi
 
-TRUE_ROOT_OFFSET=$(psql --no-psqlrc -tA -c "SELECT 'GoToOffset0=' || (root * 2^13)::text FROM bt_metap('$relname')")
-if [ ! $? -eq 0 ]; then
+if ! TRUE_ROOT_OFFSET=$(psql --no-psqlrc -tA -c "SELECT 'GoToOffset0=' || (root * 2^13)::text FROM bt_metap('$relname')")
+then
   echo "obtaining true root block for offset dialog failed; is $relname a btree?"
   exit
 fi
-ROOT_CHILD_OFFSETS=$(psql --no-psqlrc -tA -c "WITH offset_strings(string) AS (
+
+if ! ROOT_CHILD_OFFSETS=$(psql --no-psqlrc -tA -c "WITH offset_strings(string) AS (
   SELECT 'GoToOffset' || ROW_NUMBER() OVER() || '=' || (substring(ctid::text from '([0-9]+)')::int8 * (2^13))
   FROM bt_page_items('$relname', (SELECT root::int4 FROM bt_metap('$relname') where level > 1))
 )
 SELECT string_agg(string, chr(10)) FROM offset_strings;")
-
-if [ ! $? -eq 0 ]; then
+then
   echo "obtaining non-leaf children of root block for offset dialog failed"
   exit
 fi
-
 # The root page is also added as a separate offset.
 OFFSETS="${TRUE_ROOT_OFFSET}"$'\n'"${ROOT_CHILD_OFFSETS}"
-export OFFSETS
 
+export OFFSETS
 echo "Tip: 'Go to Offset' dialog (shortcut: Ctrl + G) will have children of root and root offsets cached"
-./__open_relation $relname
+./__open_relation "$relname"

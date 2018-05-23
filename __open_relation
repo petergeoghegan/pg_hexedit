@@ -13,17 +13,17 @@
 relname=$1
 
 # Spoof home director, to avoid clobbering real /.wxHexEditor file
-export HOME=`pwd`
+HOME=$(pwd)
 wxconfig="$HOME/.wxHexEditor"
 
-psql --no-psqlrc -c "CHECKPOINT"
-if [ ! $? -eq 0 ]; then
+if ! psql --no-psqlrc -c "CHECKPOINT"
+then
   echo "CHECKPOINT failed"
   exit
 fi
 
-RFN=$(psql --no-psqlrc -tA -c "SELECT pg_relation_filepath('$relname')")
-if [ ! $? -eq 0 ]; then
+if ! RFN=$(psql --no-psqlrc -tA -c "SELECT pg_relation_filepath('$relname')")
+then
   echo "invoking pg_relation_filepath() failed"
   exit
 fi
@@ -32,7 +32,7 @@ fi
 # forgotten.  This is also where we generate convenience "Go to Offset" dialog
 # offsets in the registry/cache (this comes from OFFSETS env var).
 echo "Replacing $wxconfig with pg_hexedit optimized settings..."
-cat > $wxconfig <<- EOM
+cat > "$wxconfig" <<- EOM
 UpdateCheck=0
 UseBytesPerLineLimit=1
 BytesPerLineLimit=$BYTES_PER_LINE_LIMIT
@@ -59,15 +59,16 @@ FROM
 FULLPATH="$PGDATA/$RFN"
 echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
 echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to keep overhead low"
-./pg_hexedit -D "$ATTRLIST" -z -R $MIN_BLOCK_TAGS $MAX_BLOCK_TAGS $FULLPATH > $FULLPATH.tags
 
-if [ ! $? -eq 0 ]; then
+if ! ./pg_hexedit -D "$ATTRLIST" -z -R "$MIN_BLOCK_TAGS" "$MAX_BLOCK_TAGS" "$FULLPATH" > "$FULLPATH.tags"
+then
   echo "Error encountered by pg_hexedit. Could not generate all tags."
   echo "You may still wish to run: $HEXEDITOR $FULLPATH"
   exit
 fi
 
-if [ ! -f $HEXEDITOR ]; then
+if [ ! -f "$HEXEDITOR" ]
+then
   echo "\"$HEXEDITOR\" executable not found"
   echo "\"$FULLPATH.tags\" annotation file was still created"
   exit 1
@@ -75,4 +76,4 @@ fi
 
 echo "Opening $FULLPATH with $HEXEDITOR..."
 # Output from wxHexEditor is verbose, and not terribly useful, so we redirect:
-$HEXEDITOR $FULLPATH &> /dev/null
+$HEXEDITOR "$FULLPATH" &> /dev/null
