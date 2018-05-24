@@ -16,7 +16,8 @@ before_install:
    - git clone https://github.com/postgres/postgres.git
    - cd postgres
    - git checkout ${PGBRANCH}
-   - ./configure --prefix=${PGHOME} --enable-debug --enable-cassert
+   - export CFLAGS="-Og -g3"
+   - ./configure --prefix=${PGHOME} --enable-cassert
    - make -j 2
    - make install
    - export PATH=${PATH}:${PGHOME}/bin
