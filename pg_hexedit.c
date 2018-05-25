@@ -259,10 +259,13 @@ static void EmitXmlTag(BlockNumber blkno, uint32 level, const char *name,
 static void EmitXmlItemId(BlockNumber blkno, OffsetNumber offset,
 						  ItemId itemId, uint32 relfileOff,
 						  const char *textFlags);
-static void EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset,
-							const char *name, const char *color,
-							uint32 relfileOff,
-							uint32 relfileOffEnd);
+static inline void EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset,
+								   const char *name, const char *color,
+								   uint32 relfileOff, uint32 relfileOffEnd);
+static void EmitXmlTupleTagFont(BlockNumber blkno, OffsetNumber offset,
+								const char *name, const char *color,
+								const char *fontColor, uint32 relfileOff,
+								uint32 relfileOffEnd);
 static void EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
 								  uint32 relfileOff, HeapTupleHeader htup,
 								  int itemSize);
@@ -1642,9 +1645,21 @@ EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
  * covers, so callers generally pass (relfileOff + length) - 1.  This is
  * slightly less verbose than getting callers to pass length.
  */
-static void
+static inline void
 EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset, const char *name,
 				const char *color, uint32 relfileOff, uint32 relfileOffEnd)
+{
+	EmitXmlTupleTagFont(blkno, offset, name, color, COLOR_FONT_STANDARD,
+						relfileOff, relfileOffEnd);
+}
+
+/*
+ * Like EmitXmlTupleTag(), but lets caller specify font color
+ */
+static void
+EmitXmlTupleTagFont(BlockNumber blkno, OffsetNumber offset, const char *name,
+					const char *color, const char *fontColor,
+					uint32 relfileOff, uint32 relfileOffEnd)
 {
 	if (relfileOff > relfileOffEnd)
 	{
@@ -1660,7 +1675,7 @@ EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset, const char *name,
 	printf("      <end_offset>%u</end_offset>\n", relfileOffEnd);
 	printf("      <tag_text>(%u,%u) %s</tag_text>\n",
 		   blkno + segmentBlockDelta, offset, name);
-	printf("      <font_colour>" COLOR_FONT_STANDARD "</font_colour>\n");
+	printf("      <font_colour>%s</font_colour>\n", fontColor);
 	printf("      <note_colour>%s</note_colour>\n", color);
 	printf("    </TAG>\n");
 }
@@ -1806,23 +1821,103 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 				 HeapTupleHeader htup, uint32 relfileOff,
 				 int itemSize)
 {
-	char	   *flagString;
-	uint32		relfileOffNext = 0;
-	uint32		relfileOffOrig = relfileOff;
+	TransactionId	rawXmin = HeapTupleHeaderGetRawXmin(htup);
+	TransactionId	rawXmax = HeapTupleHeaderGetRawXmax(htup);
+	char			xmin[70];
+	char			xmax[70];
+	char		   *xminFontColor;
+	char		   *xmaxFontColor;
+	BlockNumber		logBlock = blkno + segmentBlockDelta;
+	char		   *blkFontColor;
+	char		   *offsetFontColor;
+	char		   *flagString;
+	uint32			relfileOffNext = 0;
+	uint32			relfileOffOrig = relfileOff;
 
 	/*
-	 * The choice of colors here is not completely arbitrary, or based on
-	 * aesthetic preferences.  There is some attempt at analogy in the choice
-	 * of colors.  For example, xmin and xmax are symmetric, and so are both
-	 * COLOR_RED_LIGHT.
+	 * Produce xmin and xmax tags for tuple.
+	 *
+	 * The choice of colors here is not completely arbitrary.  There is some
+	 * attempt at analogy in the choice of colors.  For example, xmin and xmax
+	 * are symmetric, and so are both COLOR_RED_LIGHT.
+	 *
+	 * Tuple freezing and MultiXacts leave us with a lot of potentially
+	 * interesting information to represent here.  We use special font colors
+	 * to represent special transaction IDs, and include certain special status
+	 * information about the TransactionId/MultiXact contained within each
+	 * field.  The extra information in the tags is redundant with the infomask
+	 * tags (tags for where the information is actually represented), but it
+	 * seems useful to add some visual cues.
 	 */
+	strcpy(xmin, "xmin");
+	strcpy(xmax, "xmax");
+	xminFontColor = COLOR_FONT_STANDARD;
+	xmaxFontColor = COLOR_FONT_STANDARD;
+
+	/*
+	 * HeapTupleHeaderXminFrozen() doesn't actually consider pre-9.4
+	 * pg_upgrad'ed tuples that have FrozenTransactionId as their raw xmin
+	 */
+	if (!HeapTupleHeaderXminFrozen(htup) && rawXmin != FrozenTransactionId)
+	{
+		if (rawXmin == BootstrapTransactionId)
+		{
+			strcat(xmin, " - BootstrapTransactionId");
+			xminFontColor = COLOR_WHITE;
+		}
+		else if (rawXmin == InvalidTransactionId)
+		{
+			strcat(xmin, " - InvalidTransactionId");
+			xminFontColor = COLOR_YELLOW_LIGHT;
+		}
+	}
+	else
+	{
+		/*
+		 * Raw xmin is frozen.  Frozen xmin XIDs are only preserved for
+		 * forensic reasons (on Postgres 9.4+), so use low-contrast font to
+		 * deemphasize the XID.  (Raw xmin could be FrozenTransactionId here in
+		 * a pg_upgrade'd database, which is just as uninteresting.)
+		 */
+		strcat(xmin, " - Frozen");
+		xminFontColor = COLOR_RED_DARK;
+	}
+
+	/*
+	 * Deliberately tag InvalidTransactionId and HEAP_XMAX_INVALID separately
+	 * for xmax annotation, since they can be set separately in a way that
+	 * might be interesting.  Also indicate (redundantly) if the xmax is a
+	 * MultiXactId.
+	 *
+	 * Representing HEAP_XMAX_IS_MULTI but not HEAP_XMAX_COMMITTED here is a
+	 * bit arbitrary.  We do this because HEAP_XMAX_IS_MULTI is a basic fact
+	 * about the class of data that the xmax field contains, as opposed to
+	 * status information for the tuple as a whole.
+	 */
+	if ((htup->t_infomask & HEAP_XMAX_IS_MULTI) != 0)
+	{
+		strcat(xmax, " - HEAP_XMAX_IS_MULTI");
+		xmaxFontColor = COLOR_GREEN_DARK;
+	}
+	if (rawXmax == InvalidTransactionId)
+	{
+		strcat(xmax, " - InvalidTransactionId");
+		xmaxFontColor = COLOR_YELLOW_LIGHT;
+	}
+	if ((htup->t_infomask & HEAP_XMAX_INVALID) != 0)
+	{
+		strcat(xmax, " - HEAP_XMAX_INVALID");
+		/* Matches InvalidTransactionId case */
+		xmaxFontColor = COLOR_YELLOW_LIGHT;
+	}
+
 	relfileOffNext = relfileOff + sizeof(TransactionId);
-	EmitXmlTupleTag(blkno, offset, "xmin", COLOR_RED_LIGHT, relfileOff,
-					relfileOffNext - 1);
+	EmitXmlTupleTagFont(blkno, offset, xmin, COLOR_RED_LIGHT, xminFontColor,
+						relfileOff, relfileOffNext - 1);
 	relfileOff = relfileOffNext;
 	relfileOffNext += sizeof(TransactionId);
-	EmitXmlTupleTag(blkno, offset, "xmax", COLOR_RED_LIGHT, relfileOff,
-					relfileOffNext - 1);
+	EmitXmlTupleTagFont(blkno, offset, xmax, COLOR_RED_LIGHT, xmaxFontColor,
+						relfileOff, relfileOffNext - 1);
 	relfileOff = relfileOffNext;
 
 	if (!(htup->t_infomask & HEAP_MOVED))
@@ -1862,23 +1957,37 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	 * used for ItemIds, since both are physical pointers.  offsetNumber is a
 	 * logical pointer, though, and so we make that COLOR_BLUE_DARK to slightly
 	 * distinguish it.
+	 *
+	 * It seems useful to provide a subtle cue about whether or not the tuple
+	 * is the latest version within the t_ctid subfields, since this helps the
+	 * user to notice update chains.  Check if tuple's t_ctid points to the
+	 * tuple itself; if it does, use non-contrasting font colors to
+	 * deemphasize.
 	 */
+	blkFontColor = COLOR_FONT_STANDARD;
+	offsetFontColor = COLOR_FONT_STANDARD;
+	if (ItemPointerGetBlockNumber(&htup->t_ctid) == logBlock &&
+		ItemPointerGetOffsetNumber(&htup->t_ctid) == offset)
+	{
+		blkFontColor = COLOR_BLUE_DARK;
+		offsetFontColor = COLOR_BLUE_LIGHT;
+	}
 	relfileOff = relfileOffNext;
 	relfileOffNext += sizeof(uint16);
-	EmitXmlTupleTag(blkno, offset, "t_ctid->bi_hi", COLOR_BLUE_LIGHT, relfileOff,
-					relfileOffNext - 1);
+	EmitXmlTupleTagFont(blkno, offset, "t_ctid->bi_hi", COLOR_BLUE_LIGHT,
+						blkFontColor, relfileOff, relfileOffNext - 1);
 	relfileOff = relfileOffNext;
 	relfileOffNext += sizeof(uint16);
-	EmitXmlTupleTag(blkno, offset, "t_ctid->bi_lo", COLOR_BLUE_LIGHT, relfileOff,
-					relfileOffNext - 1);
+	EmitXmlTupleTagFont(blkno, offset, "t_ctid->bi_lo", COLOR_BLUE_LIGHT,
+						blkFontColor, relfileOff, relfileOffNext - 1);
 	/*
 	 * Note: offsetNumber could be SpecTokenOffsetNumber, but we don't annotate
 	 * that
 	 */
 	relfileOff = relfileOffNext;
 	relfileOffNext += sizeof(uint16);
-	EmitXmlTupleTag(blkno, offset, "t_ctid->offsetNumber", COLOR_BLUE_DARK,
-					relfileOff, relfileOffNext - 1);
+	EmitXmlTupleTagFont(blkno, offset, "t_ctid->offsetNumber", COLOR_BLUE_DARK,
+						offsetFontColor, relfileOff, relfileOffNext - 1);
 
 	flagString = GetHeapTupleHeaderFlags(htup, true);
 	relfileOff = relfileOffNext;

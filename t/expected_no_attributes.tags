@@ -450,15 +450,15 @@
     <TAG id="63">
       <start_offset>8048</start_offset>
       <end_offset>8051</end_offset>
-      <tag_text>(0,1) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,1) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="64">
       <start_offset>8052</start_offset>
       <end_offset>8055</end_offset>
-      <tag_text>(0,1) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,1) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="65">
@@ -472,21 +472,21 @@
       <start_offset>8060</start_offset>
       <end_offset>8061</end_offset>
       <tag_text>(0,1) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="67">
       <start_offset>8062</start_offset>
       <end_offset>8063</end_offset>
       <tag_text>(0,1) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="68">
       <start_offset>8064</start_offset>
       <end_offset>8065</end_offset>
       <tag_text>(0,1) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="69">
@@ -527,15 +527,15 @@
     <TAG id="74">
       <start_offset>7904</start_offset>
       <end_offset>7907</end_offset>
-      <tag_text>(0,2) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,2) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="75">
       <start_offset>7908</start_offset>
       <end_offset>7911</end_offset>
-      <tag_text>(0,2) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,2) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="76">
@@ -549,21 +549,21 @@
       <start_offset>7916</start_offset>
       <end_offset>7917</end_offset>
       <tag_text>(0,2) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="78">
       <start_offset>7918</start_offset>
       <end_offset>7919</end_offset>
       <tag_text>(0,2) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="79">
       <start_offset>7920</start_offset>
       <end_offset>7921</end_offset>
       <tag_text>(0,2) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="80">
@@ -604,15 +604,15 @@
     <TAG id="85">
       <start_offset>7760</start_offset>
       <end_offset>7763</end_offset>
-      <tag_text>(0,3) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,3) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="86">
       <start_offset>7764</start_offset>
       <end_offset>7767</end_offset>
-      <tag_text>(0,3) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,3) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="87">
@@ -626,21 +626,21 @@
       <start_offset>7772</start_offset>
       <end_offset>7773</end_offset>
       <tag_text>(0,3) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="89">
       <start_offset>7774</start_offset>
       <end_offset>7775</end_offset>
       <tag_text>(0,3) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="90">
       <start_offset>7776</start_offset>
       <end_offset>7777</end_offset>
       <tag_text>(0,3) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="91">
@@ -681,15 +681,15 @@
     <TAG id="96">
       <start_offset>7616</start_offset>
       <end_offset>7619</end_offset>
-      <tag_text>(0,4) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,4) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="97">
       <start_offset>7620</start_offset>
       <end_offset>7623</end_offset>
-      <tag_text>(0,4) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,4) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="98">
@@ -703,21 +703,21 @@
       <start_offset>7628</start_offset>
       <end_offset>7629</end_offset>
       <tag_text>(0,4) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="100">
       <start_offset>7630</start_offset>
       <end_offset>7631</end_offset>
       <tag_text>(0,4) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="101">
       <start_offset>7632</start_offset>
       <end_offset>7633</end_offset>
       <tag_text>(0,4) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="102">
@@ -758,15 +758,15 @@
     <TAG id="107">
       <start_offset>7472</start_offset>
       <end_offset>7475</end_offset>
-      <tag_text>(0,5) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,5) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="108">
       <start_offset>7476</start_offset>
       <end_offset>7479</end_offset>
-      <tag_text>(0,5) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,5) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="109">
@@ -780,21 +780,21 @@
       <start_offset>7484</start_offset>
       <end_offset>7485</end_offset>
       <tag_text>(0,5) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="111">
       <start_offset>7486</start_offset>
       <end_offset>7487</end_offset>
       <tag_text>(0,5) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="112">
       <start_offset>7488</start_offset>
       <end_offset>7489</end_offset>
       <tag_text>(0,5) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="113">
@@ -835,15 +835,15 @@
     <TAG id="118">
       <start_offset>7328</start_offset>
       <end_offset>7331</end_offset>
-      <tag_text>(0,6) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,6) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="119">
       <start_offset>7332</start_offset>
       <end_offset>7335</end_offset>
-      <tag_text>(0,6) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,6) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="120">
@@ -857,21 +857,21 @@
       <start_offset>7340</start_offset>
       <end_offset>7341</end_offset>
       <tag_text>(0,6) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="122">
       <start_offset>7342</start_offset>
       <end_offset>7343</end_offset>
       <tag_text>(0,6) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="123">
       <start_offset>7344</start_offset>
       <end_offset>7345</end_offset>
       <tag_text>(0,6) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="124">
@@ -912,15 +912,15 @@
     <TAG id="129">
       <start_offset>7184</start_offset>
       <end_offset>7187</end_offset>
-      <tag_text>(0,7) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,7) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="130">
       <start_offset>7188</start_offset>
       <end_offset>7191</end_offset>
-      <tag_text>(0,7) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,7) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="131">
@@ -934,21 +934,21 @@
       <start_offset>7196</start_offset>
       <end_offset>7197</end_offset>
       <tag_text>(0,7) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="133">
       <start_offset>7198</start_offset>
       <end_offset>7199</end_offset>
       <tag_text>(0,7) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="134">
       <start_offset>7200</start_offset>
       <end_offset>7201</end_offset>
       <tag_text>(0,7) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="135">
@@ -989,15 +989,15 @@
     <TAG id="140">
       <start_offset>7040</start_offset>
       <end_offset>7043</end_offset>
-      <tag_text>(0,8) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,8) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="141">
       <start_offset>7044</start_offset>
       <end_offset>7047</end_offset>
-      <tag_text>(0,8) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,8) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="142">
@@ -1011,21 +1011,21 @@
       <start_offset>7052</start_offset>
       <end_offset>7053</end_offset>
       <tag_text>(0,8) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="144">
       <start_offset>7054</start_offset>
       <end_offset>7055</end_offset>
       <tag_text>(0,8) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="145">
       <start_offset>7056</start_offset>
       <end_offset>7057</end_offset>
       <tag_text>(0,8) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="146">
@@ -1066,15 +1066,15 @@
     <TAG id="151">
       <start_offset>6896</start_offset>
       <end_offset>6899</end_offset>
-      <tag_text>(0,9) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,9) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="152">
       <start_offset>6900</start_offset>
       <end_offset>6903</end_offset>
-      <tag_text>(0,9) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,9) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="153">
@@ -1088,21 +1088,21 @@
       <start_offset>6908</start_offset>
       <end_offset>6909</end_offset>
       <tag_text>(0,9) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="155">
       <start_offset>6910</start_offset>
       <end_offset>6911</end_offset>
       <tag_text>(0,9) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="156">
       <start_offset>6912</start_offset>
       <end_offset>6913</end_offset>
       <tag_text>(0,9) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="157">
@@ -1143,15 +1143,15 @@
     <TAG id="162">
       <start_offset>6752</start_offset>
       <end_offset>6755</end_offset>
-      <tag_text>(0,10) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,10) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="163">
       <start_offset>6756</start_offset>
       <end_offset>6759</end_offset>
-      <tag_text>(0,10) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,10) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="164">
@@ -1165,21 +1165,21 @@
       <start_offset>6764</start_offset>
       <end_offset>6765</end_offset>
       <tag_text>(0,10) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="166">
       <start_offset>6766</start_offset>
       <end_offset>6767</end_offset>
       <tag_text>(0,10) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="167">
       <start_offset>6768</start_offset>
       <end_offset>6769</end_offset>
       <tag_text>(0,10) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="168">
@@ -1220,15 +1220,15 @@
     <TAG id="173">
       <start_offset>6608</start_offset>
       <end_offset>6611</end_offset>
-      <tag_text>(0,11) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,11) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="174">
       <start_offset>6612</start_offset>
       <end_offset>6615</end_offset>
-      <tag_text>(0,11) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,11) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="175">
@@ -1242,21 +1242,21 @@
       <start_offset>6620</start_offset>
       <end_offset>6621</end_offset>
       <tag_text>(0,11) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="177">
       <start_offset>6622</start_offset>
       <end_offset>6623</end_offset>
       <tag_text>(0,11) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="178">
       <start_offset>6624</start_offset>
       <end_offset>6625</end_offset>
       <tag_text>(0,11) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="179">
@@ -1297,15 +1297,15 @@
     <TAG id="184">
       <start_offset>6464</start_offset>
       <end_offset>6467</end_offset>
-      <tag_text>(0,12) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,12) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="185">
       <start_offset>6468</start_offset>
       <end_offset>6471</end_offset>
-      <tag_text>(0,12) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,12) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="186">
@@ -1319,21 +1319,21 @@
       <start_offset>6476</start_offset>
       <end_offset>6477</end_offset>
       <tag_text>(0,12) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="188">
       <start_offset>6478</start_offset>
       <end_offset>6479</end_offset>
       <tag_text>(0,12) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="189">
       <start_offset>6480</start_offset>
       <end_offset>6481</end_offset>
       <tag_text>(0,12) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="190">
@@ -1374,15 +1374,15 @@
     <TAG id="195">
       <start_offset>6320</start_offset>
       <end_offset>6323</end_offset>
-      <tag_text>(0,13) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,13) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="196">
       <start_offset>6324</start_offset>
       <end_offset>6327</end_offset>
-      <tag_text>(0,13) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,13) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="197">
@@ -1396,21 +1396,21 @@
       <start_offset>6332</start_offset>
       <end_offset>6333</end_offset>
       <tag_text>(0,13) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="199">
       <start_offset>6334</start_offset>
       <end_offset>6335</end_offset>
       <tag_text>(0,13) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="200">
       <start_offset>6336</start_offset>
       <end_offset>6337</end_offset>
       <tag_text>(0,13) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="201">
@@ -1451,15 +1451,15 @@
     <TAG id="206">
       <start_offset>6176</start_offset>
       <end_offset>6179</end_offset>
-      <tag_text>(0,14) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,14) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="207">
       <start_offset>6180</start_offset>
       <end_offset>6183</end_offset>
-      <tag_text>(0,14) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,14) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="208">
@@ -1473,21 +1473,21 @@
       <start_offset>6188</start_offset>
       <end_offset>6189</end_offset>
       <tag_text>(0,14) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="210">
       <start_offset>6190</start_offset>
       <end_offset>6191</end_offset>
       <tag_text>(0,14) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="211">
       <start_offset>6192</start_offset>
       <end_offset>6193</end_offset>
       <tag_text>(0,14) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="212">
@@ -1528,15 +1528,15 @@
     <TAG id="217">
       <start_offset>6032</start_offset>
       <end_offset>6035</end_offset>
-      <tag_text>(0,15) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,15) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="218">
       <start_offset>6036</start_offset>
       <end_offset>6039</end_offset>
-      <tag_text>(0,15) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,15) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="219">
@@ -1550,21 +1550,21 @@
       <start_offset>6044</start_offset>
       <end_offset>6045</end_offset>
       <tag_text>(0,15) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="221">
       <start_offset>6046</start_offset>
       <end_offset>6047</end_offset>
       <tag_text>(0,15) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="222">
       <start_offset>6048</start_offset>
       <end_offset>6049</end_offset>
       <tag_text>(0,15) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="223">
@@ -1605,15 +1605,15 @@
     <TAG id="228">
       <start_offset>5888</start_offset>
       <end_offset>5891</end_offset>
-      <tag_text>(0,16) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,16) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="229">
       <start_offset>5892</start_offset>
       <end_offset>5895</end_offset>
-      <tag_text>(0,16) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,16) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="230">
@@ -1627,21 +1627,21 @@
       <start_offset>5900</start_offset>
       <end_offset>5901</end_offset>
       <tag_text>(0,16) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="232">
       <start_offset>5902</start_offset>
       <end_offset>5903</end_offset>
       <tag_text>(0,16) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="233">
       <start_offset>5904</start_offset>
       <end_offset>5905</end_offset>
       <tag_text>(0,16) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="234">
@@ -1682,15 +1682,15 @@
     <TAG id="239">
       <start_offset>5744</start_offset>
       <end_offset>5747</end_offset>
-      <tag_text>(0,17) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,17) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="240">
       <start_offset>5748</start_offset>
       <end_offset>5751</end_offset>
-      <tag_text>(0,17) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,17) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="241">
@@ -1704,21 +1704,21 @@
       <start_offset>5756</start_offset>
       <end_offset>5757</end_offset>
       <tag_text>(0,17) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="243">
       <start_offset>5758</start_offset>
       <end_offset>5759</end_offset>
       <tag_text>(0,17) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="244">
       <start_offset>5760</start_offset>
       <end_offset>5761</end_offset>
       <tag_text>(0,17) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="245">
@@ -1759,15 +1759,15 @@
     <TAG id="250">
       <start_offset>5600</start_offset>
       <end_offset>5603</end_offset>
-      <tag_text>(0,18) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,18) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="251">
       <start_offset>5604</start_offset>
       <end_offset>5607</end_offset>
-      <tag_text>(0,18) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,18) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="252">
@@ -1781,21 +1781,21 @@
       <start_offset>5612</start_offset>
       <end_offset>5613</end_offset>
       <tag_text>(0,18) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="254">
       <start_offset>5614</start_offset>
       <end_offset>5615</end_offset>
       <tag_text>(0,18) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="255">
       <start_offset>5616</start_offset>
       <end_offset>5617</end_offset>
       <tag_text>(0,18) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="256">
@@ -1836,15 +1836,15 @@
     <TAG id="261">
       <start_offset>5456</start_offset>
       <end_offset>5459</end_offset>
-      <tag_text>(0,19) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,19) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="262">
       <start_offset>5460</start_offset>
       <end_offset>5463</end_offset>
-      <tag_text>(0,19) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,19) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="263">
@@ -1858,21 +1858,21 @@
       <start_offset>5468</start_offset>
       <end_offset>5469</end_offset>
       <tag_text>(0,19) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="265">
       <start_offset>5470</start_offset>
       <end_offset>5471</end_offset>
       <tag_text>(0,19) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="266">
       <start_offset>5472</start_offset>
       <end_offset>5473</end_offset>
       <tag_text>(0,19) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="267">
@@ -1913,15 +1913,15 @@
     <TAG id="272">
       <start_offset>5312</start_offset>
       <end_offset>5315</end_offset>
-      <tag_text>(0,20) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,20) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="273">
       <start_offset>5316</start_offset>
       <end_offset>5319</end_offset>
-      <tag_text>(0,20) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,20) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="274">
@@ -1935,21 +1935,21 @@
       <start_offset>5324</start_offset>
       <end_offset>5325</end_offset>
       <tag_text>(0,20) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="276">
       <start_offset>5326</start_offset>
       <end_offset>5327</end_offset>
       <tag_text>(0,20) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="277">
       <start_offset>5328</start_offset>
       <end_offset>5329</end_offset>
       <tag_text>(0,20) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="278">
@@ -1990,15 +1990,15 @@
     <TAG id="283">
       <start_offset>5168</start_offset>
       <end_offset>5171</end_offset>
-      <tag_text>(0,21) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,21) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="284">
       <start_offset>5172</start_offset>
       <end_offset>5175</end_offset>
-      <tag_text>(0,21) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,21) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="285">
@@ -2012,21 +2012,21 @@
       <start_offset>5180</start_offset>
       <end_offset>5181</end_offset>
       <tag_text>(0,21) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="287">
       <start_offset>5182</start_offset>
       <end_offset>5183</end_offset>
       <tag_text>(0,21) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="288">
       <start_offset>5184</start_offset>
       <end_offset>5185</end_offset>
       <tag_text>(0,21) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="289">
@@ -2067,15 +2067,15 @@
     <TAG id="294">
       <start_offset>5024</start_offset>
       <end_offset>5027</end_offset>
-      <tag_text>(0,22) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,22) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="295">
       <start_offset>5028</start_offset>
       <end_offset>5031</end_offset>
-      <tag_text>(0,22) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,22) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="296">
@@ -2089,21 +2089,21 @@
       <start_offset>5036</start_offset>
       <end_offset>5037</end_offset>
       <tag_text>(0,22) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="298">
       <start_offset>5038</start_offset>
       <end_offset>5039</end_offset>
       <tag_text>(0,22) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="299">
       <start_offset>5040</start_offset>
       <end_offset>5041</end_offset>
       <tag_text>(0,22) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="300">
@@ -2144,15 +2144,15 @@
     <TAG id="305">
       <start_offset>4880</start_offset>
       <end_offset>4883</end_offset>
-      <tag_text>(0,23) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,23) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="306">
       <start_offset>4884</start_offset>
       <end_offset>4887</end_offset>
-      <tag_text>(0,23) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,23) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="307">
@@ -2166,21 +2166,21 @@
       <start_offset>4892</start_offset>
       <end_offset>4893</end_offset>
       <tag_text>(0,23) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="309">
       <start_offset>4894</start_offset>
       <end_offset>4895</end_offset>
       <tag_text>(0,23) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="310">
       <start_offset>4896</start_offset>
       <end_offset>4897</end_offset>
       <tag_text>(0,23) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="311">
@@ -2221,15 +2221,15 @@
     <TAG id="316">
       <start_offset>4736</start_offset>
       <end_offset>4739</end_offset>
-      <tag_text>(0,24) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,24) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="317">
       <start_offset>4740</start_offset>
       <end_offset>4743</end_offset>
-      <tag_text>(0,24) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,24) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="318">
@@ -2243,21 +2243,21 @@
       <start_offset>4748</start_offset>
       <end_offset>4749</end_offset>
       <tag_text>(0,24) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="320">
       <start_offset>4750</start_offset>
       <end_offset>4751</end_offset>
       <tag_text>(0,24) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="321">
       <start_offset>4752</start_offset>
       <end_offset>4753</end_offset>
       <tag_text>(0,24) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="322">
@@ -2298,15 +2298,15 @@
     <TAG id="327">
       <start_offset>4592</start_offset>
       <end_offset>4595</end_offset>
-      <tag_text>(0,25) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,25) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="328">
       <start_offset>4596</start_offset>
       <end_offset>4599</end_offset>
-      <tag_text>(0,25) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,25) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="329">
@@ -2320,21 +2320,21 @@
       <start_offset>4604</start_offset>
       <end_offset>4605</end_offset>
       <tag_text>(0,25) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="331">
       <start_offset>4606</start_offset>
       <end_offset>4607</end_offset>
       <tag_text>(0,25) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="332">
       <start_offset>4608</start_offset>
       <end_offset>4609</end_offset>
       <tag_text>(0,25) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="333">
@@ -2375,15 +2375,15 @@
     <TAG id="338">
       <start_offset>4448</start_offset>
       <end_offset>4451</end_offset>
-      <tag_text>(0,26) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,26) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="339">
       <start_offset>4452</start_offset>
       <end_offset>4455</end_offset>
-      <tag_text>(0,26) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,26) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="340">
@@ -2397,21 +2397,21 @@
       <start_offset>4460</start_offset>
       <end_offset>4461</end_offset>
       <tag_text>(0,26) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="342">
       <start_offset>4462</start_offset>
       <end_offset>4463</end_offset>
       <tag_text>(0,26) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="343">
       <start_offset>4464</start_offset>
       <end_offset>4465</end_offset>
       <tag_text>(0,26) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="344">
@@ -2452,15 +2452,15 @@
     <TAG id="349">
       <start_offset>4304</start_offset>
       <end_offset>4307</end_offset>
-      <tag_text>(0,27) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,27) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="350">
       <start_offset>4308</start_offset>
       <end_offset>4311</end_offset>
-      <tag_text>(0,27) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,27) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="351">
@@ -2474,21 +2474,21 @@
       <start_offset>4316</start_offset>
       <end_offset>4317</end_offset>
       <tag_text>(0,27) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="353">
       <start_offset>4318</start_offset>
       <end_offset>4319</end_offset>
       <tag_text>(0,27) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="354">
       <start_offset>4320</start_offset>
       <end_offset>4321</end_offset>
       <tag_text>(0,27) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="355">
@@ -2529,15 +2529,15 @@
     <TAG id="360">
       <start_offset>4160</start_offset>
       <end_offset>4163</end_offset>
-      <tag_text>(0,28) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,28) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="361">
       <start_offset>4164</start_offset>
       <end_offset>4167</end_offset>
-      <tag_text>(0,28) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,28) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="362">
@@ -2551,21 +2551,21 @@
       <start_offset>4172</start_offset>
       <end_offset>4173</end_offset>
       <tag_text>(0,28) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="364">
       <start_offset>4174</start_offset>
       <end_offset>4175</end_offset>
       <tag_text>(0,28) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="365">
       <start_offset>4176</start_offset>
       <end_offset>4177</end_offset>
       <tag_text>(0,28) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="366">
@@ -2606,15 +2606,15 @@
     <TAG id="371">
       <start_offset>4016</start_offset>
       <end_offset>4019</end_offset>
-      <tag_text>(0,29) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,29) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="372">
       <start_offset>4020</start_offset>
       <end_offset>4023</end_offset>
-      <tag_text>(0,29) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,29) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="373">
@@ -2628,21 +2628,21 @@
       <start_offset>4028</start_offset>
       <end_offset>4029</end_offset>
       <tag_text>(0,29) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="375">
       <start_offset>4030</start_offset>
       <end_offset>4031</end_offset>
       <tag_text>(0,29) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="376">
       <start_offset>4032</start_offset>
       <end_offset>4033</end_offset>
       <tag_text>(0,29) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="377">
@@ -2683,15 +2683,15 @@
     <TAG id="382">
       <start_offset>3872</start_offset>
       <end_offset>3875</end_offset>
-      <tag_text>(0,30) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,30) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="383">
       <start_offset>3876</start_offset>
       <end_offset>3879</end_offset>
-      <tag_text>(0,30) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,30) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="384">
@@ -2705,21 +2705,21 @@
       <start_offset>3884</start_offset>
       <end_offset>3885</end_offset>
       <tag_text>(0,30) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="386">
       <start_offset>3886</start_offset>
       <end_offset>3887</end_offset>
       <tag_text>(0,30) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="387">
       <start_offset>3888</start_offset>
       <end_offset>3889</end_offset>
       <tag_text>(0,30) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="388">
@@ -2760,15 +2760,15 @@
     <TAG id="393">
       <start_offset>3728</start_offset>
       <end_offset>3731</end_offset>
-      <tag_text>(0,31) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,31) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="394">
       <start_offset>3732</start_offset>
       <end_offset>3735</end_offset>
-      <tag_text>(0,31) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,31) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="395">
@@ -2782,21 +2782,21 @@
       <start_offset>3740</start_offset>
       <end_offset>3741</end_offset>
       <tag_text>(0,31) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="397">
       <start_offset>3742</start_offset>
       <end_offset>3743</end_offset>
       <tag_text>(0,31) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="398">
       <start_offset>3744</start_offset>
       <end_offset>3745</end_offset>
       <tag_text>(0,31) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="399">
@@ -2837,15 +2837,15 @@
     <TAG id="404">
       <start_offset>3584</start_offset>
       <end_offset>3587</end_offset>
-      <tag_text>(0,32) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,32) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="405">
       <start_offset>3588</start_offset>
       <end_offset>3591</end_offset>
-      <tag_text>(0,32) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,32) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="406">
@@ -2859,21 +2859,21 @@
       <start_offset>3596</start_offset>
       <end_offset>3597</end_offset>
       <tag_text>(0,32) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="408">
       <start_offset>3598</start_offset>
       <end_offset>3599</end_offset>
       <tag_text>(0,32) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="409">
       <start_offset>3600</start_offset>
       <end_offset>3601</end_offset>
       <tag_text>(0,32) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="410">
@@ -2914,15 +2914,15 @@
     <TAG id="415">
       <start_offset>3440</start_offset>
       <end_offset>3443</end_offset>
-      <tag_text>(0,33) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,33) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="416">
       <start_offset>3444</start_offset>
       <end_offset>3447</end_offset>
-      <tag_text>(0,33) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,33) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="417">
@@ -2936,21 +2936,21 @@
       <start_offset>3452</start_offset>
       <end_offset>3453</end_offset>
       <tag_text>(0,33) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="419">
       <start_offset>3454</start_offset>
       <end_offset>3455</end_offset>
       <tag_text>(0,33) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="420">
       <start_offset>3456</start_offset>
       <end_offset>3457</end_offset>
       <tag_text>(0,33) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="421">
@@ -2991,15 +2991,15 @@
     <TAG id="426">
       <start_offset>3296</start_offset>
       <end_offset>3299</end_offset>
-      <tag_text>(0,34) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,34) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="427">
       <start_offset>3300</start_offset>
       <end_offset>3303</end_offset>
-      <tag_text>(0,34) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,34) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="428">
@@ -3013,21 +3013,21 @@
       <start_offset>3308</start_offset>
       <end_offset>3309</end_offset>
       <tag_text>(0,34) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="430">
       <start_offset>3310</start_offset>
       <end_offset>3311</end_offset>
       <tag_text>(0,34) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="431">
       <start_offset>3312</start_offset>
       <end_offset>3313</end_offset>
       <tag_text>(0,34) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="432">
@@ -3068,15 +3068,15 @@
     <TAG id="437">
       <start_offset>3152</start_offset>
       <end_offset>3155</end_offset>
-      <tag_text>(0,35) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,35) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="438">
       <start_offset>3156</start_offset>
       <end_offset>3159</end_offset>
-      <tag_text>(0,35) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,35) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="439">
@@ -3090,21 +3090,21 @@
       <start_offset>3164</start_offset>
       <end_offset>3165</end_offset>
       <tag_text>(0,35) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="441">
       <start_offset>3166</start_offset>
       <end_offset>3167</end_offset>
       <tag_text>(0,35) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="442">
       <start_offset>3168</start_offset>
       <end_offset>3169</end_offset>
       <tag_text>(0,35) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="443">
@@ -3145,15 +3145,15 @@
     <TAG id="448">
       <start_offset>3008</start_offset>
       <end_offset>3011</end_offset>
-      <tag_text>(0,36) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,36) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="449">
       <start_offset>3012</start_offset>
       <end_offset>3015</end_offset>
-      <tag_text>(0,36) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,36) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="450">
@@ -3167,21 +3167,21 @@
       <start_offset>3020</start_offset>
       <end_offset>3021</end_offset>
       <tag_text>(0,36) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="452">
       <start_offset>3022</start_offset>
       <end_offset>3023</end_offset>
       <tag_text>(0,36) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="453">
       <start_offset>3024</start_offset>
       <end_offset>3025</end_offset>
       <tag_text>(0,36) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="454">
@@ -3222,15 +3222,15 @@
     <TAG id="459">
       <start_offset>2864</start_offset>
       <end_offset>2867</end_offset>
-      <tag_text>(0,37) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,37) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="460">
       <start_offset>2868</start_offset>
       <end_offset>2871</end_offset>
-      <tag_text>(0,37) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,37) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="461">
@@ -3244,21 +3244,21 @@
       <start_offset>2876</start_offset>
       <end_offset>2877</end_offset>
       <tag_text>(0,37) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="463">
       <start_offset>2878</start_offset>
       <end_offset>2879</end_offset>
       <tag_text>(0,37) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="464">
       <start_offset>2880</start_offset>
       <end_offset>2881</end_offset>
       <tag_text>(0,37) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="465">
@@ -3299,15 +3299,15 @@
     <TAG id="470">
       <start_offset>2720</start_offset>
       <end_offset>2723</end_offset>
-      <tag_text>(0,38) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,38) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="471">
       <start_offset>2724</start_offset>
       <end_offset>2727</end_offset>
-      <tag_text>(0,38) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,38) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="472">
@@ -3321,21 +3321,21 @@
       <start_offset>2732</start_offset>
       <end_offset>2733</end_offset>
       <tag_text>(0,38) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="474">
       <start_offset>2734</start_offset>
       <end_offset>2735</end_offset>
       <tag_text>(0,38) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="475">
       <start_offset>2736</start_offset>
       <end_offset>2737</end_offset>
       <tag_text>(0,38) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="476">
@@ -3376,15 +3376,15 @@
     <TAG id="481">
       <start_offset>2576</start_offset>
       <end_offset>2579</end_offset>
-      <tag_text>(0,39) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,39) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="482">
       <start_offset>2580</start_offset>
       <end_offset>2583</end_offset>
-      <tag_text>(0,39) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,39) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="483">
@@ -3398,21 +3398,21 @@
       <start_offset>2588</start_offset>
       <end_offset>2589</end_offset>
       <tag_text>(0,39) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="485">
       <start_offset>2590</start_offset>
       <end_offset>2591</end_offset>
       <tag_text>(0,39) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="486">
       <start_offset>2592</start_offset>
       <end_offset>2593</end_offset>
       <tag_text>(0,39) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="487">
@@ -3453,15 +3453,15 @@
     <TAG id="492">
       <start_offset>2432</start_offset>
       <end_offset>2435</end_offset>
-      <tag_text>(0,40) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,40) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="493">
       <start_offset>2436</start_offset>
       <end_offset>2439</end_offset>
-      <tag_text>(0,40) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,40) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="494">
@@ -3475,21 +3475,21 @@
       <start_offset>2444</start_offset>
       <end_offset>2445</end_offset>
       <tag_text>(0,40) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="496">
       <start_offset>2446</start_offset>
       <end_offset>2447</end_offset>
       <tag_text>(0,40) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="497">
       <start_offset>2448</start_offset>
       <end_offset>2449</end_offset>
       <tag_text>(0,40) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="498">
@@ -3530,15 +3530,15 @@
     <TAG id="503">
       <start_offset>2288</start_offset>
       <end_offset>2291</end_offset>
-      <tag_text>(0,41) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,41) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="504">
       <start_offset>2292</start_offset>
       <end_offset>2295</end_offset>
-      <tag_text>(0,41) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,41) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="505">
@@ -3552,21 +3552,21 @@
       <start_offset>2300</start_offset>
       <end_offset>2301</end_offset>
       <tag_text>(0,41) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="507">
       <start_offset>2302</start_offset>
       <end_offset>2303</end_offset>
       <tag_text>(0,41) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="508">
       <start_offset>2304</start_offset>
       <end_offset>2305</end_offset>
       <tag_text>(0,41) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="509">
@@ -3607,15 +3607,15 @@
     <TAG id="514">
       <start_offset>2144</start_offset>
       <end_offset>2147</end_offset>
-      <tag_text>(0,42) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,42) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="515">
       <start_offset>2148</start_offset>
       <end_offset>2151</end_offset>
-      <tag_text>(0,42) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,42) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="516">
@@ -3629,21 +3629,21 @@
       <start_offset>2156</start_offset>
       <end_offset>2157</end_offset>
       <tag_text>(0,42) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="518">
       <start_offset>2158</start_offset>
       <end_offset>2159</end_offset>
       <tag_text>(0,42) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="519">
       <start_offset>2160</start_offset>
       <end_offset>2161</end_offset>
       <tag_text>(0,42) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="520">
@@ -3684,15 +3684,15 @@
     <TAG id="525">
       <start_offset>2000</start_offset>
       <end_offset>2003</end_offset>
-      <tag_text>(0,43) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,43) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="526">
       <start_offset>2004</start_offset>
       <end_offset>2007</end_offset>
-      <tag_text>(0,43) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,43) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="527">
@@ -3706,21 +3706,21 @@
       <start_offset>2012</start_offset>
       <end_offset>2013</end_offset>
       <tag_text>(0,43) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="529">
       <start_offset>2014</start_offset>
       <end_offset>2015</end_offset>
       <tag_text>(0,43) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="530">
       <start_offset>2016</start_offset>
       <end_offset>2017</end_offset>
       <tag_text>(0,43) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="531">
@@ -3761,15 +3761,15 @@
     <TAG id="536">
       <start_offset>1856</start_offset>
       <end_offset>1859</end_offset>
-      <tag_text>(0,44) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,44) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="537">
       <start_offset>1860</start_offset>
       <end_offset>1863</end_offset>
-      <tag_text>(0,44) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,44) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="538">
@@ -3783,21 +3783,21 @@
       <start_offset>1868</start_offset>
       <end_offset>1869</end_offset>
       <tag_text>(0,44) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="540">
       <start_offset>1870</start_offset>
       <end_offset>1871</end_offset>
       <tag_text>(0,44) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="541">
       <start_offset>1872</start_offset>
       <end_offset>1873</end_offset>
       <tag_text>(0,44) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="542">
@@ -3838,15 +3838,15 @@
     <TAG id="547">
       <start_offset>1712</start_offset>
       <end_offset>1715</end_offset>
-      <tag_text>(0,45) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,45) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="548">
       <start_offset>1716</start_offset>
       <end_offset>1719</end_offset>
-      <tag_text>(0,45) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,45) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="549">
@@ -3860,21 +3860,21 @@
       <start_offset>1724</start_offset>
       <end_offset>1725</end_offset>
       <tag_text>(0,45) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="551">
       <start_offset>1726</start_offset>
       <end_offset>1727</end_offset>
       <tag_text>(0,45) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="552">
       <start_offset>1728</start_offset>
       <end_offset>1729</end_offset>
       <tag_text>(0,45) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="553">
@@ -3915,15 +3915,15 @@
     <TAG id="558">
       <start_offset>1568</start_offset>
       <end_offset>1571</end_offset>
-      <tag_text>(0,46) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,46) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="559">
       <start_offset>1572</start_offset>
       <end_offset>1575</end_offset>
-      <tag_text>(0,46) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,46) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="560">
@@ -3937,21 +3937,21 @@
       <start_offset>1580</start_offset>
       <end_offset>1581</end_offset>
       <tag_text>(0,46) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="562">
       <start_offset>1582</start_offset>
       <end_offset>1583</end_offset>
       <tag_text>(0,46) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="563">
       <start_offset>1584</start_offset>
       <end_offset>1585</end_offset>
       <tag_text>(0,46) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="564">
@@ -3992,15 +3992,15 @@
     <TAG id="569">
       <start_offset>1424</start_offset>
       <end_offset>1427</end_offset>
-      <tag_text>(0,47) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,47) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="570">
       <start_offset>1428</start_offset>
       <end_offset>1431</end_offset>
-      <tag_text>(0,47) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,47) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="571">
@@ -4014,21 +4014,21 @@
       <start_offset>1436</start_offset>
       <end_offset>1437</end_offset>
       <tag_text>(0,47) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="573">
       <start_offset>1438</start_offset>
       <end_offset>1439</end_offset>
       <tag_text>(0,47) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="574">
       <start_offset>1440</start_offset>
       <end_offset>1441</end_offset>
       <tag_text>(0,47) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="575">
@@ -4069,15 +4069,15 @@
     <TAG id="580">
       <start_offset>1280</start_offset>
       <end_offset>1283</end_offset>
-      <tag_text>(0,48) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,48) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="581">
       <start_offset>1284</start_offset>
       <end_offset>1287</end_offset>
-      <tag_text>(0,48) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,48) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="582">
@@ -4091,21 +4091,21 @@
       <start_offset>1292</start_offset>
       <end_offset>1293</end_offset>
       <tag_text>(0,48) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="584">
       <start_offset>1294</start_offset>
       <end_offset>1295</end_offset>
       <tag_text>(0,48) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="585">
       <start_offset>1296</start_offset>
       <end_offset>1297</end_offset>
       <tag_text>(0,48) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="586">
@@ -4146,15 +4146,15 @@
     <TAG id="591">
       <start_offset>1136</start_offset>
       <end_offset>1139</end_offset>
-      <tag_text>(0,49) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,49) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="592">
       <start_offset>1140</start_offset>
       <end_offset>1143</end_offset>
-      <tag_text>(0,49) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,49) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="593">
@@ -4168,21 +4168,21 @@
       <start_offset>1148</start_offset>
       <end_offset>1149</end_offset>
       <tag_text>(0,49) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="595">
       <start_offset>1150</start_offset>
       <end_offset>1151</end_offset>
       <tag_text>(0,49) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="596">
       <start_offset>1152</start_offset>
       <end_offset>1153</end_offset>
       <tag_text>(0,49) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="597">
@@ -4223,15 +4223,15 @@
     <TAG id="602">
       <start_offset>992</start_offset>
       <end_offset>995</end_offset>
-      <tag_text>(0,50) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,50) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="603">
       <start_offset>996</start_offset>
       <end_offset>999</end_offset>
-      <tag_text>(0,50) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,50) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="604">
@@ -4245,21 +4245,21 @@
       <start_offset>1004</start_offset>
       <end_offset>1005</end_offset>
       <tag_text>(0,50) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="606">
       <start_offset>1006</start_offset>
       <end_offset>1007</end_offset>
       <tag_text>(0,50) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="607">
       <start_offset>1008</start_offset>
       <end_offset>1009</end_offset>
       <tag_text>(0,50) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="608">
@@ -4300,15 +4300,15 @@
     <TAG id="613">
       <start_offset>848</start_offset>
       <end_offset>851</end_offset>
-      <tag_text>(0,51) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,51) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="614">
       <start_offset>852</start_offset>
       <end_offset>855</end_offset>
-      <tag_text>(0,51) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,51) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="615">
@@ -4322,21 +4322,21 @@
       <start_offset>860</start_offset>
       <end_offset>861</end_offset>
       <tag_text>(0,51) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="617">
       <start_offset>862</start_offset>
       <end_offset>863</end_offset>
       <tag_text>(0,51) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="618">
       <start_offset>864</start_offset>
       <end_offset>865</end_offset>
       <tag_text>(0,51) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="619">
@@ -4377,15 +4377,15 @@
     <TAG id="624">
       <start_offset>704</start_offset>
       <end_offset>707</end_offset>
-      <tag_text>(0,52) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,52) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="625">
       <start_offset>708</start_offset>
       <end_offset>711</end_offset>
-      <tag_text>(0,52) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,52) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="626">
@@ -4399,21 +4399,21 @@
       <start_offset>716</start_offset>
       <end_offset>717</end_offset>
       <tag_text>(0,52) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="628">
       <start_offset>718</start_offset>
       <end_offset>719</end_offset>
       <tag_text>(0,52) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="629">
       <start_offset>720</start_offset>
       <end_offset>721</end_offset>
       <tag_text>(0,52) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="630">
@@ -4454,15 +4454,15 @@
     <TAG id="635">
       <start_offset>560</start_offset>
       <end_offset>563</end_offset>
-      <tag_text>(0,53) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,53) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="636">
       <start_offset>564</start_offset>
       <end_offset>567</end_offset>
-      <tag_text>(0,53) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,53) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="637">
@@ -4476,21 +4476,21 @@
       <start_offset>572</start_offset>
       <end_offset>573</end_offset>
       <tag_text>(0,53) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="639">
       <start_offset>574</start_offset>
       <end_offset>575</end_offset>
       <tag_text>(0,53) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="640">
       <start_offset>576</start_offset>
       <end_offset>577</end_offset>
       <tag_text>(0,53) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="641">
@@ -4531,15 +4531,15 @@
     <TAG id="646">
       <start_offset>416</start_offset>
       <end_offset>419</end_offset>
-      <tag_text>(0,54) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,54) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="647">
       <start_offset>420</start_offset>
       <end_offset>423</end_offset>
-      <tag_text>(0,54) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,54) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="648">
@@ -4553,21 +4553,21 @@
       <start_offset>428</start_offset>
       <end_offset>429</end_offset>
       <tag_text>(0,54) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="650">
       <start_offset>430</start_offset>
       <end_offset>431</end_offset>
       <tag_text>(0,54) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="651">
       <start_offset>432</start_offset>
       <end_offset>433</end_offset>
       <tag_text>(0,54) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="652">
@@ -4608,15 +4608,15 @@
     <TAG id="657">
       <start_offset>272</start_offset>
       <end_offset>275</end_offset>
-      <tag_text>(0,55) xmin</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,55) xmin - BootstrapTransactionId</tag_text>
+      <font_colour>#CCD1D1</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="658">
       <start_offset>276</start_offset>
       <end_offset>279</end_offset>
-      <tag_text>(0,55) xmax</tag_text>
-      <font_colour>#313739</font_colour>
+      <tag_text>(0,55) xmax - InvalidTransactionId - HEAP_XMAX_INVALID</tag_text>
+      <font_colour>#E9E850</font_colour>
       <note_colour>#E74C3C</note_colour>
     </TAG>
     <TAG id="659">
@@ -4630,21 +4630,21 @@
       <start_offset>284</start_offset>
       <end_offset>285</end_offset>
       <tag_text>(0,55) t_ctid->bi_hi</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="661">
       <start_offset>286</start_offset>
       <end_offset>287</end_offset>
       <tag_text>(0,55) t_ctid->bi_lo</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#2980B9</font_colour>
       <note_colour>#3498DB</note_colour>
     </TAG>
     <TAG id="662">
       <start_offset>288</start_offset>
       <end_offset>289</end_offset>
       <tag_text>(0,55) t_ctid->offsetNumber</tag_text>
-      <font_colour>#313739</font_colour>
+      <font_colour>#3498DB</font_colour>
       <note_colour>#2980B9</note_colour>
     </TAG>
     <TAG id="663">
