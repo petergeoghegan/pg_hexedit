@@ -1624,6 +1624,27 @@ static void
 EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
 			  uint32 relfileOff, const char *textFlags)
 {
+	char		   *fontColor;
+	char		   *itemIdColor;
+
+	fontColor = COLOR_FONT_STANDARD;
+	itemIdColor = COLOR_BLUE_LIGHT;
+
+	/*
+	 * The color of the tag and tag font is chosen to give a cue about line
+	 * pointer details.  Unused items (which are reusable) have a
+	 * non-contrasting font color to deemphasize their importance.  LP_DEAD
+	 * items (which are dead but not yet necessarily reusable) don't stay
+	 * around for long in most real world workloads, and so it seems useful to
+	 * make them stick out.
+	 */
+	if (ItemIdIsRedirected(itemId))
+		itemIdColor = COLOR_BLUE_DARK;
+	else if (ItemIdIsDead(itemId))
+		itemIdColor = COLOR_BROWN;
+	else if (!ItemIdIsUsed(itemId))
+		fontColor = COLOR_BLUE_DARK;
+
 	/* Interpret the content of each ItemId separately */
 	printf("    <TAG id=\"%u\">\n", tagNumber++);
 	printf("      <start_offset>%u</start_offset>\n", relfileOff);
@@ -1631,8 +1652,8 @@ EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
 	printf("      <tag_text>(%u,%d) lp_len: %u, lp_off: %u, lp_flags: %s</tag_text>\n",
 		   blkno + segmentBlockDelta, offset, ItemIdGetLength(itemId),
 		   ItemIdGetOffset(itemId), textFlags);
-	printf("      <font_colour>" COLOR_FONT_STANDARD "</font_colour>\n");
-	printf("      <note_colour>" COLOR_BLUE_LIGHT "</note_colour>\n");
+	printf("      <font_colour>%s</font_colour>\n", fontColor);
+	printf("      <note_colour>%s</note_colour>\n", itemIdColor);
 	printf("    </TAG>\n");
 }
 
@@ -1823,8 +1844,8 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 {
 	TransactionId	rawXmin = HeapTupleHeaderGetRawXmin(htup);
 	TransactionId	rawXmax = HeapTupleHeaderGetRawXmax(htup);
-	char			xmin[70];
-	char			xmax[70];
+	char			xmin[90];
+	char			xmax[90];
 	char		   *xminFontColor;
 	char		   *xmaxFontColor;
 	BlockNumber		logBlock = blkno + segmentBlockDelta;
@@ -1887,12 +1908,16 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	 * Deliberately tag InvalidTransactionId and HEAP_XMAX_INVALID separately
 	 * for xmax annotation, since they can be set separately in a way that
 	 * might be interesting.  Also indicate (redundantly) if the xmax is a
-	 * MultiXactId.
+	 * MultiXactId, or is the XID on a non-updating locker xact.
 	 *
-	 * Representing HEAP_XMAX_IS_MULTI but not HEAP_XMAX_COMMITTED here is a
-	 * bit arbitrary.  We do this because HEAP_XMAX_IS_MULTI is a basic fact
-	 * about the class of data that the xmax field contains, as opposed to
-	 * status information for the tuple as a whole.
+	 * Representing HEAP_XMAX_IS_MULTI and HEAP_XMAX_LOCK_ONLY but not
+	 * HEAP_XMAX_COMMITTED here is a bit arbitrary.  We do this because
+	 * HEAP_XMAX_IS_MULTI and HEAP_XMAX_LOCK_ONLY are basic facts about the
+	 * class of data that the xmax field contains, as opposed to status
+	 * information for the tuple as a whole.
+	 *
+	 * The general idea is to make it as easy as possible for the user to get a
+	 * sense of the structure of update chains on the page.
 	 */
 	if ((htup->t_infomask & HEAP_XMAX_IS_MULTI) != 0)
 	{
@@ -1909,6 +1934,20 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 		strcat(xmax, " - HEAP_XMAX_INVALID");
 		/* Matches InvalidTransactionId case */
 		xmaxFontColor = COLOR_YELLOW_LIGHT;
+	}
+
+	/*
+	 * Handle HEAP_XMAX_LOCK_ONLY last, since the HEAP_XMAX_INVALID hint seems
+	 * like it shouldn't affect font color.
+	 */
+	if ((htup->t_infomask & HEAP_XMAX_LOCK_ONLY) != 0)
+	{
+		/*
+		 * This color is deliberately chosen to be similar to the special
+		 * t_ctid font colors
+		 */
+		strcat(xmax, " - HEAP_XMAX_LOCK_ONLY");
+		xmaxFontColor = COLOR_BLUE_DARK;
 	}
 
 	relfileOffNext = relfileOff + sizeof(TransactionId);
