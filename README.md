@@ -364,24 +364,3 @@ EmitXmlTupleTagFont()
 
 These routines could be changed to call a per-hexeditor callback.  Each
 supported hex editor could have its own "provider" routines.
-
-## Areas that might be improved someday
-
-* Support control files.
-
-* Support MultiXact and CLOG/pg_xact SLRUs.
-
-* Support full-page images from a WAL stream.
-
-Possibly, this could be built on top of the `wal_consistency_checking` server
-parameter that appeared in Postgres 10.  It looks like it wouldn't be very hard
-to combine that with a hacked `pg_waldump`, whose `--bkp-details` option ouputs
-different versions of the same block over time, for consumption by wxHexEditor.
-(pg_waldump would only need to be customized to output raw data, rather than
-generating the usual textual output; the rest could be scripted fairly easily).
-
-Note that wxHexEditor has a "compare file" option that this could make use of.
-
-With a bit more work, an abstraction could be built that allows the user to
-travel back and forth in time to an arbitrary LSN, and to see a guaranteed
-consistent image of the entire relation at that point.
