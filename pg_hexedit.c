@@ -2043,28 +2043,32 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 
 	/*
 	 * Metadata about the tuple shape and width is COLOR_YELLOW_DARK, in line
-	 * with general convention
+	 * with general convention.  t_hoff is a fixed addressable field, so we
+	 * make it COLOR_YELLOW_LIGHT to represent that it's associated but
+	 * distinct.
 	 */
 	relfileOff = relfileOffNext;
 	relfileOffNext += sizeof(uint8);
-	EmitXmlTupleTag(blkno, offset, "t_hoff", COLOR_YELLOW_DARK, relfileOff,
+	EmitXmlTupleTag(blkno, offset, "t_hoff", COLOR_YELLOW_LIGHT, relfileOff,
 					relfileOffNext - 1);
 
 	/*
-	 * Whatever follows must be null bitmap (until t_hoff), though we must
-	 * account for possible Oid field.  An Oid field will appear as the final 4
-	 * bytes before t_hoff when (t_infomask & HEAP_HASOID).  Represent this as
-	 * a distinct field, but use the same color used for t_bits to emphasize
-	 * that the Oid field is kind of mixed in with t_bits, rather than being an
-	 * addressable struct member.  (This is also why we annotate it as
-	 * containing its accessor macro rather than a struct field name.)
+	 * Whatever follows must be the t_bits null bitmap, until t_hoff when
+	 * (t_infomask & HEAP_HASNULL).  There will be an Oid field at the end of
+	 * the space immediately before t_hoff when (t_infomask & HEAP_HASOID), too
+	 * (there may occasionally be an Oid but no t_bits field).
+	 *
+	 * Represent Oid as a distinct field, but use the same color used for
+	 * t_bits to emphasize that they're both in the category of tuple header
+	 * metadata that may or may not appear just before t_hoff.
 	 */
 	relfileOff = relfileOffNext;
 	relfileOffNext = relfileOffOrig + htup->t_hoff;
 	if (htup->t_infomask & HEAP_HASOID)
 		relfileOffNext -= sizeof(Oid);
-	EmitXmlTupleTag(blkno, offset, "t_bits", COLOR_YELLOW_DARK, relfileOff,
-					relfileOffNext - 1);
+	if (htup->t_infomask & HEAP_HASNULL)
+		EmitXmlTupleTag(blkno, offset, "t_bits", COLOR_YELLOW_DARK, relfileOff,
+						relfileOffNext - 1);
 	if (htup->t_infomask & HEAP_HASOID)
 	{
 		relfileOff = relfileOffNext;
