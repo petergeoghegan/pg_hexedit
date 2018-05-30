@@ -2049,22 +2049,29 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	relfileOffNext += sizeof(uint8);
 	EmitXmlTupleTag(blkno, offset, "t_hoff", COLOR_YELLOW_DARK, relfileOff,
 					relfileOffNext - 1);
+
 	/*
-	 * Whatever follows must be null bitmap (until t_hoff).
-	 *
-	 * Note that an Oid field will appear as the final 4 bytes of t_bits when
-	 * (t_infomask & HEAP_HASOID).  This seems like the most faithful
-	 * representation, because there is never any distinct field to t_hoff in
-	 * the heap tuple struct: macros like HeapTupleHeaderGetOid() are built
-	 * around working backwards from t_hoff knowing that the last sizeof(Oid)/4
-	 * bytes must be an Oid when Oids are in use (just like this code).  Oid is
-	 * a fixed size field that hides at the end of the variable sized t_bits
-	 * array.
+	 * Whatever follows must be null bitmap (until t_hoff), though we must
+	 * account for possible Oid field.  An Oid field will appear as the final 4
+	 * bytes before t_hoff when (t_infomask & HEAP_HASOID).  Represent this as
+	 * a distinct field, but use the same color used for t_bits to emphasize
+	 * that the Oid field is kind of mixed in with t_bits, rather than being an
+	 * addressable struct member.  (This is also why we annotate it as
+	 * containing its accessor macro rather than a struct field name.)
 	 */
 	relfileOff = relfileOffNext;
 	relfileOffNext = relfileOffOrig + htup->t_hoff;
+	if (htup->t_infomask & HEAP_HASOID)
+		relfileOffNext -= sizeof(Oid);
 	EmitXmlTupleTag(blkno, offset, "t_bits", COLOR_YELLOW_DARK, relfileOff,
 					relfileOffNext - 1);
+	if (htup->t_infomask & HEAP_HASOID)
+	{
+		relfileOff = relfileOffNext;
+		relfileOffNext += sizeof(Oid);
+		EmitXmlTupleTag(blkno, offset, "HeapTupleHeaderGetOid()",
+						COLOR_YELLOW_DARK, relfileOff, relfileOffNext - 1);
+	}
 
 	/*
 	 * Handle rare edge case where tuple has no contents because it consists
