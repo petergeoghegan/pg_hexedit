@@ -69,6 +69,7 @@
 
 #define COLOR_FONT_STANDARD		"#313739"
 
+#define COLOR_BLACK				"#000000"
 #define COLOR_BLUE_DARK			"#2980B9"
 #define COLOR_BLUE_LIGHT		"#3498DB"
 #define COLOR_BROWN				"#97333D"
@@ -280,7 +281,7 @@ static void EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 							 int itemSize);
 static void EmitXmlIndexTuple(Page page, BlockNumber blkno,
 							  OffsetNumber offset, IndexTuple tuple,
-							  uint32 relfileOff, int itemSize);
+							  uint32 relfileOff, int itemSize, bool dead);
 static void EmitXmlSpGistInnerTuple(Page page, BlockNumber blkno,
 									OffsetNumber offset,
 									SpGistInnerTuple tuple,
@@ -2100,7 +2101,13 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
  * Emit a wxHexEditor tag for entire index tuple.
  *
  * Function deals with B-Tree, GiST, and hash tuples in a generic way, because
- * they use the IndexTuple format without adornment.
+ * they use the IndexTuple format without adornment.  These index AMs use item
+ * pointer metadata to represent that index tuples are logically dead by
+ * setting the LP_DEAD bit.  Unlike the heap LP_DEAD case, there will still be
+ * a tuple on the page when this is set (the tuple "has storage").  Caller
+ * passes an argument that has us redundantly use color to represent that the
+ * index tuple is dead, meaning that the space it occupies will soon be
+ * recycled.
  *
  * This function is also used for GIN tuples in pending list and main B-Tree
  * key pages, and so must deal with the various abuses of the IndexTuple format
@@ -2120,11 +2127,16 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
  */
 static void
 EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
-				  IndexTuple tuple, uint32 relfileOff, int itemSize)
+				  IndexTuple tuple, uint32 relfileOff, int itemSize, bool dead)
 {
 	uint32		relfileOffNext = 0;
 	uint32		relfileOffOrig = relfileOff;
+	char	   *tagColor;
+	char	   *fontColor;
 	char	   *flagString;
+
+	/* Make font color indicate if LP_DEAD bit is set */
+	fontColor = dead ? COLOR_BROWN : COLOR_FONT_STANDARD;
 
 	if (itemSize < 0)
 		itemSize = IndexTupleSize(tuple);
@@ -2146,12 +2158,15 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		 * EmitXmlHeapTuple().
 		 */
 		relfileOffNext = relfileOff + sizeof(uint16);
-		EmitXmlTupleTag(blkno, offset, "t_tid->bi_hi", COLOR_BLUE_LIGHT, relfileOff,
-						relfileOffNext - 1);
+		tagColor = dead ? COLOR_BLACK : COLOR_BLUE_LIGHT;
+		EmitXmlTupleTagFont(blkno, offset, "t_tid->bi_hi",
+							tagColor, fontColor,
+							relfileOff, relfileOffNext - 1);
 		relfileOff = relfileOffNext;
 		relfileOffNext += sizeof(uint16);
-		EmitXmlTupleTag(blkno, offset, "t_tid->bi_lo", COLOR_BLUE_LIGHT, relfileOff,
-						relfileOffNext - 1);
+		EmitXmlTupleTagFont(blkno, offset, "t_tid->bi_lo",
+							tagColor, fontColor,
+							relfileOff, relfileOffNext - 1);
 
 		/*
 		 * Handle cases where item pointer offset is abused, but t_tid still
@@ -2171,14 +2186,19 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		 */
 		relfileOff = relfileOffNext;
 		relfileOffNext += sizeof(uint16);
+		tagColor = dead ? COLOR_BLACK : COLOR_BLUE_DARK;
 		if (specialType == SPEC_SECT_INDEX_GIN && GinIsPostingTree(tuple))
-			EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber/GinIsPostingTree()",
-							COLOR_BLUE_DARK, relfileOff, relfileOffNext - 1);
+			EmitXmlTupleTagFont(blkno, offset,
+								"t_tid->offsetNumber/GinIsPostingTree()",
+								tagColor, fontColor,
+								relfileOff, relfileOffNext - 1);
 #if PG_VERSION_NUM >= 110000
 		else if (specialType == SPEC_SECT_INDEX_BTREE &&
 				 (tuple->t_info & INDEX_ALT_TID_MASK) != 0)
-			EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber/BTreeTupleGetNAtts()",
-							COLOR_BLUE_DARK, relfileOff, relfileOffNext - 1);
+			EmitXmlTupleTagFont(blkno, offset,
+								"t_tid->offsetNumber/BTreeTupleGetNAtts()",
+								tagColor, fontColor,
+								relfileOff, relfileOffNext - 1);
 #endif
 		/*
 		 * Regular/common case, where offset number is actually intended to be
@@ -2186,8 +2206,9 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		 * as ItemPointerGetOffsetNumber())
 		 */
 		else
-			EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber", COLOR_BLUE_DARK,
-							relfileOff, relfileOffNext - 1);
+			EmitXmlTupleTagFont(blkno, offset, "t_tid->offsetNumber",
+								tagColor, fontColor,
+								relfileOff, relfileOffNext - 1);
 	}
 	else
 	{
@@ -2200,16 +2221,23 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		 * accessed in the conventional manner.
 		 */
 		relfileOffNext = relfileOff + sizeof(uint16);
-		EmitXmlTupleTag(blkno, offset, "t_tid->bi_hi/GinItupIsCompressed()",
-						COLOR_BLUE_LIGHT, relfileOff, relfileOffNext - 1);
+		tagColor = dead ? COLOR_BLACK : COLOR_BLUE_LIGHT;
+		EmitXmlTupleTagFont(blkno, offset, "t_tid->bi_hi/GinItupIsCompressed()",
+							tagColor, fontColor,
+							relfileOff, relfileOffNext - 1);
 		relfileOff = relfileOffNext;
 		relfileOffNext += sizeof(uint16);
-		EmitXmlTupleTag(blkno, offset, "t_tid->bi_lo/GinGetPostingOffset()",
-						COLOR_BLUE_LIGHT, relfileOff, relfileOffNext - 1);
+		EmitXmlTupleTagFont(blkno, offset,
+							"t_tid->bi_lo/GinGetPostingOffset()",
+							tagColor, fontColor,
+							relfileOff, relfileOffNext - 1);
 		relfileOff = relfileOffNext;
 		relfileOffNext += sizeof(uint16);
-		EmitXmlTupleTag(blkno, offset, "t_tid->offsetNumber/GinGetNPosting()",
-						COLOR_BLUE_DARK, relfileOff, relfileOffNext - 1);
+		tagColor = dead ? COLOR_BLACK : COLOR_BLUE_DARK;
+		EmitXmlTupleTagFont(blkno, offset,
+							"t_tid->offsetNumber/GinGetNPosting()",
+							tagColor, fontColor,
+							relfileOff, relfileOffNext - 1);
 	}
 
 	/*
@@ -2219,8 +2247,10 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	relfileOff = relfileOffNext;
 	relfileOffNext += sizeof(unsigned short);
 	flagString = GetIndexTupleFlags(tuple);
-	EmitXmlTupleTag(blkno, offset, flagString, COLOR_YELLOW_DARK, relfileOff,
-					relfileOffNext - 1);
+	tagColor = dead ? COLOR_BLACK : COLOR_YELLOW_DARK;
+	EmitXmlTupleTagFont(blkno, offset, flagString,
+						tagColor, fontColor,
+						relfileOff, relfileOffNext - 1);
 	pg_free(flagString);
 	relfileOff = relfileOffNext;
 
@@ -2244,8 +2274,10 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		relfileOffNext +=
 			(IndexInfoFindDataOffset(tuple->t_info) - (relfileOff - relfileOffOrig));
 
-		EmitXmlTupleTag(blkno, offset, "IndexAttributeBitMapData array",
-						COLOR_YELLOW_DARK, relfileOff, relfileOffNext - 1);
+		tagColor = dead ? COLOR_BLACK : COLOR_YELLOW_DARK;
+		EmitXmlTupleTagFont(blkno, offset, "IndexAttributeBitMapData array",
+							tagColor, fontColor,
+							relfileOff, relfileOffNext - 1);
 		relfileOff = relfileOffNext;
 	}
 
@@ -2256,6 +2288,9 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	 * avoid creating a tuple content tag entirely.  The same applies to "minus
 	 * infinity" items from nbtree internal pages (though they don't have a
 	 * NULL bitmap).
+	 *
+	 * Tuple contents is represented in the same way in the event of a dead
+	 * tuple.
 	 */
 	relfileOffNext = relfileOffOrig + itemSize;
 	if (relfileOff < relfileOffNext)
@@ -2382,7 +2417,7 @@ EmitXmlSpGistInnerTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	{
 		EmitXmlIndexTuple(page, blkno, offset, node,
 						  relfileOffOrig + ((char *) node - (char *) tuple),
-						  -1);
+						  -1, false);
 	}
 }
 
@@ -3020,11 +3055,13 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 		else if (formatAs == ITEM_INDEX)
 		{
 			IndexTuple	tuple;
+			bool		dead;
 
 			tuple = (IndexTuple) PageGetItem(page, itemId);
+			dead = ItemIdIsDead(itemId);
 
 			EmitXmlIndexTuple(page, blkno, offset, tuple,
-							  pageOffset + itemOffset, itemSize);
+							  pageOffset + itemOffset, itemSize, dead);
 		}
 		else if (formatAs == ITEM_SPG_INN)
 		{
