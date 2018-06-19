@@ -2,6 +2,7 @@
  * pg_hexedit.c - PostgreSQL file dump utility for
  *                viewing heap (data) and index files in wxHexEditor.
  *
+ * Copyright (c) 2018,      Crunchy Data Solutions, Inc.
  * Copyright (c) 2017-2018, VMware, Inc.
  * Copyright (c) 2002-2010, Red Hat, Inc.
  * Copyright (c) 2011-2018, PostgreSQL Global Development Group
@@ -315,6 +316,7 @@ DisplayOptions(unsigned int validOptions)
 	if (validOptions == OPT_RC_COPYRIGHT)
 		printf
 			("pg_hexedit %s (for PostgreSQL %s)"
+			 "\nCopyright (c) 2018,      Crunchy Data Solutions, Inc."
 			 "\nCopyright (c) 2017-2018, VMware, Inc."
 			 "\nCopyright (c) 2002-2010, Red Hat, Inc."
 			 "\nCopyright (c) 2011-2018, PostgreSQL Global Development Group\n",

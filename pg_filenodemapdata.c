@@ -2,6 +2,7 @@
  * pg_filenodemapdata.c - PostgreSQL utility
  *                        that prints the contents of pg_filenode.map files.
  *
+ * Copyright (c) 2018, Crunchy Data Solutions, Inc.
  * Copyright (c) 2018, VMware, Inc.
  * Copyright (c) 2018, PostgreSQL Global Development Group
  *
@@ -143,6 +144,7 @@ DisplayOptions(unsigned int validOptions)
 	if (validOptions == OPT_RC_COPYRIGHT)
 		printf
 			("pg_filenodemapdata %s (for PostgreSQL %s)\n"
+			 "Copyright (c) 2018, Crunchy Data Solutions, Inc.\n"
 			 "Copyright (c) 2018, VMware, Inc.\n"
 			 "Copyright (c) 2018, PostgreSQL Global Development Group\n",
 			 HEXEDIT_VERSION, PG_VERSION);

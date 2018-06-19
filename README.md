@@ -3,6 +3,7 @@ pg_hexedit
 
 ## Open PostgreSQL relation files in a hex editor with tags and annotations
 
+Copyright (c) 2018,      Crunchy Data Solutions, Inc.  
 Copyright (c) 2017-2018, VMware, Inc.  
 Copyright (c) 2002-2010, Red Hat, Inc.  
 Copyright (c) 2011-2018, PostgreSQL Global Development Group
