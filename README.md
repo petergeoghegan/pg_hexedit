@@ -13,6 +13,8 @@ Author (pg_filedump): Patrick Macdonald [`<patrickm@redhat.com>`](mailto:patrick
 
 License: [GNU General Public License version 2](https://opensource.org/licenses/GPL-2.0)
 
+[![Build Status](https://travis-ci.org/petergeoghegan/pg_hexedit.svg?branch=master)](https://travis-ci.org/petergeoghegan/pg_hexedit)
+
 ## Overview
 
 pg_hexedit is an experimental toolkit to format PostgreSQL heap, sequence, and
@@ -39,9 +41,36 @@ file is assumed for the entire file.
 ![wxHexEditor with pg_type_typname_nsp_index](./pg_type_typname_nsp_index.png)
 *wxHexEditor with pg_type_typname_nsp_index system catalog index*
 
-### Test status
+### Annotation, tags, and the use of color
 
-[![Build Status](https://travis-ci.org/petergeoghegan/pg_hexedit.svg?branch=master)](https://travis-ci.org/petergeoghegan/pg_hexedit)
+pg_hexedit uses color to convey conceptual similarities between distinct
+fields.  For example, the `t_infomask2` and `t_infomask` heap tuple fields are
+both green.  *Font* color is sometimes used to convey the status of a value
+contained within a particular field, without that information necessarily being
+directly inferred from the affected field (it could come from another metadata
+field within the same tuple).  For example, "frozen" `xmin` values have white
+text, though the enclosing `xmin` tag's color is unaffected (it is always red).
+Similarly, non-contrasting font colors are used to deemphasize the contents of
+a field where the contents are redundant or otherwise insignificant.  For
+example, in the common case where a never-updated heap tuple's `t_ctid` fields
+point to the heap tuple itself, a non-contrasting font color is used (a shade
+of blue is used that is very similar to the enclosing `t_ctid` field color).
+
+pg_hexedit annotations use field names and status flags that are grep'able from
+a PostgreSQL source code directory.  While pg_hexedit aims to make interpreting
+the contents of pages as intuitive as possible, it does not go as far as
+interpreting the contents on the user's behalf.  For example, `t_infomask` flag
+bits appear in annotations as a simple combination of "base" flag bits, rather
+than presenting the user with the logical state of `t_infomask` bits based on
+the combination of bits set: composite/logical flags such as `HEAP_XMIN_FROZEN`
+and `HEAP_XMAX_SHR_LOCK` will never appear in `t_infomask` annotations.
+
+pg_hexedit dynamically assigns colors to columns/attributes based on the
+attribute name.  Indexes will have the same attribute field colors as the
+corresponding attributes in the tables that are indexed, since their
+`pg_attribute.attname` values will match.
+
+See also: [PostgreSQL documentation - Database Page Layout](https://www.postgresql.org/docs/current/static/storage-page-layout.html)
 
 ## Initial setup
 
@@ -349,7 +378,9 @@ beginning of the tuple contents proper.
 
 While pg_hexedit targets wxHexEditor, it should not be difficult to adopt it to
 other hex editors with a similar tag import feature if that becomes a
-requirement in the future.
+requirement in the future.  (Alternative hex editors should ideally be able to
+represent tag color using HTML color codes, and support setting both font and
+tag colors.)
 
 Actually generating raw tag output is confined to the following simple C
 functions:
