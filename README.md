@@ -48,8 +48,8 @@ fields.  For example, the `t_infomask2` and `t_infomask` heap tuple fields are
 both green.  *Font* color is sometimes used to convey the status of a value
 contained within a particular field, without that information necessarily being
 directly inferred from the affected field (it could come from another metadata
-field within the same tuple).  For example, "frozen" `xmin` values have white
-text, though the enclosing `xmin` tag's color is unaffected (it is always red).
+field within the same tuple).  For example, MultiXact `xmax` values have green
+text, though the enclosing `xmax` tag's color is unaffected (it is always red).
 Similarly, non-contrasting font colors are used to deemphasize the contents of
 a field where the contents are redundant or otherwise insignificant.  For
 example, in the common case where a never-updated heap tuple's `t_ctid` fields
@@ -70,7 +70,12 @@ attribute name.  Indexes will have the same attribute field colors as the
 corresponding attributes in the tables that are indexed, since their
 `pg_attribute.attname` values will match.
 
-See also: [PostgreSQL documentation - Database Page Layout](https://www.postgresql.org/docs/current/static/storage-page-layout.html)
+See also:
+[PostgreSQL documentation - Database Page
+Layout](https://www.postgresql.org/docs/current/static/storage-page-layout.html)
+[PostgreSQL documentation - Preventing Transaction ID Wraparound Failures (xmin
+and xmax fields, Multixacts, and
+freezing)](https://www.postgresql.org/docs/10/static/routine-vacuuming.html#VACUUM-FOR-WRAPAROUND)
 
 ## Initial setup
 
