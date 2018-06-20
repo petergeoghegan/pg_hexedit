@@ -146,8 +146,6 @@ Window that is highlighted within your desktop environment.
 
 ## Quickstart guide - Using the convenience scripts
 
-### Requirements
-
 pg_hexedit and wxHexEditor can be invoked using convenience scripts that take
 care of everything.  These are designed to be run on a PostgreSQL backend
 hacker's laptop, while the target PostgreSQL server is actually running.  The
@@ -155,6 +153,13 @@ server is queried to locate the relevant relation files.  The scripts also take
 care of adding convenience offsets to the wxHexEditor cache, which can be used
 to quickly locate internal pages of a B-Tree, for example.  The wxHexEditor
 shortcut for accessing the offsets is Ctrl + G.
+
+The convenience scripts automate away starting pg_hexedit in test environments,
+but it is still highly recommended that you familiarize yourself with
+PostgreSQL's file layout.  See: [PostgreSQL documentation - Database File
+Layout](https://www.postgresql.org/docs/current/static/storage-file-layout.html).
+
+### Requirements
 
 `psql` should be within your $PATH when the scripts are invoked. libpq
 environment variables like $PGDATABASE can be set within the `hexedit.cfg`
