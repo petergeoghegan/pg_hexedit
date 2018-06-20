@@ -70,7 +70,7 @@ attribute name.  Indexes will have the same attribute field colors as the
 corresponding attributes in the tables that are indexed, since their
 `pg_attribute.attname` values will match.
 
-See also:
+See also:  
 [PostgreSQL documentation - Database Page
 Layout](https://www.postgresql.org/docs/current/static/storage-page-layout.html)  
 [PostgreSQL documentation - Preventing Transaction ID Wraparound Failures (xmin
