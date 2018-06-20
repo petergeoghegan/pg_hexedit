@@ -1743,6 +1743,7 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	unsigned char  *tupdata;
 	bits8		   *t_bits;
 	int				datalen;
+	int				nattrs = nrelatts;
 
 	/*
 	 * If an argument describing the relation's tuples was not provided, just
@@ -1766,12 +1767,28 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 		return;
 	}
 
+	/*
+	 * On Postgres v11+, account for nbtree pivot tuples with truncated
+	 * attributes.  INCLUDE attributes won't be present, and so must not have
+	 * tags emitted.
+	 *
+	 * This is based on BTreeTupleGetNAtts(), which cannot be called from
+	 * frontend code.
+	 */
+#if PG_VERSION_NUM >= 110000
+	if (specialType == SPEC_SECT_INDEX_BTREE &&
+		(itup->t_info & INDEX_ALT_TID_MASK) != 0)
+		nattrs =
+			(ItemPointerGetOffsetNumberNoCheck(&(itup)->t_tid) &
+			 BT_N_KEYS_OFFSET_MASK);
+#endif
+
 	tupdata = (unsigned char *) itup + IndexInfoFindDataOffset(itup->t_info);
 	t_bits = IndexTupleHasNulls(itup) ?
 		(bits8 *) ((unsigned char *) itup + sizeof(IndexTupleData)) : NULL;
 	datalen = itemSize - IndexInfoFindDataOffset(itup->t_info);
 
-	EmitXmlAttributesData(blkno, offset, relfileOff, tupdata, t_bits, nrelatts,
+	EmitXmlAttributesData(blkno, offset, relfileOff, tupdata, t_bits, nattrs,
 						  datalen);
 }
 
