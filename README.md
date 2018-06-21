@@ -75,7 +75,7 @@ See also:
 Layout](https://www.postgresql.org/docs/current/static/storage-page-layout.html)  
 [PostgreSQL documentation - Preventing Transaction ID Wraparound Failures (xmin
 and xmax fields, Multixacts, and
-freezing)](https://www.postgresql.org/docs/10/static/routine-vacuuming.html#VACUUM-FOR-WRAPAROUND)
+freezing)](https://www.postgresql.org/docs/current/static/routine-vacuuming.html#VACUUM-FOR-WRAPAROUND)
 
 ## Initial setup
 
