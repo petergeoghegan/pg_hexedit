@@ -2073,14 +2073,22 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 					relfileOffNext - 1);
 
 	/*
-	 * Whatever follows must be the t_bits null bitmap, until t_hoff when
-	 * (t_infomask & HEAP_HASNULL).  There will be an Oid field at the end of
-	 * the space immediately before t_hoff when (t_infomask & HEAP_HASOID), too
-	 * (there may occasionally be an Oid but no t_bits field).
+	 * We consider the size of the t_bits field (if any) to be what the
+	 * att_isnull() macro requires.  There is one bit per attribute, which is
+	 * rounded up to the nearest byte boundary.
 	 *
-	 * Represent Oid as a distinct field, but use the same color used for
-	 * t_bits to emphasize that they're both in the category of tuple header
-	 * metadata that may or may not appear just before t_hoff.
+	 * This often leaves a conspicuous empty space between the t_bits area and
+	 * the first attribute/beginning of tuple contents.  This happens because
+	 * the first attribute of the tuple must be accessed at a MAXALIGN()'d
+	 * offset relative to the start of the tuple (often 32 bytes from the
+	 * beginning of the tuple).  The empty space for alignment doesn't seem
+	 * like it should count as t_bits overhead.
+	 *
+	 * (t_bits doesn't have any alignment requirements, which is why there can
+	 * be a one byte t_bits array when there aren't so many attributes.  That
+	 * can fit snugly before the first attribute, which will only have a 24
+	 * byte offset from the beginning of the tuple provided there is no oid
+	 * field.)
 	 */
 	relfileOff = relfileOffNext;
 	relfileOffNext = relfileOffOrig + htup->t_hoff;
@@ -2088,7 +2096,12 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 		relfileOffNext -= sizeof(Oid);
 	if (htup->t_infomask & HEAP_HASNULL)
 		EmitXmlTupleTag(blkno, offset, "t_bits", COLOR_YELLOW_DARK, relfileOff,
-						relfileOffNext - 1);
+						relfileOff + ((HeapTupleHeaderGetNatts(htup) + 0x07) >> 3) - 1);
+
+	/*
+	 * Represent Oid as a distinct field with the same color as t_bits, since
+	 * it's also an optional heap tuple header.
+	 */
 	if (htup->t_infomask & HEAP_HASOID)
 	{
 		relfileOff = relfileOffNext;
