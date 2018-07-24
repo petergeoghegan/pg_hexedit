@@ -1856,7 +1856,7 @@ EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 
 		if (datalen < off + attlen)
 		{
-			fprintf(stderr, "pg_hexedit error: unexpected end of tuple data in (%u,%u)\n",
+			fprintf(stderr, "pg_hexedit error: unexpected out of bounds tuple data in (%u,%u)\n",
 					blkno, offset);
 			exitCode = 1;
 			return;
