@@ -1786,9 +1786,19 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 #if PG_VERSION_NUM >= 110000
 	if (specialType == SPEC_SECT_INDEX_BTREE &&
 		(itup->t_info & INDEX_ALT_TID_MASK) != 0)
+	{
 		nattrs =
 			(ItemPointerGetOffsetNumberNoCheck(&(itup)->t_tid) &
 			 BT_N_KEYS_OFFSET_MASK);
+
+		if (nattrs > nrelatts)
+		{
+			fprintf(stderr, "pg_hexedit error: %d attributes found in (%u,%u) exceeds the number inferred for relation from -D argument %d\n",
+					nattrs, blkno, offset, nrelatts);
+			exitCode = 1;
+			nattrs = nrelatts;
+		}
+	}
 #endif
 
 	tupdata = (unsigned char *) itup + IndexInfoFindDataOffset(itup->t_info);
