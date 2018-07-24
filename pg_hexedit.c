@@ -1716,14 +1716,6 @@ EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
 	int				nattrs = HeapTupleHeaderGetNatts(htup);
 	int				datalen = itemSize - htup->t_hoff;
 
-	if (nattrs > nrelatts)
-	{
-		fprintf(stderr, "pg_hexedit error: %d attributes found in (%u,%u) exceeds the number inferred for relation from -D argument %d\n",
-				nattrs, blkno, offset, nrelatts);
-		exitCode = 1;
-		nattrs = nrelatts;
-	}
-
 	/*
 	 * If an argument describing the relation's tuples was not provided, just
 	 * create a single tag
@@ -1733,6 +1725,14 @@ EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
 		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE, relfileOff,
 						(relfileOff + datalen) - 1);
 		return;
+	}
+
+	if (nattrs > nrelatts)
+	{
+		fprintf(stderr, "pg_hexedit error: %d attributes found in (%u,%u) exceeds the number inferred for relation from -D argument %d\n",
+				nattrs, blkno, offset, nrelatts);
+		exitCode = 1;
+		nattrs = nrelatts;
 	}
 
 	t_bits = (htup->t_infomask & HEAP_HASNULL) != 0 ? htup->t_bits : NULL;
