@@ -10,7 +10,7 @@
 # Generate tags with no attributes, using -x option equal to page's LSN (this
 # -x option does not affect output):
 set -x
-./pg_hexedit -x "0/00000028" t/1249 > t/output_no_attributes.tags
+./pg_hexedit -x "0/00000028" t/1249 > t/output_no_attributes.tags || exit 1
 set +x
 
 # Normalize:
@@ -28,7 +28,7 @@ fi
 # Generate tags with attributes:
 ATTRLIST='4,"attrelid",i,64,"attname",c,4,"atttypid",i,4,"attstattarget",i,2,"attlen",s,2,"attnum",s,4,"attndims",i,4,"attcacheoff",i,4,"atttypmod",i,1,"attbyval",c,1,"attstorage",c,1,"attalign",c,1,"attnotnull",c,1,"atthasdef",c,1,"atthasmissing",c,1,"attidentity",c,1,"attisdropped",c,1,"attislocal",c,4,"attinhcount",i,4,"attcollation",i,-1,"attacl",i,-1,"attoptions",i,-1,"attfdwoptions",i,-1,"attmissingval",d'
 set -x
-./pg_hexedit -D "$ATTRLIST" t/1249 > t/output_attributes.tags
+./pg_hexedit -D "$ATTRLIST" t/1249 > t/output_attributes.tags || exit 1
 set +x
 
 # Normalize:
@@ -45,7 +45,7 @@ fi
 
 # Generate almost-empty tag file by avoiding page LSN:
 set -x
-./pg_hexedit -x "0/00000029" t/1249 > t/output_empty_lsn.tags
+./pg_hexedit -x "0/00000029" t/1249 > t/output_empty_lsn.tags || exit 1
 set +x
 
 # Normalize:
@@ -68,7 +68,7 @@ fi
 # Generate tags with no attributes, forcing the segment number to 1 to avoid
 # interpreting this page as a metapage:
 set -x
-./pg_hexedit -n 1 t/2685 > t/output_no_attributes_idx.tags
+./pg_hexedit -n 1 t/2685 > t/output_no_attributes_idx.tags || exit 1
 set +x
 
 # Normalize:
@@ -86,7 +86,7 @@ fi
 # Generate tags with attributes, forcing the segment number to 1:
 ATTRLIST='4,"attrelid",i,-2,"attname",c'
 set -x
-./pg_hexedit -n 1 -D "$ATTRLIST"  t/2685 > t/output_attributes_idx.tags
+./pg_hexedit -n 1 -D "$ATTRLIST"  t/2685 > t/output_attributes_idx.tags || exit 1
 set +x
 
 # Normalize:
@@ -104,7 +104,7 @@ fi
 # Generate single leaf page tag with -l option, forcing the segment number to 1
 # to avoid interpreting this page as a metapage:
 set -x
-./pg_hexedit -n 1 -l t/2685 > t/output_leaf_idx.tags
+./pg_hexedit -n 1 -l t/2685 > t/output_leaf_idx.tags || exit 1
 set +x
 
 # Normalize:
