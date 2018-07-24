@@ -381,8 +381,7 @@ The file global/1262 can now be opened using wxHexEditor, to examine the
 contents of pg_database.  pg_database tuples contain a database name, so it
 should be possible to search for the entry of interest using the wxHexEditor
 search dialog.  The OID for each tuple/database is a 4 byte unsigned integer
-that is embedded at the end of the t_bits field, immediately before the
-beginning of the tuple contents proper.
+that appears in heap tuple headers with `HEAP_HASOID` set.
 
 ## Supporting other hex editors
 
