@@ -19,19 +19,19 @@ wxconfig="$HOME/.wxHexEditor"
 if ! psql --no-psqlrc -c "CHECKPOINT"
 then
   echo "CHECKPOINT failed"
-  exit
+  exit 1
 fi
 
 if ! RFN=$(psql --no-psqlrc -tA -c "SELECT pg_relation_filepath('$relname')")
 then
   echo "invoking pg_relation_filepath() failed"
-  exit
+  exit 1
 fi
 
 if [ "$RFN" = "" ]
 then
   echo "relation $relname has no associated relfile"
-  exit
+  exit 1
 fi
 
 # Put minimal .wxHexEditor registry style config file in place, so old tags are
@@ -64,7 +64,7 @@ FROM
 (SELECT * FROM pg_attribute WHERE attrelid = '$relname'::regclass AND attnum > 0 ORDER BY attnum ASC) t;")
 then
   echo "failed to generate attrlist string for -D option"
-  exit
+  exit 1
 fi
 
 # Generate tags at a path that we know wxHexEditor will look for them:
@@ -76,7 +76,7 @@ if ! ./pg_hexedit -D "$ATTRLIST" -z -R "$MIN_BLOCK_TAGS" "$MAX_BLOCK_TAGS" "$FUL
 then
   echo "Error encountered by pg_hexedit. Could not generate all tags."
   echo "You may still wish to run: $HEXEDITOR $FULLPATH"
-  exit
+  exit 1
 fi
 
 if [ ! -f "$HEXEDITOR" ]

@@ -25,7 +25,7 @@ relname=$1
 if ! psql --no-psqlrc -c "CREATE EXTENSION IF NOT EXISTS pageinspect"
 then
   echo "creating pageinspect extension failed"
-  exit
+  exit 1
 fi
 
 echo "Contiguous flags in GIN index summary:"
@@ -85,7 +85,7 @@ ORDER BY
   first;"
 then
   echo "displaying contiguous range of blocks failed"
-  exit
+  exit 1
 fi
 
 export OFFSETS=""

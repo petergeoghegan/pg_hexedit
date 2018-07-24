@@ -37,7 +37,7 @@ nums (num, bb_offset) AS (
 SELECT string_agg('GoToOffset' || num || '=' || bb_offset, chr(10)) FROM nums;")
 then
   echo "calculating decile offsets failed"
-  exit
+  exit 1
 fi
 
 export OFFSETS

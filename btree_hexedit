@@ -24,13 +24,13 @@ relname=$1
 if ! psql --no-psqlrc -c "CREATE EXTENSION IF NOT EXISTS pageinspect"
 then
   echo "creating pageinspect extension failed"
-  exit
+  exit 1
 fi
 
 if ! TRUE_ROOT_OFFSET=$(psql --no-psqlrc -tA -c "SELECT 'GoToOffset0=' || (root * 2^13)::text FROM bt_metap('$relname')")
 then
   echo "obtaining true root block for offset dialog failed; is $relname a btree?"
-  exit
+  exit 1
 fi
 
 if ! ROOT_CHILD_OFFSETS=$(psql --no-psqlrc -tA -c "WITH offset_strings(string) AS (
@@ -40,7 +40,7 @@ if ! ROOT_CHILD_OFFSETS=$(psql --no-psqlrc -tA -c "WITH offset_strings(string) A
 SELECT string_agg(string, chr(10)) FROM offset_strings;")
 then
   echo "obtaining non-leaf children of root block for offset dialog failed"
-  exit
+  exit 1
 fi
 # The root page is also added as a separate offset.
 OFFSETS="${TRUE_ROOT_OFFSET}"$'\n'"${ROOT_CHILD_OFFSETS}"
