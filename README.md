@@ -270,9 +270,11 @@ modified blocks.  This advanced option isn't used by the convenience scripts.
 be used to find a relevant cutoff point's LSN value (e.g., based on a commit
 WAL record's timestamp value).
 
-pg_hexedit's `-l` flag can be used when the target is an nbtree relation.  This
-will have pg_hexedit emit all-green, single-page tags for leaf pages, which are
-less interesting than internal pages in some debugging scenarios.  This is yet
+pg_hexedit's `-l` flag can be used when the target is an nbtree, GiST, GIN, or
+SP-GiST index relation.  This will have pg_hexedit emit all-green, single-page
+tags for leaf pages.  Leaf pages can be much less interesting than internal
+pages in some debugging scenarios.  For example, when the balance of a tree
+structure must be examined, only the internal pages are relevant.  This is yet
 another option for limiting the number of tags generated to control overhead
 within wxHexEditor.  This advanced option isn't currently used by the
 convenience scripts.

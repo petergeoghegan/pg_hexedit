@@ -252,6 +252,7 @@ static char *GetBrinTupleFlags(BrinTuple *itup);
 #endif
 static bool IsBrinPage(Page page);
 static bool IsHashBitmapPage(Page page);
+static bool IsLeafPage(Page page);
 static void EmitXmlPage(BlockNumber blkno);
 static void EmitXmlDocHeader(int numOptions, char **options);
 static void EmitXmlFooter(void);
@@ -329,7 +330,7 @@ DisplayOptions(unsigned int validOptions)
 		 "      See README.md for an explanation of the attrlist format\n"
 		 "  -h  Display this information\n"
 		 "  -k  Verify all block checksums\n"
-		 "  -l  Skip non-root B-Tree leaf pages\n"
+		 "  -l  Skip leaf pages\n"
 		 "  -n  Force segment number to [segnumber]\n"
 		 "  -R  Display specific block ranges within the file (Blocks are\n"
 		 "      indexed from 0)\n" "        [startblock]: block to start at\n"
@@ -1405,6 +1406,42 @@ IsHashBitmapPage(Page page)
 	return false;
 }
 
+/* Check whether page is a leaf page */
+static bool
+IsLeafPage(Page page)
+{
+	if (specialType == SPEC_SECT_INDEX_BTREE)
+	{
+		BTPageOpaque btreeSection = (BTPageOpaque) PageGetSpecialPointer(page);
+
+		/*
+		 * Don't count a root page as a leaf (i.e.  the root before the first
+		 * root page split).
+		 */
+		if ((btreeSection->btpo_flags & BTP_LEAF) &&
+			!(btreeSection->btpo_flags & BTP_ROOT))
+			return true;
+	}
+	else if (specialType == SPEC_SECT_INDEX_GIST)
+	{
+		if (GistPageIsLeaf(page))
+			return true;
+	}
+	else if (specialType == SPEC_SECT_INDEX_GIN)
+	{
+		/* This works for both posting trees, and the main entry tree */
+		if (GinPageIsLeaf(page))
+			return true;
+	}
+	else if (specialType == SPEC_SECT_INDEX_SPGIST)
+	{
+		if (SpGistPageIsLeaf(page))
+			return true;
+	}
+
+	return false;
+}
+
 /*
  * For each block, dump out formatted header and content information
  */
@@ -1454,32 +1491,27 @@ EmitXmlPage(BlockNumber blkno)
 		}
 	}
 
-	/*
-	 * We optionally itemize leaf blocks as whole tags, in order to limit the
-	 * size of tag files sharply (nbtree only).  Internal pages can be more
-	 * interesting when debugging certain types of problems.
-	 */
+	/* Get "level" for page.  Only B-Tree tags get a "level" */
 	if (specialType == SPEC_SECT_INDEX_BTREE)
 	{
 		BTPageOpaque btreeSection = (BTPageOpaque) PageGetSpecialPointer(page);
 
-		/* Only B-Tree tags get a "level" */
 		level = btreeSection->btpo.level;
+	}
 
-		/*
-		 * Always display the root page when it happens to be a leaf (i.e.  the
-		 * root before the first root page split)
-		 */
-		if ((btreeSection->btpo_flags & BTP_LEAF) &&
-			!(btreeSection->btpo_flags & BTP_ROOT) &&
-			(blockOptions & BLOCK_SKIP_LEAF))
-		{
-			EmitXmlTag(blkno, level, "leaf page", COLOR_GREEN_DARK,
-					   pageOffset,
-					   (pageOffset + BLCKSZ) - 1);
-			rc = 0;
-			return;
-		}
+	/*
+	 * We optionally itemize leaf blocks as whole tags, in order to limit the
+	 * size of tag files sharply.  Internal pages can be more interesting when
+	 * debugging certain types of problems, such as problems with the balance
+	 * of some tree structure.
+	 */
+	if ((blockOptions & BLOCK_SKIP_LEAF) && IsLeafPage(page))
+	{
+		EmitXmlTag(blkno, level, "leaf page", COLOR_GREEN_DARK,
+				   pageOffset,
+				   (pageOffset + BLCKSZ) - 1);
+		rc = 0;
+		return;
 	}
 
 	/*
