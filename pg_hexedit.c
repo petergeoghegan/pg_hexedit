@@ -2636,6 +2636,14 @@ EmitXmlBrinTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	 * We use the lp_len value here, since there is no IndexTupleSize()
 	 * equivalent -- lp_len is really all we have to go on in the case of BRIN
 	 * tuples.
+	 *
+	 * Tagging individual attributes is hard for BRIN indexes, so we don't do
+	 * that here.  We'd need to know how many columns are stored for each
+	 * attribute, which isn't stored in the system catalogs or in the on-disk
+	 * representation.  BrinOpcInfo.oi_nstored stores this information, which
+	 * is returned by one of the opclass methods, so full backend access is
+	 * truly necessary (in practice it's 2 for minmax operator classes, and 3
+	 * for inclusion operator classes).
 	 */
 	relfileOffNext = relfileOffOrig + itemSize;
 	if (relfileOff < relfileOffNext)
