@@ -67,11 +67,31 @@ then
   exit 1
 fi
 
-# Generate tags at a path that we know wxHexEditor will look for them:
+# Check if data file exists locally, download $MAX_BLOCK_TAGS to /tmp if it doesn't
 FULLPATH="$PGDATA/$RFN"
-echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
-echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to keep overhead low"
+if [ -f "$FULLPATH" ]; then
+  echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
+  echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to keep overhead low"
+else
+  PAGEINSPECT_INSTALLED=$(psql -XAtc "select count(*) from pg_extension where extname='pageinspect'")
+  if (( PAGEINSPECT_INSTALLED && MIN_BLOCK_TAGS == 0 )); then
+    FULLPATH=/tmp/$(basename "$RFN")
+    echo "Downloading first $MAX_BLOCK_TAGS blocks from relation $relname to $FULLPATH..."
+    psql -XAtc "SELECT encode(get_raw_page('$relname', block::int4),'base64')
+                FROM generate_series(0, least(pg_relation_size('$relname') / 8192 - 1, $MAX_BLOCK_TAGS))
+                block" | base64 -d > "$FULLPATH"
+  else
+    echo "File $FULLPATH doesn't exist."
+    if (( MIN_BLOCK_TAGS == 0 )); then
+      echo "Tip: Install pageinspect to automatically download remote files."
+    else
+      echo "Cannot automatically download remote files when MIN_BLOCK_TAGS is non-zero."
+    fi
+    exit 1
+  fi
+fi
 
+# Generate tags at a path that we know wxHexEditor will look for them:
 if ! ./pg_hexedit -D "$ATTRLIST" -z -R "$MIN_BLOCK_TAGS" "$MAX_BLOCK_TAGS" "$FULLPATH" > "$FULLPATH.tags"
 then
   echo "Error encountered by pg_hexedit. Could not generate all tags."
