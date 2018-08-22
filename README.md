@@ -159,6 +159,11 @@ care of adding convenience offsets to the wxHexEditor cache, which can be used
 to quickly locate internal pages of a B-Tree, for example.  The wxHexEditor
 shortcut for accessing the offsets is Ctrl + G.
 
+The convenience scripts will download a portion of the relation using psql in
+the event of not finding relation files at the expected location on the
+filesystem.  For the fallback to work, `contrib/pageinspect` must be installed
+and tagging must start at the beginning of the relation file (see `hexedit.cfg`).
+
 The convenience scripts automate away starting pg_hexedit in test environments,
 but it is still highly recommended that you familiarize yourself with
 PostgreSQL's file layout.  See: [PostgreSQL documentation - Database File
@@ -182,11 +187,12 @@ mind, where __the database should only contain disposable test data__.
 
 Convenience script assumptions:
 
-* The scripts assume that they're run as an OS user that has the operating
-  system level permissions needed to open/read all PostgreSQL relation files,
-  using the same absolute paths as PostgreSQL.  Be very careful if the Postgres
-  data directory is containerized; a convenience script might open relation
-  files from an unrelated installation if this assumption is not fully met.
+* The scripts initially assume that they're run as an OS user that has the
+  operating system level permissions needed to open/read all PostgreSQL
+  relation files, using the same absolute paths as PostgreSQL.  Be very careful
+  if the Postgres data directory is containerized; a convenience script might
+  open relation files from an unrelated installation if this assumption is not
+  fully met.
 
 * Most convenience scripts rely on `CREATE EXTENSION IF NOT EXISTS pageinspect`
   running and making available various SQL-callable functions.  These functions
