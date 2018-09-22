@@ -915,7 +915,7 @@ GetBlockSize(void)
 	unsigned int pageHeaderSize = sizeof(PageHeaderData);
 	unsigned int localSize = BLCKSZ;
 	int			bytesRead = 0;
-	char		localCache[pageHeaderSize];
+	char		localCache[sizeof(PageHeaderData)];
 
 	/* Read the first header off of block 0 to determine the block size */
 	bytesRead = fread(&localCache, 1, pageHeaderSize, fp);
