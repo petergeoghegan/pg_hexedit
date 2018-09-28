@@ -71,7 +71,8 @@ fi
 FULLPATH="$PGDATA/$RFN"
 if [ -f "$FULLPATH" ]; then
   echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
-  echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to keep overhead low"
+  echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to keep overhead low."
+  echo "Caution: Saving changes to authoritative relfilenodes using wxHexEditor can cause irreparable damage."
 else
   PAGEINSPECT_INSTALLED=$(psql -XAtc "select count(*) from pg_extension where extname='pageinspect'")
   if (( PAGEINSPECT_INSTALLED && MIN_BLOCK_TAGS == 0 )); then
@@ -82,12 +83,14 @@ else
     psql -XAtc "SELECT encode(get_raw_page('$relname', block::int4),'base64')
                 FROM generate_series(0, least(pg_relation_size('$relname') / 8192 - 1, $MAX_BLOCK_TAGS))
                 block" | base64 -d > "$FULLPATH"
+    echo "Opening local temp file..."
+    echo "Tip: Saving changes to temp file copies of relfilenodes using wxHexEditor will not in itself affect the PostgreSQL server."
   else
     echo "File $FULLPATH doesn't exist."
     if (( MIN_BLOCK_TAGS == 0 )); then
       echo "Tip: Install pageinspect to automatically download remote files."
     else
-      echo "Cannot automatically download remote files when MIN_BLOCK_TAGS is non-zero."
+      echo "Note: Cannot automatically download remote files when MIN_BLOCK_TAGS is non-zero."
     fi
     exit 1
   fi
