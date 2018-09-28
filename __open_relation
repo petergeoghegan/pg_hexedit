@@ -75,7 +75,9 @@ if [ -f "$FULLPATH" ]; then
 else
   PAGEINSPECT_INSTALLED=$(psql -XAtc "select count(*) from pg_extension where extname='pageinspect'")
   if (( PAGEINSPECT_INSTALLED && MIN_BLOCK_TAGS == 0 )); then
-    FULLPATH=/tmp/$(basename "$RFN")
+    TMPDIR="/tmp/postgresql-relfiles/$PGHOST-$PGPORT-DB/$(dirname "$RFN")"
+    mkdir -p "$TMPDIR"
+    FULLPATH="$TMPDIR/$(basename "$RFN")"
     echo "Downloading first $MAX_BLOCK_TAGS blocks from relation $relname to $FULLPATH..."
     psql -XAtc "SELECT encode(get_raw_page('$relname', block::int4),'base64')
                 FROM generate_series(0, least(pg_relation_size('$relname') / 8192 - 1, $MAX_BLOCK_TAGS))
