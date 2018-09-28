@@ -29,7 +29,7 @@ TESTFILES= t/1249 t/2685 t/expected_attributes.tags \
 all: pg_hexedit pg_filenodemapdata
 
 pg_hexedit: pg_hexedit.o
-	${CC} ${PGSQL_LDFLAGS} ${LDFLAGS} -o pg_hexedit pg_hexedit.o -L${PGSQL_LIB_DIR} -lpgcommon
+	${CC} ${PGSQL_LDFLAGS} ${LDFLAGS} -o pg_hexedit pg_hexedit.o -L${PGSQL_LIB_DIR} -lpgport -lpgcommon
 
 pg_filenodemapdata: pg_filenodemapdata.o
 	${CC} ${PGSQL_LDFLAGS} ${LDFLAGS} -o pg_filenodemapdata pg_filenodemapdata.o -L${PGSQL_LIB_DIR} -lpgport
