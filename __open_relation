@@ -92,7 +92,8 @@ else
 fi
 
 # Generate tags at a path that we know wxHexEditor will look for them:
-if ! ./pg_hexedit -D "$ATTRLIST" -z -R "$MIN_BLOCK_TAGS" "$MAX_BLOCK_TAGS" "$FULLPATH" > "$FULLPATH.tags"
+# shellcheck disable=SC2086
+if ! ./pg_hexedit $EXTRAFLAGS -D "$ATTRLIST" -z -R "$MIN_BLOCK_TAGS" "$MAX_BLOCK_TAGS" "$FULLPATH" > "$FULLPATH.tags"
 then
   echo "Error encountered by pg_hexedit. Could not generate all tags."
   echo "You may still wish to run: $HEXEDITOR $FULLPATH"
