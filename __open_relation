@@ -79,7 +79,7 @@ else
     TMPDIR="/tmp/postgresql-relfiles/$PGHOST-$PGPORT-DB/$(dirname "$RFN")"
     mkdir -p "$TMPDIR"
     FULLPATH="$TMPDIR/$(basename "$RFN")"
-    echo "Downloading first $MAX_BLOCK_TAGS blocks from relation $relname to $FULLPATH..."
+    echo "Downloading blocks from $MIN_BLOCK_TAGS to $MAX_BLOCK_TAGS inclusive from relation $relname to $FULLPATH..."
     psql -XAtc "SELECT encode(get_raw_page('$relname', block::int4),'base64')
                 FROM generate_series(0, least(pg_relation_size('$relname') / 8192 - 1, $MAX_BLOCK_TAGS))
                 block" | base64 -d > "$FULLPATH"
