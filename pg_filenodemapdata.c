@@ -84,11 +84,27 @@ typedef pg_crc32 port_crc32;
 #define SubscriptionObjectIndexId		6114
 #define SubscriptionNameIndexId			6115
 #endif
+#if PG_VERSION_NUM < 120000
+#define PgAuthidToastTable				4175
+#define PgAuthidToastIndex				4176
+#define PgDatabaseToastTable			4177
+#define PgDatabaseToastIndex			4178
+#define PgPlTemplateToastTable			4179
+#define PgPlTemplateToastIndex			4180
+#define PgReplicationOriginToastTable	4181
+#define PgReplicationOriginToastIndex	4182
+#define PgSubscriptionToastTable		4183
+#define PgSubscriptionToastIndex		4184
+#define PgTablespaceToastTable			4185
+#define PgTablespaceToastIndex			4186
+#endif
 
 /*
  * catalog/toasting.h doesn't bother to provide constants for these two pg_proc
  * TOAST relations, presumably because no core code needs to reference the
  * toast tables.  We invent our own constants, to be consistent.
+ *
+ * XXX: This list isn't comprehensive.
  */
 #define OID_PG_TOAST_1255				2836
 #define OID_PG_TOAST_1255_INDEX			2837
@@ -172,7 +188,7 @@ ConsumeOptions(int numOptions, char **options)
 }
 
 /*
- * Get the name of a known sytem catalog from its pg_class OID
+ * Get the name of a known system catalog from its pg_class OID
  */
 static const char *
 GetCatalogNameFromOid(Oid classOid)
@@ -234,18 +250,42 @@ GetCatalogNameFromOid(Oid classOid)
 			return "pg_shseclabel";
 		case SubscriptionRelationId:
 			return "pg_subscription";
-		case PgShdescriptionToastTable:
-			return "pg_toast_2396";
-		case PgShdescriptionToastIndex:
-			return "pg_toast_2396_index";
+		case PgAuthidToastTable:
+			return "pg_toast_4175";
+		case PgAuthidToastIndex:
+			return "pg_toast_4176_index";
+		case PgDatabaseToastTable:
+			return "pg_toast_4177";
+		case PgDatabaseToastIndex:
+			return "pg_toast_4178_index";
 		case PgDbRoleSettingToastTable:
 			return "pg_toast_2964";
 		case PgDbRoleSettingToastIndex:
 			return "pg_toast_2964_index";
+		case PgPlTemplateToastTable:
+			return "pg_toast_4179";
+		case PgPlTemplateToastIndex:
+			return "pg_toast_4180_index";
+		case PgReplicationOriginToastTable:
+			return "pg_toast_4181";
+		case PgReplicationOriginToastIndex:
+			return "pg_toast_4182_index";
+		case PgShdescriptionToastTable:
+			return "pg_toast_2396";
+		case PgShdescriptionToastIndex:
+			return "pg_toast_2396_index";
 		case PgShseclabelToastTable:
 			return "pg_toast_3592";
 		case PgShseclabelToastIndex:
 			return "pg_toast_3592_index";
+		case PgSubscriptionToastTable:
+			return "pg_toast_4183";
+		case PgSubscriptionToastIndex:
+			return "pg_toast_4184_index";
+		case PgTablespaceToastTable:
+			return "pg_toast_4185";
+		case PgTablespaceToastIndex:
+			return "pg_toast_4186_index";
 		case AuthIdRolnameIndexId:
 			return "pg_authid_rolname_index";
 		case AuthIdOidIndexId:
