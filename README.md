@@ -145,9 +145,9 @@ tips for getting the most out of the tool.
 
 ### Caret GTK+ bug
 
-There appears to be a tendency for wxHexEditor's caret to fail to appear on a
-mouse click event.  If this happens, you can work around it by changing the
-Window that is highlighted within your desktop environment.
+There is a tendency for wxHexEditor's caret to fail to appear on a mouse click
+event.  If this happens, you can work around it by changing the Window that is
+highlighted within your desktop environment.
 
 ## Quickstart guide - Using the convenience scripts
 
