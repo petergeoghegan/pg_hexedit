@@ -68,6 +68,11 @@
 #define SEQUENCE_MAGIC			0x1717	/* PostgreSQL defined magic number */
 #define EOF_ENCOUNTERED 		(-1)	/* Indicator for partial read */
 
+/* Postgres 12 removed WITH OIDS support.  Preserve backwards compatibility */
+#if PG_VERSION_NUM >= 120000
+#define HEAP_HASOID	HEAP_HASOID_OLD
+#endif
+
 #define COLOR_FONT_STANDARD		"#313739"
 
 #define COLOR_BLACK				"#000000"
