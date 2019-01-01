@@ -163,6 +163,7 @@ DisplayOptions(unsigned int validOptions)
 			 "Copyright (c) 2018-2019, Crunchy Data Solutions, Inc.\n"
 			 "Copyright (c) 2018,      VMware, Inc.\n"
 			 "Copyright (c) 2018-2019, PostgreSQL Global Development Group\n",
+			 HEXEDIT_VERSION, PG_VERSION);
 	printf
 		("\nUsage: pg_filenodemapdata file\n\n"
 		 "Displays details from a PostgreSQL pg_filenode.map file\n"
