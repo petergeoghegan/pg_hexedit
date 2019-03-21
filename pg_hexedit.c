@@ -1812,6 +1812,12 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 		return;
 	}
 
+	/* Set up state for emitting attributes */
+	tupdata = (unsigned char *) itup + IndexInfoFindDataOffset(itup->t_info);
+	t_bits = IndexTupleHasNulls(itup) ?
+		(bits8 *) ((unsigned char *) itup + sizeof(IndexTupleData)) : NULL;
+	datalen = itemSize - IndexInfoFindDataOffset(itup->t_info);
+
 	/*
 	 * On Postgres v11+, account for nbtree pivot tuples with truncated
 	 * attributes.  INCLUDE attributes won't be present, and so must not have
@@ -1819,6 +1825,11 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	 *
 	 * This is based on BTreeTupleGetNAtts(), which cannot be called from
 	 * frontend code.
+	 *
+	 * On Postgres v12+, account for possible heap TID tiebreaker attribute in
+	 * pivot tuples.  These TIDs are white because they are considered keys,
+	 * not pointers.  This color scheme is based on the precedent set by GIN's
+	 * internal posting tree pages.
 	 */
 #if PG_VERSION_NUM >= 110000
 	if (specialType == SPEC_SECT_INDEX_BTREE &&
@@ -1835,14 +1846,33 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 			exitCode = 1;
 			nattrs = nrelatts;
 		}
+#if PG_VERSION_NUM >= 120000
+		if (BTreeTupleGetHeapTID(itup) != NULL)
+		{
+			/*
+			 * Heap TID attribute is considered a column internally, but has
+			 * no pg_attribute entry.
+			 *
+			 * Note that this only handles the special representation of heap
+			 * TID that's used in pivot tuples (includes leaf page high key).
+			 * Non-pivot tuples represent heap TID using IndexTupleData.t_tid.
+			 */
+			uint32 htidoffset = (relfileOff + datalen) - sizeof(ItemPointerData);
+
+			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->bi_hi", COLOR_WHITE,
+							htidoffset, (htidoffset + sizeof(uint16)) - 1);
+			htidoffset += sizeof(uint16);
+			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->bi_lo", COLOR_WHITE,
+							htidoffset, (htidoffset + sizeof(uint16)) - 1);
+			htidoffset += sizeof(uint16);
+			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->offsetNumber", COLOR_WHITE,
+							htidoffset, (htidoffset + sizeof(uint16)) - 1);
+		}
+#endif
 	}
 #endif
 
-	tupdata = (unsigned char *) itup + IndexInfoFindDataOffset(itup->t_info);
-	t_bits = IndexTupleHasNulls(itup) ?
-		(bits8 *) ((unsigned char *) itup + sizeof(IndexTupleData)) : NULL;
-	datalen = itemSize - IndexInfoFindDataOffset(itup->t_info);
-
+	/* Emit pg_attribute-wise columns */
 	EmitXmlAttributesData(blkno, offset, relfileOff, tupdata, t_bits, nattrs,
 						  datalen);
 }
@@ -3231,7 +3261,8 @@ EmitXmlPostingTreeTids(Page page, BlockNumber blkno)
 
 			/*
 			 * These TIDs are white because within this page (an internal
-			 * posting tree page) they are keys, not pointers
+			 * posting tree page) they are keys, not pointers.  This is
+			 * similar to nbtree internal pages (pivot tuples).
 			 */
 			EmitXmlTupleTag(blkno, offsetnum, "PostingItem->key->bi_hi", COLOR_WHITE,
 							pageOffset + itemOffset,
