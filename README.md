@@ -326,6 +326,67 @@ the attrlist argument as a whole.
 
 See `pg_hexedit -h` for full details of all available options.
 
+### Using pg_hexedit while debugging Postgres with GDB
+
+Sometimes, it is useful to invoke pg_hexedit/wxHexEditor to visualize an
+arbitrary Postgres page image from within an interactive GDB debugging session
+that is attached to a Postgres backend.  This also works well with core dumps.
+
+Generalize from the following example, which can be added to your .gdbinit
+dotfile:
+
+```
+define dump_page
+  dump binary memory /tmp/gdb_postgres_page.dump $arg0 ($arg0 + 8192)
+  echo Invoking pg_hexedit + wxHexEditor on page...\n
+  ! ~/code/pg_hexedit/pg_hexedit -n 1 /tmp/gdb_postgres_page.dump > /tmp/gdb_postgres_page.dump.tags
+  ! ~/code/wxHexEditor/wxHexEditor /tmp/gdb_postgres_page.dump &> /dev/null
+end
+```
+
+This creates a user-defined GDB command that dumps 8192 bytes (default BLCKSZ)
+at an arbitrary memory address to a temp file.  From there, pg_hexedit is
+invoked on the temp file.
+
+If we wanted to see a page image of an nbtree page that is about to be split,
+we can set a breakpoint within `_bt_split()`, insert tuples until there is a
+page split, and invoke pg_hexedit using the `dump_page` GDB command:
+
+```
+Breakpoint 1, _bt_split (rel=0x7f555b6f3460, itup_key=0x55d03a745d40, buf=232, cbuf=0, firstright=366, newitemoff=216, newitemsz=16, newitem=0x55d03a745d18, newitemonleft=true) at nbtinsert.c:1205
+1205	{
+(gdb) n
+1215		Buffer		sbuf = InvalidBuffer;
+(gdb)
+1216		Page		spage = NULL;
+(gdb)
+1217		BTPageOpaque sopaque = NULL;
+(gdb)
+1227		int			indnatts = IndexRelationGetNumberOfAttributes(rel);
+(gdb)
+1228		int			indnkeyatts = IndexRelationGetNumberOfKeyAttributes(rel);
+(gdb)
+1231		rbuf = _bt_getbuf(rel, P_NEW, BT_WRITE);
+(gdb)
+1244		origpage = BufferGetPage(buf);
+(gdb)
+1245		leftpage = PageGetTempPage(origpage);
+(gdb)
+1246		rightpage = BufferGetPage(rbuf);
+(gdb)
+1248		origpagenumber = BufferGetBlockNumber(buf);
+(gdb)
+1249		rightpagenumber = BufferGetBlockNumber(rbuf);
+(gdb) dump_page origpage
+Invoking pg_hexedit + wxHexEditor on page...
+
+```
+
+Note that the block number displayed by pg_hexedit's annotations will be
+spurious when produced by `dump_page`, because there is no general way to
+determine the correct block number without more context.  This is usually only
+a minor annoyance, though.
+
 ### Determining catalog relation file mappings without a database connection
 
 pg_filenodemapdata is a program that prints the contents of a specified catalog
