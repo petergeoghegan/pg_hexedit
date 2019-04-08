@@ -470,6 +470,7 @@ EmitXmlTag()
 EmitXmlItemId()
 EmitXmlTupleTag()
 EmitXmlTupleTagFont()
+EmitXmlTupleTagFontTwoName()
 ```
 
 These routines could be changed to call a per-hexeditor callback.  Each

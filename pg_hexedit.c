@@ -274,6 +274,10 @@ static void EmitXmlTupleTagFont(BlockNumber blkno, OffsetNumber offset,
 								const char *name, const char *color,
 								const char *fontColor, uint32 relfileOff,
 								uint32 relfileOffEnd);
+static void EmitXmlTupleTagFontTwoName(BlockNumber blkno, OffsetNumber offset,
+						   const char *name1, const char *name2,
+						   const char *color, const char *fontColor,
+						   uint32 relfileOff, uint32 relfileOffEnd);
 static void EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
 								  uint32 relfileOff, HeapTupleHeader htup,
 								  int itemSize);
@@ -1742,6 +1746,43 @@ EmitXmlTupleTagFont(BlockNumber blkno, OffsetNumber offset, const char *name,
 }
 
 /*
+ * Like EmitXmlTupleTagFont(), but lets caller specify name in two parts
+ */
+static void
+EmitXmlTupleTagFontTwoName(BlockNumber blkno, OffsetNumber offset,
+						   const char *name1, const char *name2,
+						   const char *color, const char *fontColor,
+						   uint32 relfileOff, uint32 relfileOffEnd)
+{
+	char *combinednames;
+	if (relfileOff > relfileOffEnd)
+	{
+		fprintf(stderr, "pg_hexedit error: (%u,%u) tuple tag \"%s - %s\" is malformed (%u > %u)\n",
+				blkno + segmentBlockDelta, offset, name1, name2, relfileOff,
+				relfileOffEnd);
+		exitCode = 1;
+		return;
+	}
+
+	combinednames = pg_malloc(strlen(name1) + strlen(name2) + 5);
+	combinednames[0] = '\0';
+	strcat(combinednames, name1);
+	strcat(combinednames, " - ");
+	strcat(combinednames, name2);
+
+	printf("    <TAG id=\"%u\">\n", tagNumber++);
+	printf("      <start_offset>%u</start_offset>\n", relfileOff);
+	printf("      <end_offset>%u</end_offset>\n", relfileOffEnd);
+	printf("      <tag_text>(%u,%u) %s</tag_text>\n",
+		   blkno + segmentBlockDelta, offset, combinednames);
+	printf("      <font_colour>%s</font_colour>\n", fontColor);
+	printf("      <note_colour>%s</note_colour>\n", color);
+	printf("    </TAG>\n");
+
+	pg_free(combinednames);
+}
+
+/*
  * Emit wxHexEditor tags for individual non-NULL attributes in heap tuple
  */
 static void
@@ -1891,6 +1932,7 @@ EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 					  uint32 relfileOff, unsigned char *tupdata, bits8 *t_bits,
 					  int nattrs, int datalen)
 {
+	unsigned char	   *attptr = tupdata;
 	int			off = 0;
 	int			i;
 
@@ -1900,6 +1942,7 @@ EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 		char	   *attname = attnamerel[i];
 		char	   *attcolor = attcolorrel[i];
 		char		attalign = attalignrel[i];
+		int			truestartoff = 0;
 		int			truelen;
 
 		if (t_bits && att_isnull(i, t_bits))
@@ -1907,13 +1950,45 @@ EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 
 		if (attlen == -1)
 		{
-			off = att_align_pointer(off, attalign, -1, tupdata + off);
+			char *hdrname = "";
+
+			/* Varlena header receives its own minimal tag */
+			off = att_align_pointer(off, attalign, -1, attptr);
 			truelen = VARSIZE_ANY(tupdata + off);
+
+			if (VARATT_IS_1B(attptr))
+			{
+				truestartoff = 1;
+				truelen -= 1;
+				if (VARATT_IS_1B_E(attptr))
+					hdrname = "varattrib_1b_e";
+				else
+					hdrname = "varattrib_1b";
+
+				EmitXmlTupleTagFontTwoName(blkno, offset, attname, hdrname,
+										   attcolor, COLOR_BROWN,
+										   relfileOff + off,
+										   relfileOff + off);
+			}
+			else if (VARATT_IS_4B(attptr))
+			{
+				truestartoff = 4;
+				truelen -= 4;
+				if (VARATT_IS_4B_U(attptr))
+					hdrname = "va_4byte";
+				else if (VARATT_IS_4B_C(attptr))
+					hdrname = "va_compressed";
+
+				EmitXmlTupleTagFontTwoName(blkno, offset, attname, hdrname,
+										   attcolor, COLOR_BROWN,
+										   relfileOff + off,
+										   relfileOff + off + 3);
+			}
 		}
 		else if (attlen == -2)
 		{
 			off = att_align_nominal(off, attalign);
-			truelen = strnlen((char *) tupdata + off, datalen - off) + 1;
+			truelen = strnlen((char *) attptr, datalen - off) + 1;
 		}
 		else
 		{
@@ -1929,10 +2004,13 @@ EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 			return;
 		}
 
-		EmitXmlTupleTag(blkno, offset, attname, attcolor, relfileOff + off,
-						relfileOff + off + truelen - 1);
+		EmitXmlTupleTag(blkno, offset, attname, attcolor,
+						relfileOff + off + truestartoff,
+						relfileOff + off + truestartoff + truelen - 1);
 
+		/* Get possible address of next attribute, handling alignment */
 		off = att_addlength_pointer(off, attlen, tupdata + off);
+		attptr = tupdata + off;
 	}
 }
 
