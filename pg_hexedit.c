@@ -1835,13 +1835,20 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	 * If an argument describing the relation's tuples was not provided, just
 	 * create a single tag.
 	 *
+	 * Play it safe here -- don't attempt to emit attribute values when an
+	 * error was already encountered.  We may be able to limp on for much
+	 * longer this way, especially in the event of an access method that we
+	 * know nothing about but follows the familiar bufpage.c conventions, such
+	 * as zheap.
+	 *
 	 * Multi-column GIN entries have two attributes in main entry key tuples:
 	 * an implicit int16 leading attribute that indicates which pg_attribute
 	 * listing the entry relates to, as well as the actual value.  This isn't
 	 * something that we currently support, though, so just treat this case as
 	 * if we had no catalog metadata.
 	 */
-	if (nrelatts == 0 || (specialType == SPEC_SECT_INDEX_GIN && nrelatts > 1))
+	if (nrelatts == 0 || exitCode != 0 ||
+		(specialType == SPEC_SECT_INDEX_GIN && nrelatts > 1))
 	{
 		uint32		relfileOffEnd;
 
