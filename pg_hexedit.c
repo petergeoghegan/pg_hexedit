@@ -1662,7 +1662,7 @@ EmitXmlTag(BlockNumber blkno, uint32 level, const char *name, const char *color,
 }
 
 /*
- * Emit a wxHexEditor tag for an item pointer (ItemId).
+ * Emit a wxHexEditor tag for a line pointer (ItemId).
  */
 static void
 EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
@@ -1676,11 +1676,11 @@ EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
 
 	/*
 	 * The color of the tag and tag font is chosen to give a cue about line
-	 * pointer details.  Unused items (which are reusable) have a
+	 * pointer details.  Unused line pointers (which are reusable) have a
 	 * non-contrasting font color to deemphasize their importance.  LP_DEAD
-	 * items (which are dead but not yet necessarily reusable) don't stay
-	 * around for long in most real world workloads, and so it seems useful to
-	 * make them stick out.
+	 * line pointers (which are dead but not necessarily reusable yet) don't
+	 * stay around for long in most real world workloads, and so it seems
+	 * useful to make them stick out.
 	 */
 	if (ItemIdIsRedirected(itemId))
 		itemIdColor = COLOR_BLUE_DARK;
@@ -2303,7 +2303,7 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
  * Emit a wxHexEditor tag for entire index tuple.
  *
  * Function deals with B-Tree, GiST, and hash tuples in a generic way, because
- * they use the IndexTuple format without adornment.  These index AMs use item
+ * they use the IndexTuple format without adornment.  These index AMs use line
  * pointer metadata to represent that index tuples are logically dead by
  * setting the LP_DEAD bit.  Unlike the heap LP_DEAD case, there will still be
  * a tuple on the page when this is set (the tuple "has storage").  Caller
@@ -3105,7 +3105,7 @@ EmitXmlPageItemIdArray(Page page, BlockNumber blkno)
 
 	/*
 	 * It's either a non-meta index page, or a heap page.  Create tags
-	 * for all ItemId entries/item pointers on page.
+	 * for all ItemId entries/line pointers on page.
 	 */
 	for (offset = FirstOffsetNumber;
 		 offset <= maxOffset;
@@ -3135,7 +3135,7 @@ EmitXmlPageItemIdArray(Page page, BlockNumber blkno)
 				break;
 			default:
 				sprintf(textFlags, "0x%02x", itemFlags);
-				fprintf(stderr, "pg_hexedit error: invalid item pointer flags for (%u,%u): %s\n",
+				fprintf(stderr, "pg_hexedit error: invalid line pointer flags for (%u,%u): %s\n",
 						blkno + segmentBlockDelta, offset, textFlags);
 				exitCode = 1;
 				break;
