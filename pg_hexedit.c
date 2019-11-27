@@ -66,9 +66,14 @@
 #define SEQUENCE_MAGIC			0x1717	/* PostgreSQL defined magic number */
 #define EOF_ENCOUNTERED 		(-1)	/* Indicator for partial read */
 
-/* Postgres 12 removed WITH OIDS support.  Preserve backwards compatibility */
+/* Postgres 12 removed WITH OIDS support.  Preserve compatibility. */
 #if PG_VERSION_NUM >= 120000
 #define HEAP_HASOID	HEAP_HASOID_OLD
+#endif
+
+/* Postgres 13 renamed BT_OFFSET_MASK.  Preserve compatibility. */
+#if PG_VERSION_NUM < 130000
+#define BT_N_KEYS_OFFSET_MASK	BT_OFFSET_MASK
 #endif
 
 #define COLOR_FONT_STANDARD		"#313739"
@@ -282,7 +287,7 @@ static void EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
 								  int itemSize);
 static void EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 								   uint32 relfileOff, IndexTuple itup,
-								   int itemSize);
+								   uint32 tupHeapOff, int itemSize);
 static void EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 								  uint32 relfileOff, unsigned char *tupdata,
 								  bits8 *t_bits, int nattrs, int datalen);
@@ -1809,7 +1814,8 @@ EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
  */
 static void
 EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
-					   uint32 relfileOff, IndexTuple itup, int itemSize)
+					   uint32 relfileOff, IndexTuple itup, uint32 tupHeapOff,
+					   int itemSize)
 {
 	unsigned char *tupdata;
 	bits8	   *t_bits;
@@ -1865,12 +1871,17 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	 * internal posting tree pages.
 	 */
 #if PG_VERSION_NUM >= 110000
+
 	if (specialType == SPEC_SECT_INDEX_BTREE &&
+#if PG_VERSION_NUM < 130000
 		(itup->t_info & INDEX_ALT_TID_MASK) != 0)
+#else
+		 BTreeTupleIsPivot(itup)) /* This macro is only in Postgres 13 */
+#endif /* PG_VERSION_NUM < 130000 */
 	{
 		nattrs =
 			(ItemPointerGetOffsetNumberNoCheck(&(itup)->t_tid) &
-			 BT_N_KEYS_OFFSET_MASK);
+			 BT_OFFSET_MASK);
 
 		if (nattrs > nrelatts)
 		{
@@ -1901,9 +1912,29 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->offsetNumber", COLOR_WHITE,
 							htidoffset, (htidoffset + sizeof(uint16)) - 1);
 		}
-#endif
+#endif /* PG_VERSION_NUM >= 120000 */
 	}
-#endif
+
+#endif /* PG_VERSION_NUM >= 110000 */
+
+	/*
+	 * On Postgres v13+, account for nbtree posting list tuples
+	 */
+#if PG_VERSION_NUM >= 130000
+	else if (specialType == SPEC_SECT_INDEX_BTREE && BTreeTupleIsPosting(itup))
+	{
+		uint32 postoffset = tupHeapOff + BTreeTupleGetPostingOffset(itup);
+		uint32 postlen = (BTreeTupleGetNPosting(itup) * sizeof(ItemPointerData));
+
+		/*
+		 * Compressed TIDs are orange.  Uncompressed lists of TIDs in leaf
+		 * pages should be blue instead of orange, like regular block number
+		 * item pointer fields, or like uncompressed GIN posting lists.
+		 */
+		EmitXmlTupleTag(blkno, offset, "posting list", COLOR_BLUE_LIGHT,
+						postoffset, postoffset + postlen - 1);
+	}
+#endif /* PG_VERSION_NUM >= 130000 */
 
 	/* Emit pg_attribute-wise columns */
 	EmitXmlAttributesData(blkno, offset, relfileOff, tupdata, t_bits, nattrs,
@@ -2382,12 +2413,24 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 								relfileOff, relfileOffNext - 1);
 #if PG_VERSION_NUM >= 110000
 		else if (specialType == SPEC_SECT_INDEX_BTREE &&
+#if PG_VERSION_NUM < 130000
 				 (tuple->t_info & INDEX_ALT_TID_MASK) != 0)
+#else
+				 BTreeTupleIsPivot(tuple)) /* This macro is only in Postgres 13 */
+#endif /* PG_VERSION_NUM < 130000 */
 			EmitXmlTupleTagFont(blkno, offset,
 								"t_tid->offsetNumber/BTreeTupleGetNAtts()",
 								tagColor, fontColor,
 								relfileOff, relfileOffNext - 1);
-#endif
+#if PG_VERSION_NUM >= 130000
+		else if (specialType == SPEC_SECT_INDEX_BTREE &&
+				 BTreeTupleIsPosting(tuple))
+			EmitXmlTupleTagFont(blkno, offset,
+								"t_tid->offsetNumber/BTreeTupleGetNPosting()",
+								tagColor, fontColor,
+								relfileOff, relfileOffNext - 1);
+#endif /* PG_VERSION_NUM >= 130000 */
+#endif /* PG_VERSION_NUM >= 110000 */
 
 		/*
 		 * Regular/common case, where offset number is actually intended to be
@@ -2507,13 +2550,14 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		 */
 		if (specialType != SPEC_SECT_INDEX_GIN || !GinPageIsLeaf(page) ||
 			GinIsPostingTree(tuple) || GinGetNPosting(tuple) == 0)
-			EmitXmlAttributesIndex(blkno, offset, relfileOff, tuple, itemSize);
+			EmitXmlAttributesIndex(blkno, offset, relfileOff, tuple,
+								   relfileOffOrig, itemSize);
 		else
 		{
 			Size		postoffset = itemSize - GinGetPostingOffset(tuple);
 			const char *color;
 
-			EmitXmlAttributesIndex(blkno, offset, relfileOff, tuple,
+			EmitXmlAttributesIndex(blkno, offset, relfileOff, tuple, relfileOffOrig,
 								   GinGetPostingOffset(tuple));
 			relfileOff = relfileOffNext - postoffset;
 
