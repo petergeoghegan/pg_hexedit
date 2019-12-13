@@ -103,14 +103,15 @@ available within your $PATH:
 
 ### Obtaining wxHexEditor
 
-It is highly recommended that you use wxHexEditor version 0.24 or higher, since
-that version has numerous bug fixes for the tag feature that pg_hexedit
-targets.  Packages are available for all major platforms from Sourceforge:
+It is highly recommended that you use wxHexEditor version 0.25 or higher, since
+that version has numerous bug fixes for the tag feature that pg_hexedit targets
+(see also: [wxHexEditor bug 87](https://github.com/EUA/wxHexEditor/issues/87)).
+Packages are available for all major platforms from Sourceforge:
 
 [https://sourceforge.net/projects/wxhexeditor/](https://sourceforge.net/projects/wxhexeditor/)
 
 If using those packages is not an option, there may be no conveniently
-available packages for wxHexEditor 0.24 from your system package manager.  The
+available packages for wxHexEditor 0.25 from your system package manager.  The
 most practical option may be to build wxHexEditor's master branch from source.
 See:
 
