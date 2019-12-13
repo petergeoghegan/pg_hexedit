@@ -144,12 +144,6 @@ The [wxHexEditor wiki](http://wiki.wxhexeditor.org/index.php?title=Main_Page)
 serves as wxHexEditor's user documentation.  It has some potentially useful
 tips for getting the most out of the tool.
 
-### Caret GTK+ bug
-
-There is a tendency for wxHexEditor's caret to fail to appear on a mouse click
-event.  If this happens, you can work around it by changing the Window that is
-highlighted within your desktop environment.
-
 ## Quickstart guide - Using the convenience scripts
 
 pg_hexedit and wxHexEditor can be invoked using convenience scripts that take
