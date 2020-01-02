@@ -1,10 +1,10 @@
 The GNU General Public License, Version 2, June 1991 (GPLv2)
 ============================================================
 
-Copyright (c) 2018-2019, Crunchy Data Solutions, Inc.  
+Copyright (c) 2018-2020, Crunchy Data Solutions, Inc.  
 Copyright (c) 2017-2018, VMware, Inc.  
 Copyright (c) 2002-2010, Red Hat, Inc.  
-Copyright (c) 2011-2019, PostgreSQL Global Development Group
+Copyright (c) 2011-2020, PostgreSQL Global Development Group
 
 Everyone is permitted to copy and distribute verbatim copies of this license
 document, but changing it is not allowed.
