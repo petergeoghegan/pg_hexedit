@@ -48,10 +48,8 @@
 
 #include <time.h>
 
-#if PG_VERSION_NUM >= 90500
 #include "access/brin_page.h"
 #include "access/brin_tuple.h"
-#endif
 #include "access/gin_private.h"
 #include "access/gist.h"
 #include "access/hash.h"
@@ -252,9 +250,7 @@ static char *GetIndexTupleFlags(IndexTuple itup);
 static const char *GetSpGistStateString(unsigned int code);
 static char *GetSpGistInnerTupleState(SpGistInnerTuple itup);
 static char *GetSpGistLeafTupleState(SpGistLeafTuple itup);
-#if PG_VERSION_NUM >= 90500
 static char *GetBrinTupleFlags(BrinTuple *itup);
-#endif
 static bool IsBrinPage(Page page);
 static bool IsHashBitmapPage(Page page);
 static bool IsLeafPage(Page page);
@@ -301,20 +297,16 @@ static void EmitXmlSpGistLeafTuple(Page page, BlockNumber blkno,
 								   OffsetNumber offset,
 								   SpGistLeafTuple tuple,
 								   uint32 relfileOff);
-#if PG_VERSION_NUM >= 90500
 static void EmitXmlBrinTuple(Page page, BlockNumber blkno,
 							 OffsetNumber offset, BrinTuple *tuple,
 							 uint32 relfileOff, int itemSize);
-#endif
 static int EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level);
 static void EmitXmlPageMeta(BlockNumber blkno, uint32 level);
 static void EmitXmlPageItemIdArray(Page page, BlockNumber blkno);
 static void EmitXmlTuples(Page page, BlockNumber blkno);
 static void EmitXmlPostingTreeTids(Page page, BlockNumber blkno);
 static void EmitXmlHashBitmap(Page page, BlockNumber blkno);
-#if PG_VERSION_NUM >= 90500
 static void EmitXmlRevmap(Page page, BlockNumber blkno);
-#endif
 static void EmitXmlSpecial(BlockNumber blkno, uint32 level);
 static void EmitXmlBody(void);
 
@@ -1019,9 +1011,7 @@ GetSpecialSectionType(Page page)
 							 *ptype == SPGIST_PAGE_ID)
 						rc = SPEC_SECT_INDEX_SPGIST;
 					else if (
-#if PG_VERSION_NUM >= 90500
 							 specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
-#endif
 							 IsBrinPage(page))
 						rc = SPEC_SECT_INDEX_BRIN;
 					else if (specialSize == MAXALIGN(sizeof(GinPageOpaqueData)))
@@ -1042,9 +1032,7 @@ GetSpecialSectionType(Page page)
 					 *ptype == SPGIST_PAGE_ID)
 				rc = SPEC_SECT_INDEX_SPGIST;
 			else if (
-#if PG_VERSION_NUM >= 90500
 							 specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
-#endif
 					 IsBrinPage(page))
 				rc = SPEC_SECT_INDEX_BRIN;
 			else if (specialSize == MAXALIGN(sizeof(GinPageOpaqueData)))
@@ -1347,7 +1335,6 @@ GetSpGistLeafTupleState(SpGistLeafTuple itup)
  *
  * Note:  Caller is responsible for pg_free()'ing returned buffer.
  */
-#if PG_VERSION_NUM >= 90500
 static char *
 GetBrinTupleFlags(BrinTuple *itup)
 {
@@ -1379,20 +1366,17 @@ GetBrinTupleFlags(BrinTuple *itup)
 
 	return flagString;
 }
-#endif
 
 /*	Check whether page is a BRIN meta page */
 static bool
 IsBrinPage(Page page)
 {
-#if PG_VERSION_NUM >= 90500
 	if (bytesToFormat != blockSize)
 		return false;
 
 	if (BRIN_IS_META_PAGE(page) || BRIN_IS_REVMAP_PAGE(page) ||
 		BRIN_IS_REGULAR_PAGE(page))
 		return true;
-#endif
 	return false;
 }
 
@@ -1563,13 +1547,11 @@ EmitXmlPage(BlockNumber blkno)
 			/* GIN data/posting tree pages don't use IndexTuple or ItemId */
 			EmitXmlPostingTreeTids(page, blkno);
 		}
-#if PG_VERSION_NUM >= 90500
 		else if (specialType == SPEC_SECT_INDEX_BRIN && BRIN_IS_REVMAP_PAGE(page))
 		{
 			/* BRIN revmap pages don't use IndexTuple/BrinTuple or ItemId */
 			EmitXmlRevmap(page, blkno);
 		}
-#endif
 		else
 		{
 			/* Conventional heap/index page format */
@@ -2697,7 +2679,6 @@ EmitXmlSpGistLeafTuple(Page page, BlockNumber blkno, OffsetNumber offset,
  * This is similar to EmitXmlIndexTuple(), but BRIN never uses IndexTuple
  * representation, so requires this custom tuple formatting function.
  */
-#if PG_VERSION_NUM >= 90500
 static void
 EmitXmlBrinTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 				 BrinTuple *tuple, uint32 relfileOff, int itemSize)
@@ -2770,7 +2751,6 @@ EmitXmlBrinTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE, relfileOff,
 						relfileOffNext - 1);
 }
-#endif
 
 /*
  * Dump out a formatted block header for the requested block.
@@ -3067,7 +3047,6 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 			cachedOffset += sizeof(int);
 		}
 	}
-#if PG_VERSION_NUM >= 90500
 	else if (specialType == SPEC_SECT_INDEX_BRIN && blkno == BRIN_METAPAGE_BLKNO)
 	{
 		EmitXmlTag(InvalidBlockNumber, level, "brinMagic", COLOR_PINK,
@@ -3083,7 +3062,6 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 				   metaStartOffset + offsetof(BrinMetaPageData, lastRevmapPage),
 				   (metaStartOffset + sizeof(BrinMetaPageData)) - 1);
 	}
-#endif
 	else
 	{
 		fprintf(stderr, "pg_hexedit error: unsupported metapage special section type \"%s\"\n",
@@ -3293,14 +3271,12 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 		}
 		else if (formatAs == ITEM_BRIN)
 		{
-#if PG_VERSION_NUM >= 90500
 			BrinTuple	*tuple;
 
 			tuple = (BrinTuple *) PageGetItem(page, itemId);
 
 			EmitXmlBrinTuple(page, blkno, offset, tuple,
 							 pageOffset + itemOffset, itemSize);
-#endif
 		}
 	}
 }
@@ -3446,7 +3422,6 @@ EmitXmlHashBitmap(Page page, BlockNumber blkno)
  * We don't look at pd_upper, in keeping with pageinspect's brin_revmap_data(),
  * which also always emits REVMAP_PAGE_MAXITEMS entries.
  */
-#if PG_VERSION_NUM >= 90500
 static void
 EmitXmlRevmap(Page page, BlockNumber blkno)
 {
@@ -3481,7 +3456,6 @@ EmitXmlRevmap(Page page, BlockNumber blkno)
 		relfileOff = relfileOffNext;
 	}
 }
-#endif
 
 /*
  * On blocks that have special sections, print the contents according to
@@ -3717,7 +3691,6 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 			}
 			break;
 
-#if PG_VERSION_NUM >= 90500
 		case SPEC_SECT_INDEX_BRIN:
 			{
 				/*
@@ -3753,7 +3726,6 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 						   (pageOffset + specialOffset + sizeof(BrinSpecialSpace) - 1));
 			}
 			break;
-#endif
 
 		default:
 			/* Only complain the first time an error like this is seen */

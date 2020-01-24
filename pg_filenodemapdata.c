@@ -37,9 +37,7 @@
 #include "catalog/pg_db_role_setting.h"
 #include "catalog/pg_pltemplate.h"
 #include "catalog/pg_proc.h"
-#if PG_VERSION_NUM >= 90500
 #include "catalog/pg_replication_origin.h"
-#endif
 #include "catalog/pg_shdepend.h"
 #include "catalog/pg_shdescription.h"
 #include "catalog/pg_shseclabel.h"
@@ -49,36 +47,11 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/toasting.h"
+#include "port/pg_crc32c.h"
 
 #define HEXEDIT_VERSION					"0.1"
 
-/* Use macros to handle move from CRC-32 to CRC-32C in Postgres 9.5 */
-#if PG_VERSION_NUM >= 90500
-#include "port/pg_crc32c.h"
-typedef pg_crc32c port_crc32;
-#define	PORT_INIT_CRC32(crc)			INIT_CRC32C((crc))
-#define	PORT_COMP_CRC32(crc,data,len)	COMP_CRC32C((crc), (data), (len))
-#define	PORT_FIN_CRC32(crc)				FIN_CRC32C((crc))
-#define	PORT_EQ_CRC32(c1,c2)			EQ_CRC32C((c1), (c2))
-#define PORT_FAIL_HINT					"PostgreSQL 9.4"
-#else
-#include "utils/pg_crc.h"
-typedef pg_crc32 port_crc32;
-#define	PORT_INIT_CRC32(crc)			INIT_CRC32((crc))
-#define	PORT_COMP_CRC32(crc,data,len)	COMP_CRC32((crc), (data), (len))
-#define	PORT_FIN_CRC32(crc)				FIN_CRC32((crc))
-#define	PORT_EQ_CRC32(c1,c2)			EQ_CRC32((c1), (c2))
-#define PORT_FAIL_HINT					"PostgreSQL 9.5+"
-#endif
-
 /* Provide system catalog OIDs where unavailable */
-#if PG_VERSION_NUM < 90500
-#define ReplicationOriginRelationId		6000
-#define ReplicationOriginIdentIndex		6001
-#define ReplicationOriginNameIndex		6002
-#define PgShseclabelToastTable			4060
-#define PgShseclabelToastIndex			4061
-#endif
 #if PG_VERSION_NUM < 100000
 #define SubscriptionRelationId			6100
 #define SubscriptionObjectIndexId		6114
@@ -129,7 +102,7 @@ typedef struct RelMapFile
 	int32		magic;			/* always RELMAPPER_FILEMAGIC */
 	int32		num_mappings;	/* number of valid RelMapping entries */
 	RelMapping	mappings[MAX_MAPPINGS];
-	port_crc32	crc;			/* CRC of all above */
+	pg_crc32c	crc;			/* CRC of all above */
 	int32		pad;			/* to make the struct size be 512 exactly */
 } RelMapFile;
 
@@ -369,7 +342,7 @@ PrintRelMapContents(RelMapFile *map)
 static void
 VerifyRelMapContents(RelMapFile *map)
 {
-	port_crc32	crc;
+	pg_crc32c	crc;
 
 	if (map->magic != RELMAPPER_FILEMAGIC ||
 		map->num_mappings < 0 ||
@@ -380,17 +353,15 @@ VerifyRelMapContents(RelMapFile *map)
 	}
 
 	/* Print our own CRC-32/CRC-32C calculation */
-	PORT_INIT_CRC32(crc);
-	PORT_COMP_CRC32(crc, (char *) map, offsetof(RelMapFile, crc));
-	PORT_FIN_CRC32(crc);
+	INIT_CRC32C(crc);
+	COMP_CRC32C(crc, (char *) map, offsetof(RelMapFile, crc));
+	FIN_CRC32C(crc);
 
 	/* Raise error if they don't match */
-	if (!PORT_EQ_CRC32(crc, map->crc))
+	if (!EQ_CRC32C(crc, map->crc))
 	{
 		fprintf(stderr, "calculated checksum 0x%.8X does not match file checksum\n",
 				crc);
-		if (exitCode == 0)
-			fprintf(stderr, "if the pg_filenode.map file is from " PORT_FAIL_HINT ", this may be harmless.\n");
 		exitCode = 1;
 	}
 }

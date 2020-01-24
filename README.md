@@ -22,7 +22,7 @@ index files (B-Tree, GiST, GIN, hash, BRIN, and SP-GiST indexes) when opened
 within the open source GUI hex editor
 [wxHexEditor](https://github.com/EUA/wxHexEditor).  It makes viewing and
 editing PostgreSQL relation files *significantly* easier.  PostgreSQL versions
-9.4+ are supported.
+9.5+ are supported.
 
 __CAUTION:__ Do not use pg_hexedit with a PostgreSQL data directory if you are
 not prepared to have it __corrupt data__!  pg_hexedit is primarily made
@@ -95,7 +95,7 @@ available within your $PATH:
 
 ```shell
   $ which pg_config
-  /code/postgresql/REL9_4_STABLE/install/bin/pg_config
+  /code/postgresql/REL_12_STABLE/install/bin/pg_config
   $ make
   $ # Installation -- not actually required for convenience scripts:
   $ make install
