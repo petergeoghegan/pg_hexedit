@@ -91,17 +91,19 @@
 
 typedef enum blockSwitches
 {
-	BLOCK_RANGE =			0x00000020,	/* -R: Specific block range to dump */
-	BLOCK_CHECKSUMS =		0x00000040,	/* -k: verify block checksums */
-	BLOCK_ZEROSUMS =		0x00000080,	/* -z: verify block checksums when non-zero */
-	BLOCK_SKIP_LEAF =		0x00000100,	/* -l: Skip leaf pages (use whole page tag) */
-	BLOCK_SKIP_LSN =		0x00000200,	/* -x: Skip pages before LSN */
-	BLOCK_DECODE =			0x00000400	/* -D: Decode tuple attributes */
+	BLOCK_RANGE = 0x00000020,	/* -R: Specific block range to dump */
+	BLOCK_CHECKSUMS = 0x00000040,	/* -k: verify block checksums */
+	BLOCK_ZEROSUMS = 0x00000080,	/* -z: verify block checksums when
+									 * non-zero */
+	BLOCK_SKIP_LEAF = 0x00000100,	/* -l: Skip leaf pages (use whole page
+									 * tag) */
+	BLOCK_SKIP_LSN = 0x00000200,	/* -x: Skip pages before LSN */
+	BLOCK_DECODE = 0x00000400	/* -D: Decode tuple attributes */
 } blockSwitches;
 
 typedef enum segmentSwitches
 {
-	SEGMENT_SIZE_FORCED =	0x00000001,	/* -s: Segment size forced */
+	SEGMENT_SIZE_FORCED = 0x00000001,	/* -s: Segment size forced */
 	SEGMENT_NUMBER_FORCED = 0x00000002	/* -n: Segment number forced */
 } segmentSwitches;
 
@@ -131,6 +133,7 @@ typedef enum specialSectionTypes
 
 /* Special section type that was encountered first */
 static unsigned int firstType = SPEC_SECT_ERROR_UNKNOWN;
+
 /* Current block special section type */
 static unsigned int specialType = SPEC_SECT_NONE;
 
@@ -207,30 +210,30 @@ static unsigned int bytesToFormat = 0;
 static unsigned int blockVersion = 0;
 
 /* Number of attributes (used when decoding) */
-static int		nrelatts = 0;
+static int	nrelatts = 0;
 
 /* attlen catalog metadata for relation (used when decoding) */
-static int	   *attlenrel = NULL;
+static int *attlenrel = NULL;
 
 /* attnamerel catalog metadata for relation (used when decoding) */
-static char	  **attnamerel = NULL;
+static char **attnamerel = NULL;
 
 /* attcolorrel attribute colors for relation (used when decoding) */
-static char	  **attcolorrel = NULL;
+static char **attcolorrel = NULL;
 
 /* attalign catalog metadata for relation (used when decoding) */
-static char		*attalignrel = NULL;
+static char *attalignrel = NULL;
 
 /* Program exit code */
 static int	exitCode = 0;
 
 typedef enum formatChoice
 {
-	ITEM_HEAP,		/* Blocks contain HeapTuple items */
-	ITEM_INDEX,		/* Blocks contain IndexTuple items */
-	ITEM_SPG_INN,	/* Blocks contain SpGistInnerTuple items */
-	ITEM_SPG_LEAF,	/* Blocks contain SpGistLeafTuple items */
-	ITEM_BRIN		/* Blocks contain BrinTuple items */
+	ITEM_HEAP,					/* Blocks contain HeapTuple items */
+	ITEM_INDEX,					/* Blocks contain IndexTuple items */
+	ITEM_SPG_INN,				/* Blocks contain SpGistInnerTuple items */
+	ITEM_SPG_LEAF,				/* Blocks contain SpGistLeafTuple items */
+	ITEM_BRIN					/* Blocks contain BrinTuple items */
 } formatChoice;
 
 static void DisplayOptions(unsigned int validOptions);
@@ -238,7 +241,7 @@ static unsigned int GetSegmentNumberFromFileName(const char *fileName);
 static uint32 sdbmhash(const unsigned char *elem, size_t len);
 static char *GetColorFromAttrname(const char *attrName);
 static unsigned int ConsumeOptions(int numOptions, char **options);
-static int GetOptionValue(char *optionString);
+static int	GetOptionValue(char *optionString);
 static XLogRecPtr GetOptionXlogRecPtr(char *optionString);
 static bool ParseAttributeListString(const char *str);
 static unsigned int GetBlockSize(void);
@@ -271,9 +274,9 @@ static void EmitXmlTupleTagFont(BlockNumber blkno, OffsetNumber offset,
 								const char *fontColor, uint32 relfileOff,
 								uint32 relfileOffEnd);
 static void EmitXmlTupleTagFontTwoName(BlockNumber blkno, OffsetNumber offset,
-						   const char *name1, const char *name2,
-						   const char *color, const char *fontColor,
-						   uint32 relfileOff, uint32 relfileOffEnd);
+									   const char *name1, const char *name2,
+									   const char *color, const char *fontColor,
+									   uint32 relfileOff, uint32 relfileOffEnd);
 static void EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
 								  uint32 relfileOff, HeapTupleHeader htup,
 								  int itemSize);
@@ -300,7 +303,7 @@ static void EmitXmlSpGistLeafTuple(Page page, BlockNumber blkno,
 static void EmitXmlBrinTuple(Page page, BlockNumber blkno,
 							 OffsetNumber offset, BrinTuple *tuple,
 							 uint32 relfileOff, int itemSize);
-static int EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level);
+static int	EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level);
 static void EmitXmlPageMeta(BlockNumber blkno, uint32 level);
 static void EmitXmlPageItemIdArray(Page page, BlockNumber blkno);
 static void EmitXmlTuples(Page page, BlockNumber blkno);
@@ -375,8 +378,8 @@ GetSegmentNumberFromFileName(const char *fileName)
 static uint32
 sdbmhash(const unsigned char *elem, size_t len)
 {
-	uint32	hash = 0;
-	int		i;
+	uint32		hash = 0;
+	int			i;
 
 	for (i = 0; i < len; elem++, i++)
 	{
@@ -392,11 +395,11 @@ sdbmhash(const unsigned char *elem, size_t len)
 static char *
 GetColorFromAttrname(const char *attrName)
 {
-	uint32	hash;
-	uint8	red;
-	uint8	green;
-	uint8	blue;
-	char   *colorStr = pg_malloc(8);
+	uint32		hash;
+	uint8		red;
+	uint8		green;
+	uint8		blue;
+	char	   *colorStr = pg_malloc(8);
 
 	hash = sdbmhash((const unsigned char *) attrName, strlen(attrName) + 1);
 
@@ -540,7 +543,7 @@ ConsumeOptions(int numOptions, char **options)
 		 */
 		else if ((optionStringLength == 2) && (strcmp(optionString, "-x") == 0))
 		{
-			SET_OPTION(blockOptions, BLOCK_SKIP_LSN , 'x');
+			SET_OPTION(blockOptions, BLOCK_SKIP_LSN, 'x');
 			/* Only accept the LSN option once */
 			if (rc == OPT_RC_DUPLICATE)
 				break;
@@ -709,7 +712,7 @@ ConsumeOptions(int numOptions, char **options)
 						SET_OPTION(blockOptions, BLOCK_CHECKSUMS, 'k');
 						break;
 
-					/* Verify block checksums when non-zero */
+						/* Verify block checksums when non-zero */
 					case 'z':
 						SET_OPTION(blockOptions, BLOCK_ZEROSUMS, 'z');
 						break;
@@ -841,7 +844,7 @@ ParseAttributeListString(const char *arg)
 
 		if (lennamealign == 0)
 		{
-			int		attlen;
+			int			attlen;
 
 			if (sscanf(curropt, "%d", &attlen) != 1)
 			{
@@ -865,7 +868,7 @@ ParseAttributeListString(const char *arg)
 		}
 		else
 		{
-			char	attalign = *curropt;
+			char		attalign = *curropt;
 
 			if (attalign != 'i' && attalign != 'c' && attalign != 'd' &&
 				attalign != 's')
@@ -1103,20 +1106,20 @@ GetSpecialSectionString(unsigned int type)
 static char *
 GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 {
-	unsigned int	bitmapLength = 0;
-	unsigned int	oidLength = 0;
-	unsigned int	computedLength;
-	unsigned int	localHoff;
-	unsigned int	localBitOffset;
-	char		   *flagString = NULL;
+	unsigned int bitmapLength = 0;
+	unsigned int oidLength = 0;
+	unsigned int computedLength;
+	unsigned int localHoff;
+	unsigned int localBitOffset;
+	char	   *flagString = NULL;
 
 	flagString = pg_malloc(512);
 	localHoff = htup->t_hoff;
 	localBitOffset = offsetof(HeapTupleHeaderData, t_bits);
 
 	/*
-	 * Place readable versions of the tuple info mask into a buffer.
-	 * Assume that the string can not expand beyond 512 bytes.
+	 * Place readable versions of the tuple info mask into a buffer. Assume
+	 * that the string can not expand beyond 512 bytes.
 	 */
 	flagString[0] = '\0';
 	if (!isInfomask2)
@@ -1222,7 +1225,7 @@ GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
 static char *
 GetIndexTupleFlags(IndexTuple itup)
 {
-	char		   *flagString = NULL;
+	char	   *flagString = NULL;
 
 	flagString = pg_malloc(512);
 
@@ -1238,15 +1241,15 @@ GetIndexTupleFlags(IndexTuple itup)
 		strcat(flagString, ", (");
 
 	/*
-	 * Bit 0x2000/INDEX_AM_RESERVED_BIT is reserved for AM-specific usage.  The
-	 * INDEX_AM_RESERVED_BIT flag was only added in Postgres v11, so 0x2000 is
-	 * used to support earlier versions that lack the flag but still use the
-	 * status bit.
+	 * Bit 0x2000/INDEX_AM_RESERVED_BIT is reserved for AM-specific usage.
+	 * The INDEX_AM_RESERVED_BIT flag was only added in Postgres v11, so
+	 * 0x2000 is used to support earlier versions that lack the flag but still
+	 * use the status bit.
 	 *
 	 * Theoretically, we should only find this status bit set within a hash or
 	 * nbtree IndexTuple (and only on versions 10+ and 11+ respectively).
-	 * However, it's easy to maintain forwards compatibility when pg_hexedit is
-	 * built against earlier Postgres versions, so do so.
+	 * However, it's easy to maintain forwards compatibility when pg_hexedit
+	 * is built against earlier Postgres versions, so do so.
 	 */
 	if (itup->t_info & 0x2000)
 	{
@@ -1298,7 +1301,7 @@ GetSpGistStateString(unsigned int code)
 static char *
 GetSpGistInnerTupleState(SpGistInnerTuple itup)
 {
-	char		   *flagString = NULL;
+	char	   *flagString = NULL;
 
 	flagString = pg_malloc(128);
 
@@ -1317,7 +1320,7 @@ GetSpGistInnerTupleState(SpGistInnerTuple itup)
 static char *
 GetSpGistLeafTupleState(SpGistLeafTuple itup)
 {
-	char		   *flagString = NULL;
+	char	   *flagString = NULL;
 
 	flagString = pg_malloc(128);
 
@@ -1336,7 +1339,7 @@ GetSpGistLeafTupleState(SpGistLeafTuple itup)
 static char *
 GetBrinTupleFlags(BrinTuple *itup)
 {
-	char		   *flagString = NULL;
+	char	   *flagString = NULL;
 
 	flagString = pg_malloc(128);
 
@@ -1382,7 +1385,7 @@ IsBrinPage(Page page)
 static bool
 IsHashBitmapPage(Page page)
 {
-	HashPageOpaque	opaque;
+	HashPageOpaque opaque;
 
 	/* Defensive */
 	if (bytesToFormat != blockSize)
@@ -1452,9 +1455,9 @@ EmitXmlPage(BlockNumber blkno)
 
 	/*
 	 * A Postgres segment file should consists of blocks that are all of the
-	 * same special section reported type (excluding those blocks that have yet
-	 * to be initialized by PageInit()).  Raise error when this expectation is
-	 * not met.
+	 * same special section reported type (excluding those blocks that have
+	 * yet to be initialized by PageInit()).  Raise error when this
+	 * expectation is not met.
 	 */
 	if (firstType == SPEC_SECT_ERROR_UNKNOWN)
 		firstType = specialType;
@@ -1473,7 +1476,7 @@ EmitXmlPage(BlockNumber blkno)
 	 */
 	if ((blockOptions & BLOCK_SKIP_LSN))
 	{
-		XLogRecPtr pageLSN = GetPageLsn(page);
+		XLogRecPtr	pageLSN = GetPageLsn(page);
 
 		if (pageLSN < afterThreshold)
 		{
@@ -1506,8 +1509,9 @@ EmitXmlPage(BlockNumber blkno)
 	}
 
 	/*
-	 * Every block that we aren't skipping will have header, items and possibly
-	 * special section tags created.  Beware of partial block reads, though.
+	 * Every block that we aren't skipping will have header, items and
+	 * possibly special section tags created.  Beware of partial block reads,
+	 * though.
 	 */
 	rc = EmitXmlPageHeader(page, blkno, level);
 
@@ -1516,8 +1520,8 @@ EmitXmlPage(BlockNumber blkno)
 	{
 		/*
 		 * All AMs have a single metapage at block zero of the first segment,
-		 * with the exception of heapam and GiST. (Sequences more or less reuse
-		 * the heap format, and so don't have a metapage.)
+		 * with the exception of heapam and GiST. (Sequences more or less
+		 * reuse the heap format, and so don't have a metapage.)
 		 */
 		if (blkno == 0 && segmentNumber == 0 &&
 			specialType != SPEC_SECT_NONE &&
@@ -1535,8 +1539,8 @@ EmitXmlPage(BlockNumber blkno)
 		else if (specialType == SPEC_SECT_INDEX_GIN && GinPageIsDeleted(page))
 		{
 			/*
-			 * Unfortunately, GIN_DELETED pages don't have page state needed by
-			 * GinPageIsData().  Don't attempt to emit tags for tuples on
+			 * Unfortunately, GIN_DELETED pages don't have page state needed
+			 * by GinPageIsData().  Don't attempt to emit tags for tuples on
 			 * deleted GIN pages.
 			 */
 		}
@@ -1648,8 +1652,8 @@ static void
 EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
 			  uint32 relfileOff, const char *textFlags)
 {
-	char		   *fontColor;
-	char		   *itemIdColor;
+	char	   *fontColor;
+	char	   *itemIdColor;
 
 	fontColor = COLOR_FONT_STANDARD;
 	itemIdColor = COLOR_BLUE_LIGHT;
@@ -1734,7 +1738,8 @@ EmitXmlTupleTagFontTwoName(BlockNumber blkno, OffsetNumber offset,
 						   const char *color, const char *fontColor,
 						   uint32 relfileOff, uint32 relfileOffEnd)
 {
-	char *combinednames;
+	char	   *combinednames;
+
 	if (relfileOff > relfileOffEnd)
 	{
 		fprintf(stderr, "pg_hexedit error: (%u,%u) tuple tag \"%s - %s\" is malformed (%u > %u)\n",
@@ -1769,10 +1774,10 @@ static void
 EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
 					  uint32 relfileOff, HeapTupleHeader htup, int itemSize)
 {
-	unsigned char  *tupdata = (unsigned char *) htup + htup->t_hoff;
-	bits8		   *t_bits;
-	int				nattrs = HeapTupleHeaderGetNatts(htup);
-	int				datalen = itemSize - htup->t_hoff;
+	unsigned char *tupdata = (unsigned char *) htup + htup->t_hoff;
+	bits8	   *t_bits;
+	int			nattrs = HeapTupleHeaderGetNatts(htup);
+	int			datalen = itemSize - htup->t_hoff;
 
 	/*
 	 * If an argument describing the relation's tuples was not provided, just
@@ -1806,10 +1811,10 @@ static void
 EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 					   uint32 relfileOff, IndexTuple itup, int itemSize)
 {
-	unsigned char  *tupdata;
-	bits8		   *t_bits;
-	int				datalen;
-	int				nattrs = nrelatts;
+	unsigned char *tupdata;
+	bits8	   *t_bits;
+	int			datalen;
+	int			nattrs = nrelatts;
 
 	/*
 	 * If an argument describing the relation's tuples was not provided, just
@@ -1885,7 +1890,7 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 			 * TID that's used in pivot tuples (includes leaf page high key).
 			 * Non-pivot tuples represent heap TID using IndexTupleData.t_tid.
 			 */
-			uint32 htidoffset = (relfileOff + datalen) - sizeof(ItemPointerData);
+			uint32		htidoffset = (relfileOff + datalen) - sizeof(ItemPointerData);
 
 			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->bi_hi", COLOR_WHITE,
 							htidoffset, (htidoffset + sizeof(uint16)) - 1);
@@ -1919,7 +1924,7 @@ EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 					  uint32 relfileOff, unsigned char *tupdata, bits8 *t_bits,
 					  int nattrs, int datalen)
 {
-	unsigned char	   *attptr = tupdata;
+	unsigned char *attptr = tupdata;
 	int			off = 0;
 	int			i;
 
@@ -1937,7 +1942,7 @@ EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 
 		if (attlen == -1)
 		{
-			char *hdrname = "";
+			char	   *hdrname = "";
 
 			/* Varlena header receives its own minimal tag */
 			off = att_align_pointer(off, attalign, -1, attptr);
@@ -2012,18 +2017,18 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 				 HeapTupleHeader htup, uint32 relfileOff,
 				 int itemSize)
 {
-	TransactionId	rawXmin = HeapTupleHeaderGetRawXmin(htup);
-	TransactionId	rawXmax = HeapTupleHeaderGetRawXmax(htup);
-	char			xmin[90];
-	char			xmax[90];
-	char		   *xminFontColor;
-	char		   *xmaxFontColor;
-	BlockNumber		logBlock = blkno + segmentBlockDelta;
-	char		   *blkFontColor;
-	char		   *offsetFontColor;
-	char		   *flagString;
-	uint32			relfileOffNext = 0;
-	uint32			relfileOffOrig = relfileOff;
+	TransactionId rawXmin = HeapTupleHeaderGetRawXmin(htup);
+	TransactionId rawXmax = HeapTupleHeaderGetRawXmax(htup);
+	char		xmin[90];
+	char		xmax[90];
+	char	   *xminFontColor;
+	char	   *xmaxFontColor;
+	BlockNumber logBlock = blkno + segmentBlockDelta;
+	char	   *blkFontColor;
+	char	   *offsetFontColor;
+	char	   *flagString;
+	uint32		relfileOffNext = 0;
+	uint32		relfileOffOrig = relfileOff;
 
 	/*
 	 * Produce xmin and xmax tags for tuple.
@@ -2034,11 +2039,11 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	 *
 	 * Tuple freezing and MultiXacts leave us with a lot of potentially
 	 * interesting information to represent here.  We use special font colors
-	 * to represent special transaction IDs, and include certain special status
-	 * information about the TransactionId/MultiXact contained within each
-	 * field.  The extra information in the tags is redundant with the infomask
-	 * tags (tags for where the information is actually represented), but it
-	 * seems useful to add some visual cues.
+	 * to represent special transaction IDs, and include certain special
+	 * status information about the TransactionId/MultiXact contained within
+	 * each field.  The extra information in the tags is redundant with the
+	 * infomask tags (tags for where the information is actually represented),
+	 * but it seems useful to add some visual cues.
 	 */
 	strcpy(xmin, "xmin");
 	strcpy(xmax, "xmax");
@@ -2067,8 +2072,8 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 		/*
 		 * Raw xmin is frozen.  Frozen xmin XIDs are only preserved for
 		 * forensic reasons (on Postgres 9.4+), so use low-contrast font to
-		 * deemphasize the XID.  (Raw xmin could be FrozenTransactionId here in
-		 * a pg_upgrade'd database, which is just as uninteresting.)
+		 * deemphasize the XID.  (Raw xmin could be FrozenTransactionId here
+		 * in a pg_upgrade'd database, which is just as uninteresting.)
 		 */
 		strcat(xmin, " - Frozen");
 		xminFontColor = COLOR_RED_DARK;
@@ -2086,8 +2091,8 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	 * class of data that the xmax field contains, as opposed to status
 	 * information for the tuple as a whole.
 	 *
-	 * The general idea is to make it as easy as possible for the user to get a
-	 * sense of the structure of update chains on the page.
+	 * The general idea is to make it as easy as possible for the user to get
+	 * a sense of the structure of update chains on the page.
 	 */
 	if ((htup->t_infomask & HEAP_XMAX_IS_MULTI) != 0)
 	{
@@ -2132,8 +2137,8 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	if (!(htup->t_infomask & HEAP_MOVED))
 	{
 		/*
-		 * t_cid is COLOR_RED_DARK in order to signal that it's associated with
-		 * though somewhat different to xmin and xmax.
+		 * t_cid is COLOR_RED_DARK in order to signal that it's associated
+		 * with though somewhat different to xmin and xmax.
 		 */
 		relfileOffNext += sizeof(CommandId);
 		EmitXmlTupleTag(blkno, offset, "t_cid", COLOR_RED_DARK, relfileOff,
@@ -2158,14 +2163,14 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	}
 
 	/*
-	 * Don't use ItemPointerData directly, to avoid having
-	 * apparent mix in endianness in these fields.  Delineate
-	 * which subfield is which by using multiple tags.
+	 * Don't use ItemPointerData directly, to avoid having apparent mix in
+	 * endianness in these fields.  Delineate which subfield is which by using
+	 * multiple tags.
 	 *
 	 * The block component of each TID is COLOR_BLUE_LIGHT.  The same color is
 	 * used for ItemIds, since both are physical pointers.  offsetNumber is a
-	 * logical pointer, though, and so we make that COLOR_BLUE_DARK to slightly
-	 * distinguish it.
+	 * logical pointer, though, and so we make that COLOR_BLUE_DARK to
+	 * slightly distinguish it.
 	 *
 	 * It seems useful to provide a subtle cue about whether or not the tuple
 	 * is the latest version within the t_ctid subfields, since this helps the
@@ -2189,9 +2194,10 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 	relfileOffNext += sizeof(uint16);
 	EmitXmlTupleTagFont(blkno, offset, "t_ctid->bi_lo", COLOR_BLUE_LIGHT,
 						blkFontColor, relfileOff, relfileOffNext - 1);
+
 	/*
-	 * Note: offsetNumber could be SpecTokenOffsetNumber, but we don't annotate
-	 * that
+	 * Note: offsetNumber could be SpecTokenOffsetNumber, but we don't
+	 * annotate that
 	 */
 	relfileOff = relfileOffNext;
 	relfileOffNext += sizeof(uint16);
@@ -2352,13 +2358,13 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 
 		/*
 		 * Handle cases where item pointer offset is abused, but t_tid still
-		 * contains a valid block number.  These cases are handled here because
-		 * they involve IndexTuples that contain a t_tid that is still
+		 * contains a valid block number.  These cases are handled here
+		 * because they involve IndexTuples that contain a t_tid that is still
 		 * essentially a conventional TID.  These cases are:
 		 *
 		 * 1. GIN posting tree pointers (within the leaf level of the main
-		 * entry tree).  The fact that it's a posting tree pointer (and not the
-		 * start of a posting list) is indicated by using the magic offset
+		 * entry tree).  The fact that it's a posting tree pointer (and not
+		 * the start of a posting list) is indicated by using the magic offset
 		 * number GIN_TREE_POSTING.  We use GinIsPostingTree() to test this.
 		 *
 		 * 2. nbtree pivot tuples that have undergone truncation (PostgreSQL
@@ -2382,6 +2388,7 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 								tagColor, fontColor,
 								relfileOff, relfileOffNext - 1);
 #endif
+
 		/*
 		 * Regular/common case, where offset number is actually intended to be
 		 * accessed as a conventional offset (i.e. accessed using macros such
@@ -2396,8 +2403,8 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	{
 		/*
 		 * GIN posting lists (within the leaf level of the main entry tree)
-		 * abuse every item pointer field, so everything is handled here all at
-		 * once.  Naturally, there are block numbers (as well as offset
+		 * abuse every item pointer field, so everything is handled here all
+		 * at once.  Naturally, there are block numbers (as well as offset
 		 * numbers) contained within posting lists, since a posting list is
 		 * literally a list of TIDs.  However, none of this information is
 		 * accessed in the conventional manner.
@@ -2467,9 +2474,9 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	 * Tuple contents, plus possible posting list for GIN leaf pages.
 	 *
 	 * All-attributes-NULL IndexTuples will not have any contents here, so we
-	 * avoid creating a tuple content tag entirely.  The same applies to "minus
-	 * infinity" items from nbtree internal pages (though they don't have a
-	 * NULL bitmap).
+	 * avoid creating a tuple content tag entirely.  The same applies to
+	 * "minus infinity" items from nbtree internal pages (though they don't
+	 * have a NULL bitmap).
 	 *
 	 * Tuple contents is represented in the same way in the event of a dead
 	 * tuple.
@@ -2503,8 +2510,8 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 			EmitXmlAttributesIndex(blkno, offset, relfileOff, tuple, itemSize);
 		else
 		{
-			Size			postoffset = itemSize - GinGetPostingOffset(tuple);
-			const char	   *color;
+			Size		postoffset = itemSize - GinGetPostingOffset(tuple);
+			const char *color;
 
 			EmitXmlAttributesIndex(blkno, offset, relfileOff, tuple,
 								   GinGetPostingOffset(tuple));
@@ -2518,7 +2525,8 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 			 * for details on how this representation is decompressed.
 			 */
 			color =
-				GinItupIsCompressed(tuple) ? COLOR_ORANGE : COLOR_BLUE_LIGHT;
+			GinItupIsCompressed(tuple) ? COLOR_ORANGE : COLOR_BLUE_LIGHT;
+
 			EmitXmlTupleTag(blkno, offset, "posting list", color, relfileOff,
 							relfileOffNext - 1);
 		}
@@ -2542,12 +2550,12 @@ static void
 EmitXmlSpGistInnerTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 						SpGistInnerTuple tuple, uint32 relfileOff)
 {
-	SpGistNodeTuple		node;
-	uint32				relfileOffNext = 0;
-	uint32				relfileOffOrig = relfileOff;
-	char			   *flagString;
-	bool				dead = (tuple->tupstate != SPGIST_LIVE);
-	int					i;
+	SpGistNodeTuple node;
+	uint32		relfileOffNext = 0;
+	uint32		relfileOffOrig = relfileOff;
+	char	   *flagString;
+	bool		dead = (tuple->tupstate != SPGIST_LIVE);
+	int			i;
 
 	Assert(!SpGistPageIsLeaf(page));
 	Assert(!SpGistPageIsMeta(page));
@@ -2692,9 +2700,9 @@ EmitXmlBrinTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 	}
 
 	/*
-	 * Emit bt_info tags.  A straight block number is used here, in contrast to
-	 * the legacy bi_hi/bi_lo representation used everywhere else.  We still
-	 * match color/style, though.
+	 * Emit bt_info tags.  A straight block number is used here, in contrast
+	 * to the legacy bi_hi/bi_lo representation used everywhere else.  We
+	 * still match color/style, though.
 	 */
 	relfileOffNext = relfileOff + sizeof(BlockNumber);
 	EmitXmlTupleTag(blkno, offset, "bt_blkno", COLOR_BLUE_LIGHT, relfileOff,
@@ -2793,14 +2801,15 @@ EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
 
 		/*
 		 * For historical reasons, the 64-bit page header LSN value is stored
-		 * as two 32-bit values.  This makes interpreting what is really just a
-		 * 64-bit unsigned int confusing on little-endian systems, because the
-		 * bytes are "in big endian order" across its two 32-bit halves, but
-		 * are in the expected little-endian order *within* each half.
+		 * as two 32-bit values.  This makes interpreting what is really just
+		 * a 64-bit unsigned int confusing on little-endian systems, because
+		 * the bytes are "in big endian order" across its two 32-bit halves,
+		 * but are in the expected little-endian order *within* each half.
 		 *
-		 * This is rather similar to the situation with t_ctid.  Unlike in that
-		 * case, we choose to make LSN a single field here, because we don't
-		 * want to have two tooltips with the format value for each field.
+		 * This is rather similar to the situation with t_ctid.  Unlike in
+		 * that case, we choose to make LSN a single field here, because we
+		 * don't want to have two tooltips with the format value for each
+		 * field.
 		 */
 		flagString = pg_malloc(128);
 		sprintf(flagString, "LSN: %X/%08X", (uint32) (pageLSN >> 32), (uint32) pageLSN);
@@ -2926,6 +2935,7 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
 #else
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_oldest_btpo_xact) - 1));
+
 		/*
 		 * These fields are only actually active when btm_version >= 3 (which
 		 * is v11's standard BTREE_VERSION)
@@ -3074,22 +3084,23 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 static void
 EmitXmlPageItemIdArray(Page page, BlockNumber blkno)
 {
-	int				maxOffset = PageGetMaxOffsetNumber(page);
-	OffsetNumber	offset;
-	unsigned int	headerBytes;
+	int			maxOffset = PageGetMaxOffsetNumber(page);
+	OffsetNumber offset;
+	unsigned int headerBytes;
+
 	headerBytes = offsetof(PageHeaderData, pd_linp[0]);
 
 	/*
-	 * It's either a non-meta index page, or a heap page.  Create tags
-	 * for all ItemId entries/line pointers on page.
+	 * It's either a non-meta index page, or a heap page.  Create tags for all
+	 * ItemId entries/line pointers on page.
 	 */
 	for (offset = FirstOffsetNumber;
 		 offset <= maxOffset;
 		 offset = OffsetNumberNext(offset))
 	{
-		ItemId			itemId;
-		unsigned int	itemFlags;
-		char			textFlags[16];
+		ItemId		itemId;
+		unsigned int itemFlags;
+		char		textFlags[16];
 
 		itemId = PageGetItemId(page, offset);
 
@@ -3251,7 +3262,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 		}
 		else if (formatAs == ITEM_SPG_INN)
 		{
-			SpGistInnerTuple	tuple;
+			SpGistInnerTuple tuple;
 
 			tuple = (SpGistInnerTuple) PageGetItem(page, itemId);
 
@@ -3269,7 +3280,7 @@ EmitXmlTuples(Page page, BlockNumber blkno)
 		}
 		else if (formatAs == ITEM_BRIN)
 		{
-			BrinTuple	*tuple;
+			BrinTuple  *tuple;
 
 			tuple = (BrinTuple *) PageGetItem(page, itemId);
 
@@ -3339,17 +3350,18 @@ EmitXmlPostingTreeTids(Page page, BlockNumber blkno)
 	}
 	else
 	{
-		GinPostingList *seg, *nextseg;
-		Pointer			endptr;
+		GinPostingList *seg,
+				   *nextseg;
+		Pointer		endptr;
 
 		/*
 		 * See description of posting page/data page format at top of
 		 * ginpostlinglist.c for more information.
 		 *
-		 * We don't emit anything for pre-9.4 uncompressed data pages versions,
-		 * since those versions are unsupported by pg_hexedit.  They could
-		 * still be encountered if the database underwent pg_upgrade, but that
-		 * should be rare.
+		 * We don't emit anything for pre-9.4 uncompressed data pages
+		 * versions, since those versions are unsupported by pg_hexedit.  They
+		 * could still be encountered if the database underwent pg_upgrade,
+		 * but that should be rare.
 		 */
 		if (!GinPageIsCompressed(page))
 			return;
@@ -3404,8 +3416,8 @@ EmitXmlPostingTreeTids(Page page, BlockNumber blkno)
 static void
 EmitXmlHashBitmap(Page page, BlockNumber blkno)
 {
-	uint32			relfileOff = pageOffset + (PageGetContents(page) - page);
-	uint32			relfileOffNext = pageOffset + ((PageHeader) (page))->pd_lower;
+	uint32		relfileOff = pageOffset + (PageGetContents(page) - page);
+	uint32		relfileOffNext = pageOffset + ((PageHeader) (page))->pd_lower;
 
 	EmitXmlTag(blkno, UINT_MAX, "hash bitmap", COLOR_YELLOW_DARK, relfileOff,
 			   relfileOffNext - 1);
@@ -3423,9 +3435,9 @@ EmitXmlHashBitmap(Page page, BlockNumber blkno)
 static void
 EmitXmlRevmap(Page page, BlockNumber blkno)
 {
-	OffsetNumber	offsetnum;
-	uint32			relfileOff = pageOffset + (PageGetContents(page) - page);
-	uint32			relfileOffNext;
+	OffsetNumber offsetnum;
+	uint32		relfileOff = pageOffset + (PageGetContents(page) - page);
+	uint32		relfileOffNext;
 
 	for (offsetnum = FirstOffsetNumber;
 		 offsetnum <= REVMAP_PAGE_MAXITEMS;
@@ -3465,9 +3477,9 @@ EmitXmlRevmap(Page page, BlockNumber blkno)
 static void
 EmitXmlSpecial(BlockNumber blkno, uint32 level)
 {
-	PageHeader		pageHeader = (PageHeader) buffer;
-	unsigned int	specialOffset = pageHeader->pd_special;
-	char		   *flagString;
+	PageHeader	pageHeader = (PageHeader) buffer;
+	unsigned int specialOffset = pageHeader->pd_special;
+	char	   *flagString;
 
 	flagString = pg_malloc(256);
 	flagString[0] = '\0';
@@ -3692,8 +3704,8 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 		case SPEC_SECT_INDEX_BRIN:
 			{
 				/*
-				 * Details of array subscription are taken from BrinPageFlags()
-				 * and BringPageTupe() macros
+				 * Details of array subscription are taken from
+				 * BrinPageFlags() and BringPageTupe() macros
 				 */
 				BrinSpecialSpace *brinSection = (BrinSpecialSpace *) (buffer + specialOffset);
 
@@ -3747,9 +3759,9 @@ EmitXmlBody(void)
 	unsigned int contentsToDump = 1;
 
 	/*
-	 * Calculate an offset in blocks to the segment file, from the start of the
-	 * logical relation (or from the start of segment 0, if you prefer).  This
-	 * is needed so that annotations and error messages do not emit
+	 * Calculate an offset in blocks to the segment file, from the start of
+	 * the logical relation (or from the start of segment 0, if you prefer).
+	 * This is needed so that annotations and error messages do not emit
 	 * file-relative block numbers within TIDs.
 	 *
 	 * Relation-relative block numbers should always be used in annotations,

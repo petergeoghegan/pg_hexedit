@@ -88,7 +88,7 @@
 
 /* These constants appear at the top of PostgreSQL's relmapper.c */
 #define RELMAPPER_FILEMAGIC				0x592717	/* version ID value */
-#define MAX_MAPPINGS					62			/* 62 * 8 + 16 = 512 */
+#define MAX_MAPPINGS					62	/* 62 * 8 + 16 = 512 */
 
 /* Struct definitions from the top of PostgreSQL's relmapper.c */
 typedef struct RelMapping
@@ -115,7 +115,7 @@ typedef enum optionReturnCodes
 } optionReturnCodes;
 
 /* Program exit code */
-static int exitCode = 0;
+static int	exitCode = 0;
 
 static void DisplayOptions(unsigned int validOptions);
 static unsigned int ConsumeOptions(int numOptions, char **options);
@@ -168,7 +168,7 @@ GetCatalogNameFromOid(Oid classOid)
 {
 	switch (classOid)
 	{
-		/* Local/nailed mappings */
+			/* Local/nailed mappings */
 		case RelationRelationId:
 			return "pg_class";
 		case AttributeRelationId:
@@ -200,7 +200,7 @@ GetCatalogNameFromOid(Oid classOid)
 		case TypeNameNspIndexId:
 			return "pg_type_typname_nsp_index";
 
-		/* Global/shared mappings */
+			/* Global/shared mappings */
 		case DatabaseRelationId:
 			return "pg_database";
 		case DbRoleSettingRelationId:
@@ -296,12 +296,12 @@ GetCatalogNameFromOid(Oid classOid)
 		case SubscriptionNameIndexId:
 			return "pg_subscription_subname_index";
 
-		/*
-		 * We expect to be able to identify every mapped catalog on supported
-		 * versions.  If we haven't got a record of this catalog's OID, our
-		 * assumption is that that's because it's from a future PostgreSQL
-		 * version.
-		 */
+			/*
+			 * We expect to be able to identify every mapped catalog on
+			 * supported versions.  If we haven't got a record of this
+			 * catalog's OID, our assumption is that that's because it's from
+			 * a future PostgreSQL version.
+			 */
 		default:
 			return "unlisted system catalog relation";
 	}
@@ -320,9 +320,9 @@ PrintRelMapContents(RelMapFile *map)
 	/* Print mappings from file */
 	for (i = 0; i < num_mappings; i++)
 	{
-		Oid				reloid = map->mappings[i].mapoid;
-		Oid				relfilenode = map->mappings[i].mapfilenode;
-		const char	   *catalogname;
+		Oid			reloid = map->mappings[i].mapoid;
+		Oid			relfilenode = map->mappings[i].mapfilenode;
+		const char *catalogname;
 
 		catalogname = GetCatalogNameFromOid(reloid);
 
@@ -400,8 +400,8 @@ InitRelMapFromFile(char *mapFileName, RelMapFile *map)
 int
 main(int argv, char **argc)
 {
-	unsigned int	validOptions;
-	RelMapFile		map;
+	unsigned int validOptions;
+	RelMapFile	map;
 
 	/* If there is a parameter list, validate the options */
 	validOptions = (argv < 2) ? OPT_RC_COPYRIGHT : ConsumeOptions(argv, argc);
