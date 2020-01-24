@@ -1010,8 +1010,7 @@ GetSpecialSectionType(Page page)
 					else if (specialSize == MAXALIGN(sizeof(SpGistPageOpaqueData)) &&
 							 *ptype == SPGIST_PAGE_ID)
 						rc = SPEC_SECT_INDEX_SPGIST;
-					else if (
-							 specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
+					else if (specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
 							 IsBrinPage(page))
 						rc = SPEC_SECT_INDEX_BRIN;
 					else if (specialSize == MAXALIGN(sizeof(GinPageOpaqueData)))
@@ -1031,8 +1030,7 @@ GetSpecialSectionType(Page page)
 					 bytesToFormat == blockSize &&
 					 *ptype == SPGIST_PAGE_ID)
 				rc = SPEC_SECT_INDEX_SPGIST;
-			else if (
-							 specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
+			else if (specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
 					 IsBrinPage(page))
 				rc = SPEC_SECT_INDEX_BRIN;
 			else if (specialSize == MAXALIGN(sizeof(GinPageOpaqueData)))
