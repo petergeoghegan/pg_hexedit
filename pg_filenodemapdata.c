@@ -35,7 +35,9 @@
 #include "catalog/pg_class.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
+#if PG_VERSION_NUM < 130000
 #include "catalog/pg_pltemplate.h"
+#endif
 #include "catalog/pg_proc.h"
 #include "catalog/pg_replication_origin.h"
 #include "catalog/pg_shdepend.h"
@@ -70,6 +72,16 @@
 #define PgSubscriptionToastIndex		4184
 #define PgTablespaceToastTable			4185
 #define PgTablespaceToastIndex			4186
+#endif
+
+/*
+ * Postgres 13 commit 50fc694e removed pl_template.h
+ */
+#if PG_VERSION_NUM >= 130000
+#define PLTemplateRelationId			1136
+#define PgPlTemplateToastTable			4179
+#define PgPlTemplateToastIndex			4180
+#define PLTemplateNameIndexId			1137
 #endif
 
 /*
