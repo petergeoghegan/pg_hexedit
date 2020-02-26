@@ -73,7 +73,7 @@
 
 /* Postgres 13 renamed BT_OFFSET_MASK.  Preserve compatibility. */
 #if PG_VERSION_NUM < 130000
-#define BT_N_KEYS_OFFSET_MASK	BT_OFFSET_MASK
+#define BT_OFFSET_MASK	BT_N_KEYS_OFFSET_MASK
 #endif
 
 #define COLOR_FONT_STANDARD		"#313739"
