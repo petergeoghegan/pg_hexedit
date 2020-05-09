@@ -2989,8 +2989,17 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_heap_tuples) - 1));
 		EmitXmlTag(InvalidBlockNumber, level, "btm_last_cleanup_num_heap_tuples", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_heap_tuples),
+#if PG_VERSION_NUM < 130000
 				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
-#endif
+#else
+				   (metaStartOffset + offsetof(BTMetaPageData, btm_allequalimage) - 1));
+
+		/* New metapage field added in Postgres 13: */
+		EmitXmlTag(InvalidBlockNumber, level, "btm_allequalimage", COLOR_PINK,
+				   metaStartOffset + offsetof(BTMetaPageData, btm_allequalimage),
+				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
+#endif /* PG_VERSION_NUM < 130000 */
+#endif /* PG_VERSION_NUM < 110000 */
 	}
 	else if (specialType == SPEC_SECT_INDEX_HASH && blkno == HASH_METAPAGE)
 	{
