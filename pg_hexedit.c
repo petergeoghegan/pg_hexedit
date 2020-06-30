@@ -1821,10 +1821,12 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	bits8	   *t_bits;
 	int			datalen;
 	int			nattrs = nrelatts;
+	bool		haveargreltuple = true;
 
 	/*
 	 * If an argument describing the relation's tuples was not provided, just
-	 * create a single tag.
+	 * create a single tag, but show pivot tuple heap TID representation, or
+	 * posting list representation, since we don't need -D metadata for that.
 	 *
 	 * Play it safe here -- don't attempt to emit attribute values when an
 	 * error was already encountered.  We may be able to limp on for much
@@ -1841,21 +1843,15 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	if (nrelatts == 0 || exitCode != 0 ||
 		(specialType == SPEC_SECT_INDEX_GIN && nrelatts > 1))
 	{
-		uint32		relfileOffEnd;
-
-		relfileOffEnd =
-			relfileOff + itemSize - IndexInfoFindDataOffset(itup->t_info);
-
-		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
-						relfileOff, relfileOffEnd - 1);
-		return;
+		/* Won't be able to emit tags based on tuple metadata argument */
+		haveargreltuple = false;
 	}
 
 	/* Set up state for emitting attributes */
 	tupdata = (unsigned char *) itup + IndexInfoFindDataOffset(itup->t_info);
 	t_bits = IndexTupleHasNulls(itup) ?
 		(bits8 *) ((unsigned char *) itup + sizeof(IndexTupleData)) : NULL;
-	datalen = itemSize - IndexInfoFindDataOffset(itup->t_info);
+	datalen = itemSize - IndexInfoFindDataOffset(itup->t_info) - 1;
 
 	/*
 	 * On Postgres v11+, account for nbtree pivot tuples with truncated
@@ -1883,7 +1879,7 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 			(ItemPointerGetOffsetNumberNoCheck(&(itup)->t_tid) &
 			 BT_OFFSET_MASK);
 
-		if (nattrs > nrelatts)
+		if (haveargreltuple && nattrs > nrelatts)
 		{
 			fprintf(stderr, "pg_hexedit error: %d attributes found in (%u,%u) exceeds the number inferred for relation from -D argument %d\n",
 					nattrs, blkno, offset, nrelatts);
@@ -1899,9 +1895,13 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 			 *
 			 * Note that this only handles the special representation of heap
 			 * TID that's used in pivot tuples (includes leaf page high key).
-			 * Non-pivot tuples represent heap TID using IndexTupleData.t_tid.
+			 * Non-pivot tuples represent heap TID using IndexTupleData.t_tid,
+			 * or by using a posting list.
 			 */
-			uint32		htidoffset = (relfileOff + datalen) - sizeof(ItemPointerData);
+			uint32		htidoffset;
+
+			htidoffset = (tupHeapOff + IndexTupleSize(itup)) - sizeof(ItemPointerData);
+			datalen -= MAXALIGN(sizeof(ItemPointerData));
 
 			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->bi_hi", COLOR_WHITE,
 							htidoffset, (htidoffset + sizeof(uint16)) - 1);
@@ -1926,6 +1926,8 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 		uint32 postoffset = tupHeapOff + BTreeTupleGetPostingOffset(itup);
 		uint32 postlen = (BTreeTupleGetNPosting(itup) * sizeof(ItemPointerData));
 
+		datalen = postoffset - relfileOff - 1;
+
 		/*
 		 * Compressed TIDs are orange.  Uncompressed lists of TIDs in leaf
 		 * pages should be blue instead of orange, like regular block number
@@ -1936,9 +1938,18 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	}
 #endif /* PG_VERSION_NUM >= 130000 */
 
-	/* Emit pg_attribute-wise columns */
-	EmitXmlAttributesData(blkno, offset, relfileOff, tupdata, t_bits, nattrs,
-						  datalen);
+	/*
+	 * Finally, emit pg_attribute-wise columns, or plain gray tag that
+	 * represents where the pg_attribute-wise tuple values would go if we had
+	 * valid -D info
+	 */
+	if (haveargreltuple)
+		EmitXmlAttributesData(blkno, offset, relfileOff, tupdata, t_bits,
+							  nattrs, datalen);
+	else
+		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
+						relfileOff, relfileOff + datalen);
+
 }
 
 /*
