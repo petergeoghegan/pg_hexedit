@@ -1924,18 +1924,39 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 #if PG_VERSION_NUM >= 130000
 	else if (specialType == SPEC_SECT_INDEX_BTREE && BTreeTupleIsPosting(itup))
 	{
-		uint32 postoffset = tupHeaderOff + BTreeTupleGetPostingOffset(itup);
-		uint32 postlen = (BTreeTupleGetNPosting(itup) * sizeof(ItemPointerData));
+		uint32	postoffset = tupHeaderOff + BTreeTupleGetPostingOffset(itup);
+		int		i;
 
 		datalen = postoffset - relfileOff - 1;
 
 		/*
-		 * Compressed TIDs are orange.  Uncompressed lists of TIDs in leaf
-		 * pages should be blue instead of orange, like regular block number
-		 * item pointer fields, or like uncompressed GIN posting lists.
+		 * Annotate each posting list TID individually, while alternating the
+		 * color to increase legibility.
+		 *
+		 * This deliberately doesn't look anything like pivot tuple heap TID
+		 * annotations, and deliberately doesn't recreate the slight variation
+		 * in color within TIDs from tuple headers.  Small posting list tuples
+		 * should appear prominently among duplicates that aren't posting
+		 * lists.
 		 */
-		EmitXmlTupleTag(blkno, offset, "posting list", COLOR_BLUE_LIGHT,
-						postoffset, postoffset + postlen - 1);
+		for (i = 0; i < BTreeTupleGetNPosting(itup); i++)
+		{
+			char   *color = (i % 2 == 0 ? COLOR_RED_LIGHT : COLOR_GREEN_LIGHT);
+			char	tidstr[30];
+
+			sprintf(tidstr, "TID[%d] bi_hi", i);
+			EmitXmlTupleTag(blkno, offset, tidstr, color, postoffset,
+							(postoffset + sizeof(uint16)) - 1);
+			postoffset += sizeof(uint16);
+			sprintf(tidstr, "TID[%d] bi_lo", i);
+			EmitXmlTupleTag(blkno, offset, tidstr, color, postoffset,
+							(postoffset + sizeof(uint16)) - 1);
+			postoffset += sizeof(uint16);
+			sprintf(tidstr, "TID[%d] offsetNumber", i);
+			EmitXmlTupleTag(blkno, offset, tidstr, color, postoffset,
+							(postoffset + sizeof(uint16)) - 1);
+			postoffset += sizeof(uint16);
+		}
 	}
 #endif /* PG_VERSION_NUM >= 130000 */
 
