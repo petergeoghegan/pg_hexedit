@@ -287,7 +287,7 @@ static void EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
 								  int itemSize);
 static void EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 								   uint32 relfileOff, IndexTuple itup,
-								   uint32 tupHeapOff, int itemSize);
+								   uint32 tupHeaderOff, int itemSize);
 static void EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 								  uint32 relfileOff, unsigned char *tupdata,
 								  bits8 *t_bits, int nattrs, int datalen);
@@ -1814,7 +1814,7 @@ EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
  */
 static void
 EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
-					   uint32 relfileOff, IndexTuple itup, uint32 tupHeapOff,
+					   uint32 relfileOff, IndexTuple itup, uint32 tupHeaderOff,
 					   int itemSize)
 {
 	unsigned char *tupdata;
@@ -1900,7 +1900,8 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 			 */
 			uint32		htidoffset;
 
-			htidoffset = (tupHeapOff + IndexTupleSize(itup)) - sizeof(ItemPointerData);
+			htidoffset = (tupHeaderOff + IndexTupleSize(itup)) -
+				sizeof(ItemPointerData);
 			datalen -= MAXALIGN(sizeof(ItemPointerData));
 
 			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->bi_hi", COLOR_WHITE,
@@ -1923,7 +1924,7 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 #if PG_VERSION_NUM >= 130000
 	else if (specialType == SPEC_SECT_INDEX_BTREE && BTreeTupleIsPosting(itup))
 	{
-		uint32 postoffset = tupHeapOff + BTreeTupleGetPostingOffset(itup);
+		uint32 postoffset = tupHeaderOff + BTreeTupleGetPostingOffset(itup);
 		uint32 postlen = (BTreeTupleGetNPosting(itup) * sizeof(ItemPointerData));
 
 		datalen = postoffset - relfileOff - 1;
