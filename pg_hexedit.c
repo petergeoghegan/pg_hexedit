@@ -1904,13 +1904,13 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 				sizeof(ItemPointerData);
 			datalen -= MAXALIGN(sizeof(ItemPointerData));
 
-			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->bi_hi", COLOR_WHITE,
+			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->bi_hi", COLOR_PINK,
 							htidoffset, (htidoffset + sizeof(uint16)) - 1);
 			htidoffset += sizeof(uint16);
-			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->bi_lo", COLOR_WHITE,
+			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->bi_lo", COLOR_PINK,
 							htidoffset, (htidoffset + sizeof(uint16)) - 1);
 			htidoffset += sizeof(uint16);
-			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->offsetNumber", COLOR_WHITE,
+			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->offsetNumber", COLOR_PINK,
 							htidoffset, (htidoffset + sizeof(uint16)) - 1);
 		}
 #endif /* PG_VERSION_NUM >= 120000 */
