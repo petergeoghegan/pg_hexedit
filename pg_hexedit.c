@@ -1872,7 +1872,7 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 #if PG_VERSION_NUM < 130000
 		(itup->t_info & INDEX_ALT_TID_MASK) != 0)
 #else
-		 BTreeTupleIsPivot(itup)) /* This macro is only in Postgres 13 */
+		 BTreeTupleIsPivot(itup)) /* This inline function is only in Postgres 13 */
 #endif /* PG_VERSION_NUM < 130000 */
 	{
 		nattrs =
