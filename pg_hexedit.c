@@ -1902,7 +1902,7 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 
 			htidoffset = (tupHeaderOff + IndexTupleSize(itup)) -
 				sizeof(ItemPointerData);
-			datalen -= MAXALIGN(sizeof(ItemPointerData));
+			datalen -= sizeof(ItemPointerData);
 
 			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->bi_hi", COLOR_PINK,
 							htidoffset, (htidoffset + sizeof(uint16)) - 1);
@@ -1967,7 +1967,7 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	 */
 	if (haveargreltuple)
 		EmitXmlAttributesData(blkno, offset, relfileOff, tupdata, t_bits,
-							  nattrs, datalen);
+							  nattrs, MAXALIGN(datalen));
 	else
 		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
 						relfileOff, relfileOff + datalen);
