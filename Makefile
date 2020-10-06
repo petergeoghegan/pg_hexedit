@@ -17,7 +17,7 @@ PG_CONFIG = pg_config
 PGSQL_CFLAGS = $(shell $(PG_CONFIG) --cflags)
 PGSQL_INCLUDE_DIR = $(shell $(PG_CONFIG) --includedir-server)
 PGSQL_LDFLAGS = $(shell $(PG_CONFIG) --ldflags)
-PGSQL_LIB_DIR = $(shell $(PG_CONFIG) --libdir)
+PGSQL_LIB_DIR = $(shell $(PG_CONFIG) --pkglibdir)
 PGSQL_BIN_DIR = $(shell $(PG_CONFIG) --bindir)
 
 DISTFILES= README.md Makefile pg_hexedit.c pg_filenodemapdata.c
