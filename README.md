@@ -75,7 +75,7 @@ corresponding attributes in the tables that are indexed, since their
 
 See also:  
 [PostgreSQL documentation - heap_tuple_infomask_flags() contrib/pageinspect
-function](https://www.postgresql.org/docs/docs/13/pageinspect.html#id-1.11.7.31.5)  
+function](https://www.postgresql.org/docs/13/pageinspect.html#id-1.11.7.31.5)  
 [PostgreSQL documentation - Database Page
 Layout](https://www.postgresql.org/docs/current/static/storage-page-layout.html)  
 [PostgreSQL documentation - Preventing Transaction ID Wraparound Failures (xmin
