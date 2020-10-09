@@ -112,15 +112,14 @@ the pg_hexedit executables you just built.  (You'll probably only ever use
 pg_hexedit through the convenience bash scripts, which are designed to be run
 from the pg_hexedit source directory directly.)
 
-If you really want to install the pg_hexedit executable, you can do so in the
-usual way:
+If you really want to install the pg_hexedit frontend utility programs, you can
+do so in the usual way:
 
 ```shell
   $ make install
 ```
 
-Note that the convenience scripts won't be installed.  Only the pg_hexedit and
-pg_filenodemapdata frontend utility programs are installed.
+Note that the convenience scripts won't be installed.
 
 ### Installing wxHexEditor
 
