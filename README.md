@@ -24,6 +24,12 @@ within the open source GUI hex editor
 editing PostgreSQL relation files *significantly* easier.  PostgreSQL versions
 9.5+ are supported.
 
+![wxHexEditor with pg_type](./pg_type.png)
+*wxHexEditor with pg_type system catalog table*
+
+![wxHexEditor with pg_type_typname_nsp_index](./pg_type_typname_nsp_index.png)
+*wxHexEditor with pg_type_typname_nsp_index system catalog index*
+
 __CAUTION:__ Do not use pg_hexedit with a PostgreSQL data directory if you are
 not prepared to have it __corrupt data__!  pg_hexedit is primarily made
 available for educational purposes.  It is an *experimental* tool, originally
@@ -34,12 +40,6 @@ type of index block) is determined automatically based on the contents of the
 page's special section.  Heuristics are used to identify the page type of each
 and every block.  The block size listed in the first block found in the input
 file is assumed for the entire file.
-
-![wxHexEditor with pg_type](./pg_type.png)
-*wxHexEditor with pg_type system catalog table*
-
-![wxHexEditor with pg_type_typname_nsp_index](./pg_type_typname_nsp_index.png)
-*wxHexEditor with pg_type_typname_nsp_index system catalog index*
 
 ### Annotation, tags, and the use of color
 
