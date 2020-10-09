@@ -18,6 +18,7 @@ PGSQL_CFLAGS = $(shell $(PG_CONFIG) --cflags)
 PGSQL_INCLUDE_DIR = $(shell $(PG_CONFIG) --includedir-server)
 PGSQL_LDFLAGS = $(shell $(PG_CONFIG) --ldflags)
 PGSQL_LIB_DIR = $(shell $(PG_CONFIG) --libdir)
+PGSQL_PKGLIB_DIR = $(shell $(PG_CONFIG) --pkglibdir)
 PGSQL_BIN_DIR = $(shell $(PG_CONFIG) --bindir)
 
 DISTFILES= README.md Makefile pg_hexedit.c pg_filenodemapdata.c
@@ -29,10 +30,10 @@ TESTFILES= t/1249 t/2685 t/expected_attributes.tags \
 all: pg_hexedit pg_filenodemapdata
 
 pg_hexedit: pg_hexedit.o
-	${CC} ${PGSQL_LDFLAGS} ${LDFLAGS} -o pg_hexedit pg_hexedit.o -L${PGSQL_LIB_DIR} -lpgport -lpgcommon
+	${CC} ${PGSQL_LDFLAGS} ${LDFLAGS} -o pg_hexedit pg_hexedit.o -L${PGSQL_LIB_DIR} -L${PGSQL_PKGLIB_DIR} -lpgport -lpgcommon
 
 pg_filenodemapdata: pg_filenodemapdata.o
-	${CC} ${PGSQL_LDFLAGS} ${LDFLAGS} -o pg_filenodemapdata pg_filenodemapdata.o -L${PGSQL_LIB_DIR} -lpgport
+	${CC} ${PGSQL_LDFLAGS} ${LDFLAGS} -o pg_filenodemapdata pg_filenodemapdata.o -L${PGSQL_LIB_DIR} -L${PGSQL_PKGLIB_DIR} -lpgport
 
 pg_hexedit.o: pg_hexedit.c
 	${CC} ${PGSQL_CFLAGS} ${CFLAGS} -I${PGSQL_INCLUDE_DIR} pg_hexedit.c -c
