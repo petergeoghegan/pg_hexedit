@@ -35,6 +35,14 @@ not prepared to have it __corrupt data__!  pg_hexedit is primarily made
 available for educational purposes.  It is an *experimental* tool, originally
 used for simulating corruption/corruption analysis.
 
+pg_hexedit is a fork of
+[pg_filedump](https://wiki.postgresql.org/wiki/Pg_filedump).  The pg_hexedit
+frontend executable generates wxHexEditor format XML.  pg_hexedit also provides
+"convenience" bash scripts.  The scripts automate everything: they take the
+name of a table or index, connect to a database and find where the relevant
+file is located, generate wxHexEditor format XML for those files, and open the
+wxHexEditor GUI to display the file with tags and annotations.
+
 The type of each block (whether it's a heap block, B-Tree index block, or other
 type of index block) is determined automatically based on the contents of the
 page's special section.  Heuristics are used to identify the page type of each
@@ -84,11 +92,6 @@ freezing)](https://www.postgresql.org/docs/current/static/routine-vacuuming.html
 There are no pg_hexedit packages available.  pg_hexedit follows a simple
 trunk-based development model without any formal assigned versions.  The only
 way to install pg_hexedit is to build it from source yourself.
-
-Note that pg_hexedit is a fork of
-[pg_filedump](https://wiki.postgresql.org/wiki/Pg_filedump).  The pg_hexedit
-executable, which is what actually generates wxHexEditor format XML, must be
-built from source as a PostgreSQL frontend utility.
 
 To compile pg_hexedit, you will need to have a properly configured
 PostgreSQL source tree or complete install tree (with include files)
