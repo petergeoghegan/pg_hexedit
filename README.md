@@ -82,26 +82,45 @@ freezing)](https://www.postgresql.org/docs/current/static/routine-vacuuming.html
 
 ## Initial setup
 
-### Building pg_hexedit
-
 There are no pg_hexedit packages available.  pg_hexedit follows a simple
 trunk-based development model without any formal assigned versions.  The only
-way to install pg_hexedit is to build it from source yourself.
+way to get pg_hexedit is to build it from source yourself.  This is a
+deliberate trade-off; pg_hexedit is experimental, and it's not difficult to
+build from source anyway.
 
-To compile pg_hexedit, you will need to have a properly configured
-PostgreSQL source tree or complete install tree (with include files)
-of the appropriate PostgreSQL major version.
+### Building pg_hexedit
 
-The Makefile is a standalone makefile for pg_hexedit.  `pg_config` must be
-available within your $PATH:
+To build pg_hexedit you will need to have a PostgreSQL source tree or complete
+install tree (with include files).  PostgreSQL system packages should provide
+all you need.  If you run into trouble when building against system packages,
+please open a Github issue.
+
+The Makefile builds the pg_hexedit and pg_filenodemapdata frontend utility
+programs.
+[pg_config](https://www.postgresql.org/docs/current/app-pgconfig.html) must be
+visible in your $PATH.  To build pg_hexedit from within the source directory:
 
 ```shell
-  $ which pg_config
+  $ which pg_config # Check which Postgres installation you'll build against:
   /code/postgresql/REL_12_STABLE/install/bin/pg_config
   $ make
-  $ # Installation -- not actually required for convenience scripts:
+```
+
+Once this step succeeds, you can usually move on to the next initial setup step
+(which is to install wxHexEditor).  You probably won't need to actually install
+the pg_hexedit executables you just built.  (You'll probably only ever use
+pg_hexedit through the convenience bash scripts, which are designed to be run
+from the pg_hexedit source directory directly.)
+
+If you really want to install the pg_hexedit executable, you can do so in the
+usual way:
+
+```shell
   $ make install
 ```
+
+Note that the convenience scripts won't be installed.  Only the pg_hexedit and
+pg_filenodemapdata frontend utility programs are installed.
 
 ### Installing wxHexEditor
 
