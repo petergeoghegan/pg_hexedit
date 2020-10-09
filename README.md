@@ -110,7 +110,8 @@ Once this step succeeds, you can usually move on to the next initial setup step
 (which is to install wxHexEditor).  You probably won't need to actually install
 the pg_hexedit executables you just built.  (You'll probably only ever use
 pg_hexedit through the convenience bash scripts, which are designed to be run
-from the pg_hexedit source directory directly.)
+from the pg_hexedit source directory directly.  The convenience scripts expect
+to find the pg_hexedit frontend program in the current working directory.)
 
 If you really want to install the pg_hexedit frontend utility programs, you can
 do so in the usual way:
