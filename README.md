@@ -39,15 +39,10 @@ pg_hexedit is a fork of
 [pg_filedump](https://wiki.postgresql.org/wiki/Pg_filedump).  The pg_hexedit
 frontend executable generates wxHexEditor format XML.  pg_hexedit also provides
 "convenience" bash scripts.  The scripts automate everything: they take the
-name of a table or index, connect to a database and find where the relevant
-file is located, generate wxHexEditor format XML for those files, and open the
-wxHexEditor GUI to display the file with tags and annotations.
-
-The type of each block (whether it's a heap block, B-Tree index block, or other
-type of index block) is determined automatically based on the contents of the
-page's special section.  Heuristics are used to identify the page type of each
-and every block.  The block size listed in the first block found in the input
-file is assumed for the entire file.
+name of a table or index as an argument, connect to a database and find where
+the underlying file for the table or index is located, generate wxHexEditor
+format XML for the relevant file, and open the wxHexEditor GUI to display the
+relevant file with tags and annotations.
 
 ### Annotation, tags, and the use of color
 
