@@ -81,6 +81,10 @@ freezing)](https://www.postgresql.org/docs/current/static/routine-vacuuming.html
 
 ### Building pg_hexedit
 
+There are no pg_hexedit packages available.  pg_hexedit follows a simple
+trunk-based development model without any formal assigned versions.  The only
+way to install pg_hexedit is to build it from source yourself.
+
 Note that pg_hexedit is a fork of
 [pg_filedump](https://wiki.postgresql.org/wiki/Pg_filedump).  The pg_hexedit
 executable, which is what actually generates wxHexEditor format XML, must be
