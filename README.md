@@ -101,25 +101,22 @@ available within your $PATH:
   $ make install
 ```
 
-### Obtaining wxHexEditor
+### Installing wxHexEditor
 
-It is highly recommended that you use wxHexEditor version 0.25 or higher, since
-that version has numerous bug fixes for the tag feature that pg_hexedit targets
-(see also: [wxHexEditor bug 87](https://github.com/EUA/wxHexEditor/issues/87)).
-Packages are available for all major platforms from Sourceforge:
+There are wxHexEditor packages available on major Linux platforms, though they
+all seem to use older versions.  It is recommended that you use wxHexEditor
+version 0.25 or higher, since that version has fixes for a couple of bugs that
+affect the tag feature that pg_hexedit targets (see also: [wxHexEditor bug
+87](https://github.com/EUA/wxHexEditor/issues/87)).  At the time of writing
+there are no version 0.25 packages, so installing 0.25 actually means building
+wxHexEditor from its git master branch.  You can get by with an older version,
+though you can expect some aspects of how tags are displayed to be glitchy.
 
-[https://sourceforge.net/projects/wxhexeditor/](https://sourceforge.net/projects/wxhexeditor/)
+#### Building wxHexEditor from source
 
-If using those packages is not an option, there may be no conveniently
-available packages for wxHexEditor 0.25 from your system package manager.  The
-most practical option may be to build wxHexEditor's master branch from source.
-See:
-
-[https://github.com/EUA/wxHexEditor](https://github.com/EUA/wxHexEditor)
-
-It's generally only mildly inconvenient to build wxHexEditor on a modern
-desktop Linux system.  On Debian-based systems with source repositories set up,
-obtaining all build dependencies quickly should be straightforward:
+It's only mildly inconvenient to build wxHexEditor on a modern desktop Linux
+system.  On Debian-based systems with source repositories set up, obtaining all
+build dependencies quickly should be straightforward:
 
 ```shell
   $ sudo apt-get build-dep wxhexeditor
@@ -127,16 +124,14 @@ obtaining all build dependencies quickly should be straightforward:
   $ sudo apt-get install libtool
 ```
 
-Note that this doesn't actually install any wxHexEditor package, because we're
-building wxHexEditor from source. It just installs the dependencies to build
-the wxHexEditor source package, which, along with libtool, should be all we
-need to build wxHexEditor from git tip.
+Note that this doesn't actually install any wxHexEditor package. It just
+installs the dependencies to build the wxHexEditor source package, which, along
+with libtool, should be all we need to build wxHexEditor from git tip.
 
-See wxHexEditor docs for further instructions.
+Build wxHexEditor's master branch from source/git by cloning the official
+git repo, and following the instructions that it provides:
 
-While wxHexEditor does have noticeable stability issues, these seem to be worth
-working around, given the lack of any better alternative that is open source
-and cross platform.
+[https://github.com/EUA/wxHexEditor](https://github.com/EUA/wxHexEditor)
 
 ### wxHexEditor documentation
 
