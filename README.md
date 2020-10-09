@@ -112,6 +112,14 @@ there are no version 0.25 packages, so installing 0.25 actually means building
 wxHexEditor from its git master branch.  You can get by with an older version,
 though you can expect some aspects of how tags are displayed to be glitchy.
 
+#### Installing wxHexEditor system package (easier, currently not recommended)
+
+On Debian-based systems you can install wxhexeditor in the usual way:
+
+```shell
+  $ sudo apt-get install wxhexeditor
+```
+
 #### Building wxHexEditor from source
 
 It's only mildly inconvenient to build wxHexEditor on a modern desktop Linux
@@ -133,7 +141,7 @@ git repo, and following the instructions that it provides:
 
 [https://github.com/EUA/wxHexEditor](https://github.com/EUA/wxHexEditor)
 
-### wxHexEditor documentation
+#### wxHexEditor documentation
 
 The [wxHexEditor wiki](http://wiki.wxhexeditor.org/index.php?title=Main_Page)
 serves as wxHexEditor's user documentation.  It has some potentially useful
