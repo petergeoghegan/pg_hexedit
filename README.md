@@ -82,7 +82,7 @@ Layout](https://www.postgresql.org/docs/current/static/storage-page-layout.html)
 and xmax fields, Multixacts, and
 freezing)](https://www.postgresql.org/docs/current/static/routine-vacuuming.html#VACUUM-FOR-WRAPAROUND)
 
-## Initial setup
+## Initial setup on Linux
 
 There are no pg_hexedit packages available.  pg_hexedit follows a simple
 trunk-based development model without any formal assigned versions.  The only
@@ -169,6 +169,21 @@ git repo, and following the instructions that it provides:
 The [wxHexEditor wiki](http://wiki.wxhexeditor.org/index.php?title=Main_Page)
 serves as wxHexEditor's user documentation.  It has some potentially useful
 tips for getting the most out of the tool.
+
+## Initial setup on MacOS
+
+These steps should help you install pg_hexedit on MacOS (tested on Catalina
+with installed [Homebrew](https://brew.sh/)):
+
+1. `brew install automake autoconf libtool wxmac`
+1. Get [wxHexEditor source code](https://github.com/EUA/wxHexEditor) and edit
+`Makefile` removing the line mentioning OpenMP (`LIBS += -lgomp`)
+1. Build wxHexEditor (`make`)
+1. Get pg_hexedit source code, build (`make`) with `$PATH` including path
+to PostgreSQL binaries (Postgres installed via Homebrew – 
+`brew install postgresql` – should be enough)
+1. In hexedit.cfg, check `export HEXEDITOR`, it needs to point to
+the `wxHexEditor` binary (created above)
 
 ## Quickstart guide - Using the convenience scripts
 
