@@ -185,6 +185,24 @@ to PostgreSQL binaries (Postgres installed via Homebrew –
 1. In hexedit.cfg, check `export HEXEDITOR`, it needs to point to
 the `wxHexEditor` binary (created above)
 
+Note: The convenience scripts set `$HOME` to the current working directory so
+that wxHexEditor reads its settings from a convenience-script-generated
+.wxHexEditor config file rather than the true user-wide/system-wide config
+file.  This is like an `.ini` file.  This hack is currently broken on MacOS.
+The relation_hexedit script works, but not exactly as designed.  For example,
+the optimal "Bytes per line limit" for pg_hexedit seems to be 32, but that's
+not the default.
+
+(When wxHexEditor is built on MacOS, it will look for the config file in
+/Library/Preferences or ~/Library/Preferences - not in the user's home
+directory.  It's not clear how the hack that works on Linux can be adopted to
+MacOS.)
+
+Suggested partial workaround: comment out the `HOME=$(pwd)` line in the
+`__open_relation` file (which is used by relation_hexedit).  This will at least
+allow you to start up pg_hexedit in a way that works with your system/user wide
+wxHexEditor config.
+
 ## Quickstart guide - Using the convenience scripts
 
 pg_hexedit and wxHexEditor can be invoked using convenience scripts that take
