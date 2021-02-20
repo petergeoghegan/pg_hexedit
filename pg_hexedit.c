@@ -1541,6 +1541,14 @@ EmitXmlPage(BlockNumber blkno)
 			/* Hash bitmap pages don't use IndexTuple or ItemId */
 			EmitXmlHashBitmap(page, blkno);
 		}
+		else if (specialType == SPEC_SECT_INDEX_GIST && GistPageIsDeleted(page))
+		{
+			/*
+			 * Deleted GiST pages only contain GISTDeletedPageContents on
+			 * Postgres 12+ -- don't bother distinguishing deleted pages.
+			 * Cannot trust maxoff from page.
+			 */
+		}
 		else if (specialType == SPEC_SECT_INDEX_GIN && GinPageIsDeleted(page))
 		{
 			/*
