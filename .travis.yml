@@ -10,7 +10,6 @@ env:
       - PGBRANCH=REL_11_STABLE
       - PGBRANCH=REL_10_STABLE
       - PGBRANCH=REL9_6_STABLE
-      - PGBRANCH=REL9_5_STABLE
 
 before_install:
    - CURDIR=$(pwd)

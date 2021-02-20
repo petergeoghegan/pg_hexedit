@@ -3708,10 +3708,8 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 					strcat(flagString, "F_TUPLES_DELETED|");
 				if (gistSection->flags & F_FOLLOW_RIGHT)
 					strcat(flagString, "F_FOLLOW_RIGHT|");
-#if PG_VERSION_NUM >= 90600
 				if (gistSection->flags & F_HAS_GARBAGE)
 					strcat(flagString, "F_HAS_GARBAGE|");
-#endif
 				if (strlen(flagString))
 					flagString[strlen(flagString) - 1] = '\0';
 
