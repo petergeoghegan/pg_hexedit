@@ -74,7 +74,6 @@ FULLPATH="$PGDATA/$RFN"
 if [ -f "$FULLPATH" ]; then
   echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
   echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to keep overhead low."
-  echo "Caution: Saving changes to authoritative relfilenodes using wxHexEditor can cause irreparable damage."
 else
   PAGEINSPECT_INSTALLED=$(psql -XAtc "select count(*) from pg_extension where extname='pageinspect'")
   if (( PAGEINSPECT_INSTALLED && MIN_BLOCK_TAGS == 0 )); then
@@ -86,7 +85,6 @@ else
                 FROM generate_series(0, least(pg_relation_size('$relname') / 8192 - 1, $MAX_BLOCK_TAGS))
                 block" | base64 -d > "$FULLPATH"
     echo "Opening local temp file..."
-    echo "Tip: Saving changes to temp file copies of relfilenodes using wxHexEditor will not in itself affect the PostgreSQL server."
   else
     echo "File $FULLPATH doesn't exist."
     if (( MIN_BLOCK_TAGS == 0 )); then
@@ -97,6 +95,9 @@ else
     exit 1
   fi
 fi
+
+# Deliberately put space before pg_hexedit frontend debug output here:
+echo -e "pg_hexedit frontend utility debug/notice output:\n"
 
 # Generate tags at a path that we know wxHexEditor will look for them:
 # shellcheck disable=SC2086
@@ -113,6 +114,9 @@ then
   echo "\"$FULLPATH.tags\" annotation file was still created"
   exit 1
 fi
+
+# Deliberately put space after pg_hexedit frontend debug output here:
+echo
 
 echo "Opening $FULLPATH with $HEXEDITOR..."
 # Output from wxHexEditor is verbose, and not terribly useful, so we redirect:

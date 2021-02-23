@@ -119,7 +119,9 @@ static int	blockStart = -1;
 static int	blockEnd = -1;
 
 /* -x:Skip pages whose LSN is before point */
-static XLogRecPtr afterThreshold = 0;
+static XLogRecPtr afterThreshold = InvalidXLogRecPtr;
+uint32	nblockstagged = 0;
+uint32	nblocksskipped = 0;
 
 /* Possible value types for the Special Section */
 typedef enum specialSectionTypes
@@ -1486,7 +1488,12 @@ EmitXmlPage(BlockNumber blkno)
 		if (pageLSN < afterThreshold)
 		{
 			rc = 0;
+			nblocksskipped++;
 			return;
+		}
+		else
+		{
+			nblockstagged++;
 		}
 	}
 
@@ -3956,6 +3963,23 @@ main(int argv, char **argc)
 		}
 		EmitXmlFooter();
 	}
+
+	/*
+	 * Finally, print debug output to stderr.  This is a convenient way of
+	 * informing user that options such as -x flag are working more or less as
+	 * expected.
+	 */
+	if ((blockOptions & BLOCK_SKIP_LSN))
+	{
+		fprintf(stderr, "pg_hexedit notice: -x option skipped %u blocks (%u blocks tagged)\n",
+				nblockstagged, nblocksskipped);
+		fprintf(stderr, "pg_hexedit tip: to show the TAG panel in wxHexEditor, click \"View -> TAG Panel\"\n");
+	}
+	if (exitCode == 0)
+		fprintf(stderr, "pg_hexedit notice: PostgreSQL frontend program return code is 0 (success)\n");
+	else
+		fprintf(stderr, "pg_hexedit notice: PostgreSQL frontend program return code is %d (failure)\n",
+				exitCode);
 
 	/* Close out the file and get rid of the allocated block buffer */
 	if (fp)
