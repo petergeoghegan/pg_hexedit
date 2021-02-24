@@ -120,8 +120,13 @@ static int	blockEnd = -1;
 
 /* -x:Skip pages whose LSN is before point */
 static XLogRecPtr afterThreshold = InvalidXLogRecPtr;
-uint32	nblockstagged = 0;
-uint32	nblocksskipped = 0;
+static XLogRecPtr minPageLSN = (XLogRecPtr) PG_UINT64_MAX;
+static XLogRecPtr maxPageLSN = InvalidXLogRecPtr;
+static BlockNumber minPageLSNBlock = InvalidBlockNumber;
+static BlockNumber maxPageLSNBlock = InvalidBlockNumber;
+static BlockNumber maxBlockNumber = 0;
+static uint32	nblockstagged = 0;
+static uint32	nblocksskipped = 0;
 
 /* Possible value types for the Special Section */
 typedef enum specialSectionTypes
@@ -1453,8 +1458,26 @@ EmitXmlPage(BlockNumber blkno)
 	uint32		level = UINT_MAX;
 	int			rc;
 
+	/*
+	 * Maintain max block number for blocks that have some kind of content
+	 * (could just be zero block, could be block that we'd skip due to current
+	 * -x option)
+	 */
+	maxBlockNumber = Max(maxBlockNumber, blkno);
+
 	if (PageIsNew(page))
+	{
+		/*
+		 * Assume new/zeroed block has LSN 0 for -x option (but don't update
+		 * minPageLSN because it's not useful to consider that 0)
+		 */
+		if ((blockOptions & BLOCK_SKIP_LSN))
+		{
+			nblocksskipped++;
+		}
+
 		return;
+	}
 
 	/* Get details of page first */
 	pageOffset = blockSize * currentBlock;
@@ -1494,6 +1517,18 @@ EmitXmlPage(BlockNumber blkno)
 		else
 		{
 			nblockstagged++;
+
+			/* Maintain Min and Max LSNs for annotated pages */
+			if (pageLSN < minPageLSN)
+			{
+				minPageLSN = pageLSN;
+				minPageLSNBlock = blkno;
+			}
+			if (pageLSN > maxPageLSN)
+			{
+				maxPageLSN = pageLSN;
+				maxPageLSNBlock = blkno;
+			}
 		}
 	}
 
@@ -3971,8 +4006,12 @@ main(int argv, char **argc)
 	 */
 	if ((blockOptions & BLOCK_SKIP_LSN))
 	{
-		fprintf(stderr, "pg_hexedit notice: -x option skipped %u blocks (%u blocks tagged)\n",
-				nblockstagged, nblocksskipped);
+		fprintf(stderr, "pg_hexedit notice: -x option skipped %u blocks from blocks %u - %u (%u blocks tagged)\n",
+				nblocksskipped, blockStart, maxBlockNumber, nblockstagged);
+		fprintf(stderr, "pg_hexedit notice: low watermark LSN among tagged blocks:  %X/%08X (which is page LSN for block %u)\n",
+				(uint32) (minPageLSN >> 32), (uint32) minPageLSN, minPageLSNBlock);
+		fprintf(stderr, "pg_hexedit notice: high watermark LSN among tagged blocks: %X/%08X (which is page LSN for block %u)\n",
+				(uint32) (maxPageLSN >> 32), (uint32) maxPageLSN , maxPageLSNBlock);
 		fprintf(stderr, "pg_hexedit tip: to show the TAG panel in wxHexEditor, click \"View -> TAG Panel\"\n");
 	}
 	if (exitCode == 0)
