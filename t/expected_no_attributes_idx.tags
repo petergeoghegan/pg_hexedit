@@ -10621,7 +10621,7 @@
     <TAG id="1516">
       <start_offset>8184</start_offset>
       <end_offset>8187</end_offset>
-      <tag_text>block 131072 (level 0) btpo.level</tag_text>
+      <tag_text>block 131072 (level 0) btpo_level</tag_text>
       <font_colour>#313739</font_colour>
       <note_colour>#50E964</note_colour>
     </TAG>

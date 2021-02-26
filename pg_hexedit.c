@@ -1537,7 +1537,11 @@ EmitXmlPage(BlockNumber blkno)
 	{
 		BTPageOpaque btreeSection = (BTPageOpaque) PageGetSpecialPointer(page);
 
+#if PG_VERSION_NUM < 140000
 		level = btreeSection->btpo.level;
+#else
+		level = btreeSection->btpo_level;
+#endif
 	}
 
 	/*
@@ -1577,6 +1581,15 @@ EmitXmlPage(BlockNumber blkno)
 		{
 			/* If it's a meta page, the meta block will have no tuples */
 			EmitXmlPageMeta(blkno, level);
+		}
+		else if (specialType == SPEC_SECT_INDEX_BTREE &&
+				 P_ISDELETED((BTPageOpaque) PageGetSpecialPointer(page)))
+		{
+			/*
+			 * Deleted nbtree pages only contain BTDeletedPageData on Postgres
+			 * 14+ -- don't bother distinguishing deleted pages.  Cannot trust
+			 * maxoff from page.
+			 */
 		}
 		else if (specialType == SPEC_SECT_INDEX_HASH && IsHashBitmapPage(page))
 		{
@@ -3061,6 +3074,7 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 #if PG_VERSION_NUM < 110000
 				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
 #else
+#if PG_VERSION_NUM < 140000
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_oldest_btpo_xact) - 1));
 
 		/*
@@ -3070,6 +3084,18 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 		EmitXmlTag(InvalidBlockNumber, level, "btm_oldest_btpo_xact", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_oldest_btpo_xact),
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_heap_tuples) - 1));
+#else
+				   (metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_delpages) - 1));
+
+		/*
+		 * These fields are only actually active when btm_version >= 3 (which
+		 * is v11's standard BTREE_VERSION)
+		 */
+		EmitXmlTag(InvalidBlockNumber, level, "btm_last_cleanup_num_delpages", COLOR_PINK,
+				   metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_delpages),
+				   (metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_heap_tuples) - 1));
+#endif /* PG_VERSION_NUM < 140000 */
+
 		EmitXmlTag(InvalidBlockNumber, level, "btm_last_cleanup_num_heap_tuples", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_heap_tuples),
 #if PG_VERSION_NUM < 130000
@@ -3648,10 +3674,22 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_next)) - 1);
 				EmitXmlTag(blkno, level, "btpo_next", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_next),
+				/* btpo union simply became btpo_level on Postgres 14 */
+#if PG_VERSION_NUM >= 140000
+						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_level)) - 1);
+				EmitXmlTag(blkno, level, "btpo_level", COLOR_GREEN_BRIGHT,
+						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_level),
+						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_flags)) - 1);
+#else
 						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo)) - 1);
-				EmitXmlTag(blkno, level, "btpo.level", COLOR_GREEN_BRIGHT,
+				/*
+				 * XXX: Call btpo.level btpo_level on older versions, just to
+				 * keep test results consistent across Postgres versions
+				 */
+				EmitXmlTag(blkno, level, "btpo_level", COLOR_GREEN_BRIGHT,
 						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo),
 						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_flags)) - 1);
+#endif
 
 				/* Generate B-Tree special area flags */
 				strcat(flagString, "btpo_flags - ");
