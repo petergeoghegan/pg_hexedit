@@ -4044,12 +4044,32 @@ main(int argv, char **argc)
 	 */
 	if ((blockOptions & BLOCK_SKIP_LSN))
 	{
-		fprintf(stderr, "pg_hexedit notice: -x option skipped %u blocks from blocks %u - %u (%u blocks tagged)\n",
-				nblocksskipped, blockStart, maxBlockNumber, nblockstagged);
-		fprintf(stderr, "pg_hexedit notice: low watermark LSN among tagged blocks:  %X/%08X (which is page LSN for block %u)\n",
-				(uint32) (minPageLSN >> 32), (uint32) minPageLSN, minPageLSNBlock);
-		fprintf(stderr, "pg_hexedit notice: high watermark LSN among tagged blocks: %X/%08X (which is page LSN for block %u)\n",
-				(uint32) (maxPageLSN >> 32), (uint32) maxPageLSN , maxPageLSNBlock);
+		if (nblockstagged == 0)
+		{
+			fprintf(stderr, "pg_hexedit warning: -x option skipped every block (is -x option's LSN value %X/%08X too recent?)\n",
+					(uint32) (afterThreshold >> 32), (uint32) afterThreshold);
+		}
+		else
+		{
+			/*
+			 * Handle case where -x option is combined with non-range
+			 * argument.  This combination of options is rather pointless, but
+			 * be consistent and handle it anyway.
+			 */
+			if (blockStart != -1)
+				fprintf(stderr, "pg_hexedit notice: -x option skipped %u blocks from blocks %u - %u (%u blocks tagged)\n",
+						nblocksskipped, blockStart, maxBlockNumber, nblockstagged);
+			else
+				fprintf(stderr, "pg_hexedit notice: -x option skipped %u blocks (%u blocks tagged)\n",
+						nblocksskipped, nblockstagged);
+
+			fprintf(stderr, "pg_hexedit notice: low watermark LSN among tagged blocks:  %X/%08X (which is page LSN for block %u)\n",
+					(uint32) (minPageLSN >> 32), (uint32) minPageLSN, minPageLSNBlock);
+			fprintf(stderr, "pg_hexedit notice: high watermark LSN among tagged blocks: %X/%08X (which is page LSN for block %u)\n",
+					(uint32)(maxPageLSN >> 32), (uint32) maxPageLSN,
+					maxPageLSNBlock);
+		}
+
 		fprintf(stderr, "pg_hexedit tip: to show the TAG panel in wxHexEditor, click \"View -> TAG Panel\"\n");
 	}
 	if (exitCode == 0)
