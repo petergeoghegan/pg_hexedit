@@ -2803,7 +2803,11 @@ EmitXmlSpGistLeafTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		Assert(SpGistPageIsLeaf(page));
 
 		/* Emit tuple contents */
+#if PG_VERSION_NUM >= 140000
+		relfileOff = relfileOffOrig + SGLTHDRSZ(SGLT_GET_HASNULLMASK(tuple));
+#else
 		relfileOff = relfileOffOrig + SGLTHDRSZ;
+#endif
 		relfileOffNext = relfileOffOrig + tuple->size;
 		if (relfileOff < relfileOffNext)
 			EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
