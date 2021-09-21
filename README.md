@@ -162,12 +162,6 @@ git repo, and following the instructions that it provides:
 
 [https://github.com/EUA/wxHexEditor](https://github.com/EUA/wxHexEditor)
 
-#### wxHexEditor documentation
-
-The [wxHexEditor wiki](http://wiki.wxhexeditor.org/index.php?title=Main_Page)
-serves as wxHexEditor's user documentation.  It has some potentially useful
-tips for getting the most out of the tool.
-
 ## Initial setup on MacOS
 
 These steps should help you install pg_hexedit on MacOS (tested on Catalina
