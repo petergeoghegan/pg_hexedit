@@ -257,6 +257,7 @@ static int	GetOptionValue(char *optionString);
 static XLogRecPtr GetOptionXlogRecPtr(char *optionString);
 static bool ParseAttributeListString(const char *str);
 static unsigned int GetBlockSize(void);
+static int IPtrCompare(ItemPointer arg1, ItemPointer arg2);
 static unsigned int GetSpecialSectionType(Page page);
 static const char *GetSpecialSectionString(unsigned int type);
 static XLogRecPtr GetPageLsn(Page page);
@@ -955,6 +956,26 @@ GetBlockSize(void)
 	}
 
 	return localSize;
+}
+
+static int
+IPtrCompare(ItemPointer arg1, ItemPointer arg2)
+{
+	BlockNumber b1 = ItemPointerGetBlockNumberNoCheck(arg1);
+	BlockNumber b2 = ItemPointerGetBlockNumberNoCheck(arg2);
+
+	if (b1 < b2)
+		return -1;
+	else if (b1 > b2)
+		return 1;
+	else if (ItemPointerGetOffsetNumberNoCheck(arg1) <
+			 ItemPointerGetOffsetNumberNoCheck(arg2))
+		return -1;
+	else if (ItemPointerGetOffsetNumberNoCheck(arg1) >
+			 ItemPointerGetOffsetNumberNoCheck(arg2))
+		return 1;
+	else
+		return 0;
 }
 
 /*
@@ -1988,6 +2009,10 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	else if (specialType == SPEC_SECT_INDEX_BTREE && BTreeTupleIsPosting(itup))
 	{
 		uint32	postoffset = tupHeaderOff + BTreeTupleGetPostingOffset(itup);
+		ItemPointerData last;
+		ItemPointer htid;
+		bool		corrupt = BTreeTupleGetNPosting(itup) < 2;
+		int			firstcorrupt = 0;
 		int		i;
 
 		datalen = postoffset - relfileOff - 1;
@@ -2007,6 +2032,21 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 			char   *color = (i % 2 == 0 ? COLOR_RED_LIGHT : COLOR_GREEN_LIGHT);
 			char	tidstr[30];
 
+			htid = BTreeTupleGetPostingN(itup, i);
+
+			/* Verify in second or subsequent iteration/item */
+			if (i != 0 && !corrupt)
+			{
+				if (!ItemPointerIsValid(htid) || IPtrCompare(htid, &last) <= 0)
+				{
+					firstcorrupt = i;
+					corrupt = true;
+				}
+			}
+			/* For next iteration: */
+			ItemPointerCopy(htid, &last);
+
+			/* Annotate */
 			sprintf(tidstr, "TID[%d] bi_hi", i);
 			EmitXmlTupleTag(blkno, offset, tidstr, color, postoffset,
 							(postoffset + sizeof(uint16)) - 1);
@@ -2019,6 +2059,36 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 			EmitXmlTupleTag(blkno, offset, tidstr, color, postoffset,
 							(postoffset + sizeof(uint16)) - 1);
 			postoffset += sizeof(uint16);
+		}
+
+		if (corrupt)
+		{
+			char	postingliststr[BLCKSZ * 10];
+			char		tidstr[16];
+
+			postingliststr[0] = '\0';
+			htid = BTreeTupleGetPostingN(itup, 0);
+			sprintf(tidstr, "0. (%u,%u)",
+					ItemPointerGetBlockNumberNoCheck(htid),
+					ItemPointerGetOffsetNumberNoCheck(htid));
+			strcat(postingliststr, tidstr);
+
+			for (i = 1; i < BTreeTupleGetNPosting(itup); i++)
+			{
+				htid = BTreeTupleGetPostingN(itup, i);
+				sprintf(tidstr, "\n, %d. (%u,%u)", i,
+						ItemPointerGetBlockNumberNoCheck(htid),
+						ItemPointerGetOffsetNumberNoCheck(htid));
+				strcat(postingliststr, tidstr);
+
+				if (i == firstcorrupt)
+					strcat(postingliststr, "<--- ");
+			}
+			fprintf(stderr, "pg_hexedit error: corrupt posting list in (%u,%u) starting at postingoff %d/%d:\n %s\n",
+					blkno, offset,
+					firstcorrupt, BTreeTupleGetNPosting(itup),
+					postingliststr);
+			exitCode = 1;
 		}
 	}
 #endif /* PG_VERSION_NUM >= 130000 */
