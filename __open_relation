@@ -61,7 +61,7 @@ echo "Determined that data directory is $PGDATA"
 # wxHexEditor XML encoding is always UTF-8.  Make sure that attname fields come
 # back as UTF-8.
 export PGCLIENTENCODING="UTF8"
-if ! ATTRLIST=$(psql --no-psqlrc -tA -c "SELECT string_agg(attlen || ',\"' || attname  || '\",' || attalign, ',')
+if ! ATTRLIST=$(psql --no-psqlrc -tA -c "SELECT string_agg(attlen || ',\"' || attname  || '\",' || attalign::text, ',')
 FROM
 (SELECT * FROM pg_attribute WHERE attrelid = '$relname'::regclass AND attnum > 0 ORDER BY attnum ASC) t;")
 then
