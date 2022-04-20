@@ -33,11 +33,11 @@ then
   exit 1
 fi
 
-if ! ROOT_CHILD_OFFSETS=$(psql --no-psqlrc -tA -c "WITH offset_strings(string) AS (
+if ! ROOT_CHILD_OFFSETS=$(psql --no-psqlrc -tA -c "WITH offset_strings(line) AS (
   SELECT 'GoToOffset' || ROW_NUMBER() OVER() || '=' || (substring(ctid::text from '([0-9]+)')::int8 * (2^13))
   FROM bt_page_items('$relname', (SELECT root::int4 FROM bt_metap('$relname') where level > 1))
 )
-SELECT string_agg(string, chr(10)) FROM offset_strings;")
+SELECT string_agg(line, chr(10)) FROM offset_strings;")
 then
   echo "obtaining non-leaf children of root block for offset dialog failed"
   exit 1
