@@ -20,7 +20,7 @@ index files (B-Tree, GiST, GIN, hash, BRIN, and SP-GiST indexes) when opened
 within the open source GUI hex editor
 [wxHexEditor](https://github.com/EUA/wxHexEditor).  It makes viewing and
 editing PostgreSQL relation files *significantly* easier.  PostgreSQL versions
-9.6+ are supported.
+10+ are supported.
 
 ![wxHexEditor with pg_type](./pg_type.png)
 *wxHexEditor with pg_type system catalog table*

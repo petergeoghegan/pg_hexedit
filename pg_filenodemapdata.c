@@ -43,9 +43,7 @@
 #include "catalog/pg_shdepend.h"
 #include "catalog/pg_shdescription.h"
 #include "catalog/pg_shseclabel.h"
-#if PG_VERSION_NUM >= 100000
 #include "catalog/pg_subscription.h"
-#endif
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/toasting.h"
@@ -54,11 +52,6 @@
 #define HEXEDIT_VERSION					"0.1"
 
 /* Provide system catalog OIDs where unavailable */
-#if PG_VERSION_NUM < 100000
-#define SubscriptionRelationId			6100
-#define SubscriptionObjectIndexId		6114
-#define SubscriptionNameIndexId			6115
-#endif
 #if PG_VERSION_NUM < 120000
 #define PgAuthidToastTable				4175
 #define PgAuthidToastIndex				4176

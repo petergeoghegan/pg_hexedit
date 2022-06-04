@@ -3749,7 +3749,6 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 					strcat(flagString, "LH_BITMAP_PAGE|");
 				if (hashSection->hasho_flag & LH_META_PAGE)
 					strcat(flagString, "LH_META_PAGE|");
-#if PG_VERSION_NUM >= 100000
 				if (hashSection->hasho_flag & LH_BUCKET_BEING_POPULATED)
 					strcat(flagString, "LH_BUCKET_BEING_POPULATED|");
 				if (hashSection->hasho_flag & LH_BUCKET_BEING_SPLIT)
@@ -3758,7 +3757,6 @@ EmitXmlSpecial(BlockNumber blkno, uint32 level)
 					strcat(flagString, "LH_BUCKET_NEEDS_SPLIT_CLEANUP|");
 				if (hashSection->hasho_flag & LH_PAGE_HAS_DEAD_TUPLES)
 					strcat(flagString, "LH_PAGE_HAS_DEAD_TUPLES|");
-#endif
 				if (strlen(flagString))
 					flagString[strlen(flagString) - 1] = '\0';
 
