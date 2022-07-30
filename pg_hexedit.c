@@ -938,7 +938,7 @@ GetBlockSize(void)
 	rewind(fp);
 
 	if (bytesRead == pageHeaderSize)
-		localSize = (unsigned int) PageGetPageSize(&localCache);
+		localSize = (unsigned int) PageGetPageSize((Page) &localCache);
 	else
 	{
 		fprintf(stderr, "pg_hexedit error: unable to read full page header from first block\n"
