@@ -1253,17 +1253,10 @@ GetIndexTupleFlags(IndexTuple itup)
 		strcat(flagString, ", (");
 
 	/*
-	 * Bit 0x2000/INDEX_AM_RESERVED_BIT is reserved for AM-specific usage.
-	 * The INDEX_AM_RESERVED_BIT flag was only added in Postgres v11, so
-	 * 0x2000 is used to support earlier versions that lack the flag but still
-	 * use the status bit.
-	 *
-	 * Theoretically, we should only find this status bit set within a hash or
-	 * nbtree IndexTuple (and only on versions 10+ and 11+ respectively).
-	 * However, it's easy to maintain forwards compatibility when pg_hexedit
-	 * is built against earlier Postgres versions, so do so.
+	 * Use specific index AM local name for generic reserved
+	 * INDEX_AM_RESERVED_BIT IndexTuple status bit
 	 */
-	if (itup->t_info & 0x2000)
+	if (itup->t_info & INDEX_AM_RESERVED_BIT)
 	{
 		if (specialType == SPEC_SECT_INDEX_HASH)
 			strcat(flagString, "INDEX_MOVED_BY_SPLIT_MASK|");
@@ -1917,10 +1910,6 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	datalen = itemSize - IndexInfoFindDataOffset(itup->t_info) - 1;
 
 	/*
-	 * On Postgres v11+, account for nbtree pivot tuples with truncated
-	 * attributes.  INCLUDE attributes won't be present, and so must not have
-	 * tags emitted.
-	 *
 	 * This is based on BTreeTupleGetNAtts(), which cannot be called from
 	 * frontend code.
 	 *
@@ -1929,8 +1918,6 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	 * not pointers.  This color scheme is based on the precedent set by GIN's
 	 * internal posting tree pages.
 	 */
-#if PG_VERSION_NUM >= 110000
-
 	if (specialType == SPEC_SECT_INDEX_BTREE &&
 #if PG_VERSION_NUM < 130000
 		(itup->t_info & INDEX_ALT_TID_MASK) != 0)
@@ -1978,8 +1965,6 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 		}
 #endif /* PG_VERSION_NUM >= 120000 */
 	}
-
-#endif /* PG_VERSION_NUM >= 110000 */
 
 	/*
 	 * On Postgres v13+, account for nbtree posting list tuples
@@ -2494,10 +2479,12 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 		 * the start of a posting list) is indicated by using the magic offset
 		 * number GIN_TREE_POSTING.  We use GinIsPostingTree() to test this.
 		 *
-		 * 2. nbtree pivot tuples that have undergone truncation (PostgreSQL
-		 * v11+ only).  This is indicated by the INDEX_ALT_TID_MASK bit having
-		 * been set.  The offset field holds the actual number of attributes.
-		 * The nbtree code uses BTreeTupleGetNAtts() to test this.
+		 * 2. nbtree pivot tuples, which use the item offset field to
+		 * represent how many suffix attributes remain (suffix truncation
+		 * optimization makes the number variable for pivot tuples).  This is
+		 * indicated by the INDEX_ALT_TID_MASK bit having been set.  Note that
+		 * nbtree uses BTreeTupleGetNAtts() to obtain the number of suffix
+		 * attributes.
 		 */
 		relfileOff = relfileOffNext;
 		relfileOffNext += sizeof(uint16);
@@ -2507,7 +2494,6 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 								"t_tid->offsetNumber/GinIsPostingTree()",
 								tagColor, fontColor,
 								relfileOff, relfileOffNext - 1);
-#if PG_VERSION_NUM >= 110000
 		else if (specialType == SPEC_SECT_INDEX_BTREE &&
 #if PG_VERSION_NUM < 130000
 				 (tuple->t_info & INDEX_ALT_TID_MASK) != 0)
@@ -2526,7 +2512,6 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 								tagColor, fontColor,
 								relfileOff, relfileOffNext - 1);
 #endif /* PG_VERSION_NUM >= 130000 */
-#endif /* PG_VERSION_NUM >= 110000 */
 
 		/*
 		 * Regular/common case, where offset number is actually intended to be
@@ -3075,9 +3060,6 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) - 1));
 		EmitXmlTag(InvalidBlockNumber, level, "btm_fastlevel", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel),
-#if PG_VERSION_NUM < 110000
-				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
-#else
 #if PG_VERSION_NUM < 140000
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_oldest_btpo_xact) - 1));
 
@@ -3112,7 +3094,6 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 				   metaStartOffset + offsetof(BTMetaPageData, btm_allequalimage),
 				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
 #endif /* PG_VERSION_NUM < 130000 */
-#endif /* PG_VERSION_NUM < 110000 */
 	}
 	else if (specialType == SPEC_SECT_INDEX_HASH && blkno == HASH_METAPAGE)
 	{
