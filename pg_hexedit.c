@@ -2422,8 +2422,8 @@ EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
  * Note: Caller does not need to pass itemSize from ItemId, because that's
  * redundant in the case of IndexTuples, and because SP-GiST callers will not
  * be able to pass an lp_len for an inner-node-contained IndexTuple.  However,
- * most still pass it, since it's a useful cross-check in the event of a torn
- * page.
+ * most still pass it, since it's a useful cross-check in the event of
+ * corruption such as a torn page.
  */
 static void
 EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
