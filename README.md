@@ -13,6 +13,8 @@ Author (pg_filedump): Patrick Macdonald [`<patrickm@redhat.com>`](mailto:patrick
 
 License: [GNU General Public License version 2](https://opensource.org/licenses/GPL-2.0)
 
+[![Build Status](https://img.shields.io/cirrus/github/petergeoghegan/pg_hexedit/master)](https://cirrus-ci.com/github/petergeoghegan/pg_hexedit)
+
 ## Overview
 
 pg_hexedit is an experimental toolkit to format PostgreSQL heap, sequence, and

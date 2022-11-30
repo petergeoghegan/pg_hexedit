@@ -1,0 +1,75 @@
+task:
+  name: Linux - Debian Bullseye - Autoconf
+
+  env:
+    CPUS: 4
+    BUILD_JOBS: 4
+
+    CCACHE_DIR: /tmp/ccache_dir
+
+    CFLAGS: -Og -g3
+    CXXFLAGS: $CFLAGS
+    CC: ccache gcc
+    CXX: ccache g++
+
+    matrix:
+      - PGBRANCH: master
+      - PGBRANCH: REL_15_STABLE
+      - PGBRANCH: REL_14_STABLE
+      - PGBRANCH: REL_13_STABLE
+      - PGBRANCH: REL_12_STABLE
+      - PGBRANCH: REL_11_STABLE
+    PGHOME: /tmp/postgres-${PGBRANCH}
+
+  compute_engine_instance:
+    image_project: pg-ci-images
+    image: family/pg-ci-bullseye
+    platform: linux
+    cpu: $CPUS
+    memory: 4G
+
+  ccache_cache:
+    folder: ${CCACHE_DIR}
+
+  sysinfo_script: |
+    id
+    uname -a
+    cat /proc/cmdline
+    ulimit -a -H && ulimit -a -S
+    export
+  create_user_script: |
+    useradd -m postgres
+    chown -R postgres:postgres .
+    mkdir -p ${CCACHE_DIR}
+    chown -R postgres:postgres ${CCACHE_DIR}
+    echo '* - memlock 134217728' > /etc/security/limits.d/postgres.conf
+    su postgres -c "ulimit -l -H && ulimit -l -S"
+  setup_core_files_script: |
+    mkdir -m 770 /tmp/cores
+    chown root:postgres /tmp/cores
+    sysctl kernel.core_pattern='/tmp/cores/%e-%s-%p.core'
+  configure_script: |
+    su postgres <<-EOF
+      git clone https://github.com/postgres/postgres.git
+      cd ./postgres
+      git checkout ${PGBRANCH}
+      ./configure --prefix=${PGHOME} --enable-cassert
+    EOF
+  build_script: |
+    su postgres <<-EOF
+      cd ./postgres
+      make -j${BUILD_JOBS}
+    EOF
+  upload_caches: ccache
+  build_script: |
+    su postgres <<-EOF
+      cd ./postgres
+      make install
+    EOF
+  test_script: |
+    su postgres <<-EOF
+      export PATH=${PGHOME}/bin:${PATH}
+      make PG_CONFIG=${PGHOME}/bin/pg_config
+      make PG_CONFIG=${PGHOME}/bin/pg_config dist
+      make check
+    EOF
