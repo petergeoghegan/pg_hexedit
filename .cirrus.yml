@@ -61,7 +61,7 @@ task:
       make -j${BUILD_JOBS}
     EOF
   upload_caches: ccache
-  build_script: |
+  install_script: |
     su postgres <<-EOF
       cd ./postgres
       make install
