@@ -51,8 +51,7 @@
 
 #define HEXEDIT_VERSION					"0.1"
 
-/* Provide system catalog OIDs where unavailable */
-#if PG_VERSION_NUM < 120000
+/* Provide system catalog OIDs for old unsupported versions */
 #define PgAuthidToastTable				4175
 #define PgAuthidToastIndex				4176
 #define PgDatabaseToastTable			4177
@@ -65,7 +64,6 @@
 #define PgSubscriptionToastIndex		4184
 #define PgTablespaceToastTable			4185
 #define PgTablespaceToastIndex			4186
-#endif
 
 /*
  * Postgres 13 commit 50fc694e removed pl_template.h

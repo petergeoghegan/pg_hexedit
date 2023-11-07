@@ -66,10 +66,11 @@
 #define SEQUENCE_MAGIC			0x1717	/* PostgreSQL defined magic number */
 #define EOF_ENCOUNTERED 		(-1)	/* Indicator for partial read */
 
-/* Postgres 12 removed WITH OIDS support.  Preserve compatibility. */
-#if PG_VERSION_NUM >= 120000
+/*
+ * Postgres 12 removed WITH OIDS support.  Preserve on-disk compatibility with
+ * prior versions, even though they're generally unsupported by us
+ */
 #define HEAP_HASOID	HEAP_HASOID_OLD
-#endif
 
 /* Postgres 13 renamed BT_OFFSET_MASK.  Preserve compatibility. */
 #if PG_VERSION_NUM < 130000
@@ -1936,7 +1937,6 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 			exitCode = 1;
 			nattrs = nrelatts;
 		}
-#if PG_VERSION_NUM >= 120000
 		if (BTreeTupleGetHeapTID(itup) != NULL)
 		{
 			/*
@@ -1963,7 +1963,6 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->offsetNumber", COLOR_PINK,
 							htidoffset, (htidoffset + sizeof(uint16)) - 1);
 		}
-#endif /* PG_VERSION_NUM >= 120000 */
 	}
 
 	/*
