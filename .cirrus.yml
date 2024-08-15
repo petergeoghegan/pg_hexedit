@@ -14,6 +14,7 @@ task:
 
     matrix:
       - PGBRANCH: master
+      - PGBRANCH: REL_17_STABLE
       - PGBRANCH: REL_16_STABLE
       - PGBRANCH: REL_15_STABLE
       - PGBRANCH: REL_14_STABLE
