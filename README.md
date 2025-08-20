@@ -166,18 +166,30 @@ git repo, and following the instructions that it provides:
 
 ## Initial setup on MacOS
 
-These steps should help you install pg_hexedit on MacOS (tested on Catalina
+These steps should help you install pg_hexedit on MacOS (tested on Catalina and Apple Silicon
 with installed [Homebrew](https://brew.sh/)):
 
 1. `brew install automake autoconf libtool wxmac`
-1. Get [wxHexEditor source code](https://github.com/EUA/wxHexEditor) and edit
-`Makefile` removing the line mentioning OpenMP (`LIBS += -lgomp`)
-1. Build wxHexEditor (`make`)
-1. Get pg_hexedit source code, build (`make`) with `$PATH` including path
+
+**Note for Apple Silicon (M1/M2/M3) Macs:** Building wxHexEditor from source currently fails due to x86 SSE intrinsics compatibility issues. Consider using an alternative hex editor like [Hex Fiend](https://hexfiend.com/) (`brew install --cask hex-fiend`) and configure `hexedit.cfg` accordingly.
+
+2. Get [wxHexEditor source code](https://github.com/EUA/wxHexEditor) and edit
+`Makefile` removing the line mentioning OpenMP (`LIBS += -lgomp`). Also configure with Python: `cd udis86 && ./configure --with-python=/opt/homebrew/bin/python3`
+3. Build wxHexEditor (`make`)
+4. Get pg_hexedit source code, build (`make`) with `$PATH` including path
 to PostgreSQL binaries (Postgres installed via Homebrew – 
 `brew install postgresql` – should be enough)
-1. In hexedit.cfg, check `export HEXEDITOR`, it needs to point to
+5. In hexedit.cfg, check `export HEXEDITOR`, it needs to point to
 the `wxHexEditor` binary (created above)
+
+### Alternative: Using Hex Fiend (recommended for Apple Silicon)
+
+If wxHexEditor compilation fails:
+
+1. Install Hex Fiend: `brew install --cask hex-fiend`
+2. Build pg_hexedit only: `make` (in pg_hexedit directory)  
+3. Edit `hexedit.cfg` to set: `export HEXEDITOR="open -a 'Hex Fiend'"` (or path to your preferred hex editor)
+4. Generate tags manually: `./pg_hexedit file > file.tags` then open file in Hex Fiend
 
 Note: The convenience scripts set `$HOME` to the current working directory so
 that wxHexEditor reads its settings from a convenience-script-generated
