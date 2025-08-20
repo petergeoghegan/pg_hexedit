@@ -182,17 +182,17 @@ to PostgreSQL binaries (Postgres installed via Homebrew –
 5. In hexedit.cfg, check `export HEXEDITOR`, it needs to point to
 the `wxHexEditor` binary (created above)
 
-### Alternative: Using Hex Fiend (for Apple Silicon when wxHexEditor fails)
+### Alternative: Using ImHex (recommended for Apple Silicon when wxHexEditor fails)
 
-If wxHexEditor compilation fails, you can still use pg_hexedit to analyze PostgreSQL files:
+If wxHexEditor compilation fails, ImHex provides a modern alternative with pattern matching capabilities:
 
-1. Install Hex Fiend: `brew install --cask hex-fiend`
-2. Build pg_hexedit only: `make` (in pg_hexedit directory)  
-3. Generate XML annotations: `./pg_hexedit file > file.tags`
-4. Open the file in Hex Fiend for hex viewing
-5. Reference the `.tags` file separately for PostgreSQL structure information
+1. Install ImHex: `brew install --cask imhex`
+2. Build pg_hexedit only: `make` (in pg_hexedit directory)
+3. Open PostgreSQL files directly in ImHex for hex viewing with built-in analysis tools
 
-**Note:** Hex Fiend does not automatically import wxHexEditor XML tags, but the generated annotations are still valuable for understanding PostgreSQL page structure.
+ImHex offers advanced pattern matching and data structure visualization that can help analyze PostgreSQL page layouts, though it uses its own pattern language rather than importing wxHexEditor XML tags.
+
+**Alternative:** You can still generate pg_hexedit XML annotations (`./pg_hexedit file > file.tags`) and reference them alongside any hex editor for detailed PostgreSQL structure information.
 
 Note: The convenience scripts set `$HOME` to the current working directory so
 that wxHexEditor reads its settings from a convenience-script-generated
