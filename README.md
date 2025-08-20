@@ -182,14 +182,17 @@ to PostgreSQL binaries (Postgres installed via Homebrew –
 5. In hexedit.cfg, check `export HEXEDITOR`, it needs to point to
 the `wxHexEditor` binary (created above)
 
-### Alternative: Using Hex Fiend (recommended for Apple Silicon)
+### Alternative: Using Hex Fiend (for Apple Silicon when wxHexEditor fails)
 
-If wxHexEditor compilation fails:
+If wxHexEditor compilation fails, you can still use pg_hexedit to analyze PostgreSQL files:
 
 1. Install Hex Fiend: `brew install --cask hex-fiend`
 2. Build pg_hexedit only: `make` (in pg_hexedit directory)  
-3. Edit `hexedit.cfg` to set: `export HEXEDITOR="open -a 'Hex Fiend'"` (or path to your preferred hex editor)
-4. Generate tags manually: `./pg_hexedit file > file.tags` then open file in Hex Fiend
+3. Generate XML annotations: `./pg_hexedit file > file.tags`
+4. Open the file in Hex Fiend for hex viewing
+5. Reference the `.tags` file separately for PostgreSQL structure information
+
+**Note:** Hex Fiend does not automatically import wxHexEditor XML tags, but the generated annotations are still valuable for understanding PostgreSQL page structure.
 
 Note: The convenience scripts set `$HOME` to the current working directory so
 that wxHexEditor reads its settings from a convenience-script-generated
