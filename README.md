@@ -171,7 +171,7 @@ with installed [Homebrew](https://brew.sh/)):
 
 1. `brew install automake autoconf libtool wxmac`
 
-**Note for Apple Silicon (M1/M2/M3) Macs:** Building wxHexEditor from source currently fails due to x86 SSE intrinsics compatibility issues. Consider using an alternative hex editor like [Hex Fiend](https://hexfiend.com/) (`brew install --cask hex-fiend`) and configure `hexedit.cfg` accordingly.
+**Note for Apple Silicon (M1/M2/M3) Macs:** Building wxHexEditor from source requires some modifications but is possible. The SSE intrinsics are properly wrapped with conditional compilation, so the build should succeed with the Python configuration fix below.
 
 2. Get [wxHexEditor source code](https://github.com/EUA/wxHexEditor) and edit
 `Makefile` removing the line mentioning OpenMP (`LIBS += -lgomp`). Also configure with Python: `cd udis86 && ./configure --with-python=/opt/homebrew/bin/python3`
@@ -182,17 +182,15 @@ to PostgreSQL binaries (Postgres installed via Homebrew –
 5. In hexedit.cfg, check `export HEXEDITOR`, it needs to point to
 the `wxHexEditor` binary (created above)
 
-### Alternative: Using ImHex (recommended for Apple Silicon when wxHexEditor fails)
+### Alternative: Using ImHex (if preferred)
 
-If wxHexEditor compilation fails, ImHex provides a modern alternative with pattern matching capabilities:
+If you prefer a modern hex editor with pattern matching capabilities:
 
 1. Install ImHex: `brew install --cask imhex`
 2. Build pg_hexedit only: `make` (in pg_hexedit directory)
 3. Open PostgreSQL files directly in ImHex for hex viewing with built-in analysis tools
 
-ImHex offers advanced pattern matching and data structure visualization that can help analyze PostgreSQL page layouts, though it uses its own pattern language rather than importing wxHexEditor XML tags.
-
-**Alternative:** You can still generate pg_hexedit XML annotations (`./pg_hexedit file > file.tags`) and reference them alongside any hex editor for detailed PostgreSQL structure information.
+ImHex offers advanced pattern matching and data structure visualization, though it uses its own pattern language rather than importing wxHexEditor XML tags. For full pg_hexedit functionality with XML annotations, wxHexEditor remains the recommended choice.
 
 Note: The convenience scripts set `$HOME` to the current working directory so
 that wxHexEditor reads its settings from a convenience-script-generated
