@@ -171,15 +171,14 @@ with installed [Homebrew](https://brew.sh/)):
 
 1. `brew install automake autoconf libtool wxmac`
 
-**Note for Apple Silicon (M1/M2/M3) Macs:** Building wxHexEditor from source requires some modifications but is possible. The SSE intrinsics are properly wrapped with conditional compilation, so the build should succeed with the Python configuration fix below.
-
 2. Get [wxHexEditor source code](https://github.com/EUA/wxHexEditor) and edit
-`Makefile` removing the line mentioning OpenMP (`LIBS += -lgomp`). Also configure with Python: `cd udis86 && ./configure --with-python=/opt/homebrew/bin/python3`
-3. Build wxHexEditor (`make`)
-4. Get pg_hexedit source code, build (`make`) with `$PATH` including path
+`Makefile` removing the line mentioning OpenMP (`LIBS += -lgomp`)
+3. **For Apple Silicon (M1/M2/M3) Macs:** Configure udis86 with Python: `cd udis86 && ./configure --with-python=/opt/homebrew/bin/python3`
+4. Build wxHexEditor (`make`)
+5. Get pg_hexedit source code, build (`make`) with `$PATH` including path
 to PostgreSQL binaries (Postgres installed via Homebrew – 
 `brew install postgresql` – should be enough)
-5. In hexedit.cfg, check `export HEXEDITOR`, it needs to point to
+6. In hexedit.cfg, check `export HEXEDITOR`, it needs to point to
 the `wxHexEditor` binary (created above)
 
 ### Alternative: Using ImHex (if preferred)
