@@ -166,7 +166,7 @@ git repo, and following the instructions that it provides:
 
 ## Initial setup on MacOS
 
-These steps should help you install pg_hexedit on MacOS (tested on Catalina and Apple Silicon
+These steps should help you install pg_hexedit on MacOS (tested on Catalina and Apple Silicon M1 on Sequoia 15.6
 with installed [Homebrew](https://brew.sh/)):
 
 1. `brew install automake autoconf libtool wxmac`
@@ -181,15 +181,6 @@ to PostgreSQL binaries (Postgres installed via Homebrew –
 6. In hexedit.cfg, check `export HEXEDITOR`, it needs to point to
 the `wxHexEditor` binary (created above)
 
-### Alternative: Using ImHex (if preferred)
-
-If you prefer a modern hex editor with pattern matching capabilities:
-
-1. Install ImHex: `brew install --cask imhex`
-2. Build pg_hexedit only: `make` (in pg_hexedit directory)
-3. Open PostgreSQL files directly in ImHex for hex viewing with built-in analysis tools
-
-ImHex offers advanced pattern matching and data structure visualization, though it uses its own pattern language rather than importing wxHexEditor XML tags. For full pg_hexedit functionality with XML annotations, wxHexEditor remains the recommended choice.
 
 Note: The convenience scripts set `$HOME` to the current working directory so
 that wxHexEditor reads its settings from a convenience-script-generated
