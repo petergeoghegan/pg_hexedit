@@ -72,11 +72,6 @@
  */
 #define HEAP_HASOID	HEAP_HASOID_OLD
 
-/* Postgres 13 renamed BT_OFFSET_MASK.  Preserve compatibility. */
-#if PG_VERSION_NUM < 130000
-#define BT_OFFSET_MASK	BT_N_KEYS_OFFSET_MASK
-#endif
-
 #define COLOR_FONT_STANDARD		"#313739"
 
 #define COLOR_BLACK				"#000000"
@@ -1919,12 +1914,7 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	 * not pointers.  This color scheme is based on the precedent set by GIN's
 	 * internal posting tree pages.
 	 */
-	if (specialType == SPEC_SECT_INDEX_BTREE &&
-#if PG_VERSION_NUM < 130000
-		(itup->t_info & INDEX_ALT_TID_MASK) != 0)
-#else
-		 BTreeTupleIsPivot(itup)) /* This inline function is only in Postgres 13 */
-#endif /* PG_VERSION_NUM < 130000 */
+	if (specialType == SPEC_SECT_INDEX_BTREE && BTreeTupleIsPivot(itup))
 	{
 		nattrs =
 			(ItemPointerGetOffsetNumberNoCheck(&(itup)->t_tid) &
@@ -1966,9 +1956,8 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	}
 
 	/*
-	 * On Postgres v13+, account for nbtree posting list tuples
+	 * nbtree posting list tuples
 	 */
-#if PG_VERSION_NUM >= 130000
 	else if (specialType == SPEC_SECT_INDEX_BTREE && BTreeTupleIsPosting(itup))
 	{
 		uint32	postoffset = tupHeaderOff + BTreeTupleGetPostingOffset(itup);
@@ -2005,7 +1994,6 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 			postoffset += sizeof(uint16);
 		}
 	}
-#endif /* PG_VERSION_NUM >= 130000 */
 
 	/*
 	 * Finally, emit pg_attribute-wise columns, or plain gray tag that
@@ -2493,24 +2481,17 @@ EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
 								"t_tid->offsetNumber/GinIsPostingTree()",
 								tagColor, fontColor,
 								relfileOff, relfileOffNext - 1);
-		else if (specialType == SPEC_SECT_INDEX_BTREE &&
-#if PG_VERSION_NUM < 130000
-				 (tuple->t_info & INDEX_ALT_TID_MASK) != 0)
-#else
-				 BTreeTupleIsPivot(tuple)) /* This macro is only in Postgres 13 */
-#endif /* PG_VERSION_NUM < 130000 */
+		else if (specialType == SPEC_SECT_INDEX_BTREE && BTreeTupleIsPivot(tuple))
 			EmitXmlTupleTagFont(blkno, offset,
 								"t_tid->offsetNumber/BTreeTupleGetNAtts()",
 								tagColor, fontColor,
 								relfileOff, relfileOffNext - 1);
-#if PG_VERSION_NUM >= 130000
 		else if (specialType == SPEC_SECT_INDEX_BTREE &&
 				 BTreeTupleIsPosting(tuple))
 			EmitXmlTupleTagFont(blkno, offset,
 								"t_tid->offsetNumber/BTreeTupleGetNPosting()",
 								tagColor, fontColor,
 								relfileOff, relfileOffNext - 1);
-#endif /* PG_VERSION_NUM >= 130000 */
 
 		/*
 		 * Regular/common case, where offset number is actually intended to be
@@ -3083,16 +3064,11 @@ EmitXmlPageMeta(BlockNumber blkno, uint32 level)
 
 		EmitXmlTag(InvalidBlockNumber, level, "btm_last_cleanup_num_heap_tuples", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_heap_tuples),
-#if PG_VERSION_NUM < 130000
-				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
-#else
 				   (metaStartOffset + offsetof(BTMetaPageData, btm_allequalimage) - 1));
 
-		/* New metapage field added in Postgres 13: */
 		EmitXmlTag(InvalidBlockNumber, level, "btm_allequalimage", COLOR_PINK,
 				   metaStartOffset + offsetof(BTMetaPageData, btm_allequalimage),
 				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
-#endif /* PG_VERSION_NUM < 130000 */
 	}
 	else if (specialType == SPEC_SECT_INDEX_HASH && blkno == HASH_METAPAGE)
 	{

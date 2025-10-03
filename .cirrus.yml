@@ -20,7 +20,6 @@ task:
       - PGBRANCH: REL_15_STABLE
       - PGBRANCH: REL_14_STABLE
       - PGBRANCH: REL_13_STABLE
-      - PGBRANCH: REL_12_STABLE
     PGHOME: /tmp/postgres-${PGBRANCH}
 
   compute_engine_instance:
