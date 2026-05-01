@@ -165,18 +165,21 @@ git repo, and following the instructions that it provides:
 
 ## Initial setup on MacOS
 
-These steps should help you install pg_hexedit on MacOS (tested on Catalina
+These steps should help you install pg_hexedit on MacOS (tested on Catalina and Apple Silicon M1 on Sequoia 15.6
 with installed [Homebrew](https://brew.sh/)):
 
 1. `brew install automake autoconf libtool wxmac`
-1. Get [wxHexEditor source code](https://github.com/EUA/wxHexEditor) and edit
+
+2. Get [wxHexEditor source code](https://github.com/EUA/wxHexEditor) and edit
 `Makefile` removing the line mentioning OpenMP (`LIBS += -lgomp`)
-1. Build wxHexEditor (`make`)
-1. Get pg_hexedit source code, build (`make`) with `$PATH` including path
+3. **For Apple Silicon (M1/M2/M3) Macs:** Configure udis86 with Python: `cd udis86 && ./configure --with-python=/opt/homebrew/bin/python3`
+4. Build wxHexEditor (`make`)
+5. Get pg_hexedit source code, build (`make`) with `$PATH` including path
 to PostgreSQL binaries (Postgres installed via Homebrew – 
 `brew install postgresql` – should be enough)
-1. In hexedit.cfg, check `export HEXEDITOR`, it needs to point to
+6. In hexedit.cfg, check `export HEXEDITOR`, it needs to point to
 the `wxHexEditor` binary (created above)
+
 
 Note: The convenience scripts set `$HOME` to the current working directory so
 that wxHexEditor reads its settings from a convenience-script-generated
