@@ -30,6 +30,7 @@
 #define FRONTEND 1
 #include "postgres.h"
 #include "common/fe_memutils.h"
+#include "utils/elog.h"
 
 /*
  * We must #undef frontend because certain headers are not really supposed to
@@ -61,6 +62,39 @@
 #include "storage/checksum.h"
 #include "storage/checksum_impl.h"
 #include "utils/pg_crc.h"
+
+/*
+ * Backend error-reporting stubs.
+ *
+ * Because we #undef FRONTEND before including the access headers, a few
+ * static inline functions that live outside the headers' own FRONTEND guards
+ * (notably typalign_to_alignby() in access/tupmacs.h) are compiled with their
+ * backend elog(ERROR, ...) paths.  Those paths are unreachable for valid input
+ * but still produce undefined references at link time.  Provide minimal stubs
+ * so the binary links; if we ever do reach one, abort loudly.
+ */
+bool
+errstart_cold(int elevel, const char *domain)
+{
+	fprintf(stderr, "pg_hexedit: unexpected backend error path reached\n");
+	abort();
+}
+bool
+errstart(int elevel, const char *domain)
+{
+	fprintf(stderr, "pg_hexedit: unexpected backend error path reached\n");
+	abort();
+}
+void
+errfinish(const char *filename, int lineno, const char *funcname)
+{
+	abort();
+}
+int
+errmsg_internal(const char *fmt,...)
+{
+	return 0;
+}
 
 #define HEXEDIT_VERSION			"0.1"
 #define SEQUENCE_MAGIC			0x1717	/* PostgreSQL defined magic number */
@@ -293,7 +327,7 @@ static void EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 								   uint32 tupHeaderOff, int itemSize);
 static void EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
 								  uint32 relfileOff, unsigned char *tupdata,
-								  bits8 *t_bits, int nattrs, int datalen);
+								  uint8 *t_bits, int nattrs, int datalen);
 static void EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
 							 HeapTupleHeader htup, uint32 relfileOff,
 							 int itemSize);
@@ -961,7 +995,11 @@ GetPageLsn(Page page)
 {
 	PageHeader	pageHeader = (PageHeader) page;
 
+#if PG_VERSION_NUM < 190000
 	return PageXLogRecPtrGet(pageHeader->pd_lsn);
+#else
+	return PageXLogRecPtrGet(&pageHeader->pd_lsn);
+#endif
 }
 
 /*
@@ -1832,7 +1870,7 @@ EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
 					  uint32 relfileOff, HeapTupleHeader htup, int itemSize)
 {
 	unsigned char *tupdata = (unsigned char *) htup + htup->t_hoff;
-	bits8	   *t_bits;
+	uint8	   *t_bits;
 	int			nattrs = HeapTupleHeaderGetNatts(htup);
 	int			datalen = itemSize - htup->t_hoff;
 
@@ -1870,7 +1908,7 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 					   int itemSize)
 {
 	unsigned char *tupdata;
-	bits8	   *t_bits;
+	uint8	   *t_bits;
 	int			datalen;
 	int			nattrs = nrelatts;
 	bool		haveargreltuple = true;
@@ -1902,7 +1940,7 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
 	/* Set up state for emitting attributes */
 	tupdata = (unsigned char *) itup + IndexInfoFindDataOffset(itup->t_info);
 	t_bits = IndexTupleHasNulls(itup) ?
-		(bits8 *) ((unsigned char *) itup + sizeof(IndexTupleData)) : NULL;
+		(uint8 *) ((unsigned char *) itup + sizeof(IndexTupleData)) : NULL;
 	datalen = itemSize - IndexInfoFindDataOffset(itup->t_info) - 1;
 
 	/*
@@ -2020,7 +2058,7 @@ EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
  */
 static void
 EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
-					  uint32 relfileOff, unsigned char *tupdata, bits8 *t_bits,
+					  uint32 relfileOff, unsigned char *tupdata, uint8 *t_bits,
 					  int nattrs, int datalen)
 {
 	unsigned char *attptr = tupdata;
@@ -3492,9 +3530,9 @@ EmitXmlPostingTreeTids(Page page, BlockNumber blkno)
 		offsetnum = FirstOffsetNumber;
 		seg = GinDataLeafPageGetPostingList(page);
 		nextseg = GinNextPostingListSegment(seg);
-		itemOffsetNext = itemOffset + ((Pointer) nextseg - (Pointer) seg);
+		itemOffsetNext = itemOffset + ((char *) nextseg - (char *) seg);
 
-		endptr = ((Pointer) seg) + GinDataLeafPageGetPostingListSize(page);
+		endptr = ((char *) seg) + GinDataLeafPageGetPostingListSize(page);
 		do
 		{
 			EmitXmlTupleTag(blkno, offsetnum, "GinPostingList->first->bi_hi", COLOR_BLUE_LIGHT,
@@ -3522,7 +3560,7 @@ EmitXmlPostingTreeTids(Page page, BlockNumber blkno)
 			itemOffset = itemOffsetNext;
 			seg = nextseg;
 			nextseg = GinNextPostingListSegment(seg);
-			itemOffsetNext = itemOffset + ((Pointer) nextseg - (Pointer) seg);
+			itemOffsetNext = itemOffset + ((char *) nextseg - (char *) seg);
 			offsetnum = OffsetNumberNext(offsetnum);
 		}
 		while ((Pointer) nextseg <= endptr);
