@@ -2,125 +2,72 @@
 #
 # Simple pg_hexedit smoke tests.  These are intended to be run by "make check",
 # with the root directory as current working directory.
+#
+# pg_hexedit is a pure generator: its output is a function of the options and
+# the PostgreSQL headers it was built against, so tests golden-compare
+# generated patterns.  The leading provenance comment block (version,
+# timestamp, build parameters) varies by build and is stripped before
+# comparison.
 
-# The 1249 input file comes from the first block of pg_attribute after initdb.
-# This just tests the heap annotation functions, since the heapam hasn't really
-# changed across Postgres versions supported by pg_hexedit.
+# Strip the leading comment block (everything up to the first non-// line)
+normalize() {
+  awk 'skip == 0 && /^\/\// { next } { skip = 1; print }' "$1"
+}
 
-# Generate tags with no attributes, using -x option equal to page's LSN (this
-# -x option does not affect output):
+fail=0
+
+check() {
+  name=$1
+  expected=$2
+  output=$3
+
+  normalize "$output" > "$output.norm"
+  normalize "$expected" > "$output.expected.norm"
+  if ! diff -u "$output.expected.norm" "$output.norm" > "t/$name.diff"
+  then
+    echo "Failed: $name"
+    cat "t/$name.diff"
+    fail=1
+  else
+    echo "ok: $name"
+  fi
+}
+
+# Structure-only pattern (no tuple descriptor): annotates page headers, line
+# pointers, tuple headers, special sections, and metapages for every AM
 set -x
-./pg_hexedit -x "0/00000028" t/1249 > t/output_no_attributes.tags || exit 1
+./pg_hexedit > t/output_no_attributes.hexpat || exit 1
 set +x
+check no_attributes t/expected_no_attributes.hexpat t/output_no_attributes.hexpat
 
-# Normalize:
-sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_no_attributes.tags
-sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_no_attributes.tags
-diff t/expected_no_attributes.tags t/output_no_attributes.tags > t/no_attributes.diff
-error=$?
-if [ $error -ne 0 ]
+# Legacy 3-value -D attribute list (no type OIDs)
+ATTRLIST='4,"attrelid",i,64,"attname",c,4,"atttypid",i,2,"attlen",s,2,"attnum",s,1,"attalign",c,-1,"attacl",i'
+set -x
+./pg_hexedit -D "$ATTRLIST" > t/output_attributes_legacy.hexpat || exit 1
+set +x
+check attributes_legacy t/expected_attributes_legacy.hexpat t/output_attributes_legacy.hexpat
+
+# Modern 4-value -A attribute list with type OIDs, including varlena columns,
+# a dropped column, and an attribute name that is not a valid identifier
+ATTRLIST='4,"id",i,23,1,"flag",c,16,8,"val",d,20,-1,"........pg.dropped.4........",i,0,-1,"name",i,25,-1,"strange name!",i,17'
+set -x
+./pg_hexedit -A "$ATTRLIST" -N testrel > t/output_attributes.hexpat || exit 1
+set +x
+check attributes t/expected_attributes.hexpat t/output_attributes.hexpat
+
+# Block range window and forced segment number (relation-relative TIDs)
+set -x
+./pg_hexedit -A '4,"id",i,23' -R 100 199 -n 1 > t/output_range_segment.hexpat || exit 1
+set +x
+check range_segment t/expected_range_segment.hexpat t/output_range_segment.hexpat
+
+if [ $fail -ne 0 ]
 then
-  echo "Failed to generate correct pg_attribute tag file":
-  cat t/no_attributes.diff
   exit 1
 fi
 
-# Generate tags with attributes:
-ATTRLIST='4,"attrelid",i,64,"attname",c,4,"atttypid",i,4,"attstattarget",i,2,"attlen",s,2,"attnum",s,4,"attndims",i,4,"attcacheoff",i,4,"atttypmod",i,1,"attbyval",c,1,"attstorage",c,1,"attalign",c,1,"attnotnull",c,1,"atthasdef",c,1,"atthasmissing",c,1,"attidentity",c,1,"attisdropped",c,1,"attislocal",c,4,"attinhcount",i,4,"attcollation",i,-1,"attacl",i,-1,"attoptions",i,-1,"attfdwoptions",i,-1,"attmissingval",d'
-set -x
-./pg_hexedit -D "$ATTRLIST" t/1249 > t/output_attributes.tags || exit 1
-set +x
-
-# Normalize:
-sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_attributes.tags
-sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_attributes.tags
-diff t/expected_attributes.tags t/output_attributes.tags > t/attributes.diff
-error=$?
-if [ $error -ne 0 ]
-then
-  echo "Failed to generate correct pg_attribute tag file (with attributes)":
-  cat t/attributes.diff
-  exit 1
-fi
-
-# Generate almost-empty tag file by avoiding page LSN:
-set -x
-./pg_hexedit -x "0/00000029" t/1249 > t/output_empty_lsn.tags || exit 1
-set +x
-
-# Normalize:
-sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_empty_lsn.tags
-sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_empty_lsn.tags
-diff t/expected_empty_lsn.tags t/output_empty_lsn.tags > t/empty_lsn.diff
-error=$?
-if [ $error -ne 0 ]
-then
-  echo "Failed to generate correct pg_attribute tag file (-x test)":
-  cat t/empty_lsn.diff
-  exit 1
-fi
-
-# The 2685 input file comes from the first non-metapage block of
-# pg_attribute_relid_attnam_index after initdb.  This block doesn't have any
-# explicitly truncated attributes on PostgreSQL 11, allowing it to work on all
-# supported PostgreSQL versions without special consideration.
-
-# Generate tags with no attributes, forcing the segment number to 1 to avoid
-# interpreting this page as a metapage:
-set -x
-./pg_hexedit -n 1 t/2685 > t/output_no_attributes_idx.tags || exit 1
-set +x
-
-# Normalize:
-sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_no_attributes_idx.tags
-sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_no_attributes_idx.tags
-diff t/expected_no_attributes_idx.tags t/output_no_attributes_idx.tags > t/no_attributes_idx.diff
-error=$?
-if [ $error -ne 0 ]
-then
-  echo "Failed to generate correct pg_attribute_relid_attnam_index tag file":
-  cat t/no_attributes_idx.diff
-  exit 1
-fi
-
-# Generate tags with attributes, forcing the segment number to 1:
-ATTRLIST='4,"attrelid",i,-2,"attname",c'
-set -x
-./pg_hexedit -n 1 -D "$ATTRLIST"  t/2685 > t/output_attributes_idx.tags || exit 1
-set +x
-
-# Normalize:
-sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_attributes_idx.tags
-sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_attributes_idx.tags
-diff t/expected_attributes_idx.tags t/output_attributes_idx.tags > t/attributes_idx.diff
-error=$?
-if [ $error -ne 0 ]
-then
-  echo "Failed to generate correct pg_attribute_relid_attnam_index tag file (with attributes)":
-  cat t/attributes_idx.diff
-  exit 1
-fi
-
-# Generate single leaf page tag with -l option, forcing the segment number to 1
-# to avoid interpreting this page as a metapage:
-set -x
-./pg_hexedit -n 1 -l t/2685 > t/output_leaf_idx.tags || exit 1
-set +x
-
-# Normalize:
-sed -i '2s/.*/<!-- Dump created on: 00:00:00 Friday, May 18 2018 -->/' t/output_leaf_idx.tags
-sed -i '6s/.*/<!-- pg_hexedit build PostgreSQL version: all -->/' t/output_leaf_idx.tags
-diff t/expected_leaf_idx.tags t/output_leaf_idx.tags > t/leaf_idx.diff
-error=$?
-if [ $error -ne 0 ]
-then
-  echo "Failed to generate correct pg_attribute_relid_attnam_index tag file (with -l option)":
-  cat t/leaf_idx.diff
-  exit 1
-fi
-
-echo -e "\nAll tests pass\n"
-echo -e "Tip: the file t/1249 can be opened within wxHexEditor.
-Import tags from either \"output_no_attributes.tags\" or \"output_attributes.tags\" or \"output_empty_lsn.tags\".\n"
-echo -e "Tip: the file t/2685 can be opened within wxHexEditor.
-Import tags from either \"output_no_attributes_idx.tags\" or \"output_attributes_idx.tags\" or \"output_leaf_idx.tags\".\n"
+echo ""
+echo "All tests pass"
+echo ""
+echo "Tip: generate a pattern for one of your own relations and open it in"
+echo "ImHex with:  ./relation_hexedit <relname>"

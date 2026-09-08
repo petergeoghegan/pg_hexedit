@@ -1,5 +1,19 @@
 *.swp
-.wxHexEditor
 /*.o
-/pg_filenodemapdata
 /pg_hexedit
+
+# generated demo bundle and throwaway spike artifacts
+/demo/
+/imhex-spike/
+
+# test scaffolding
+/t/output_*
+/t/*.diff
+/t/*.norm
+
+# pg_hexedit_poke build artifacts
+/pg_hexedit_poke/*.o
+/pg_hexedit_poke/*.so
+/pg_hexedit_poke/*.dylib
+/pg_hexedit_poke/*.bc
+/pg_hexedit_poke/.deps/

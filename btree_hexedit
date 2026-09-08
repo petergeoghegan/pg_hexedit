@@ -1,7 +1,9 @@
 #!/bin/bash
 #
-# btree_hexedit: Similar to relation_hexedit, but sets the B-Tree non-leaf
-# children of the root as offsets, as well as an offset to the root itself.
+# btree_hexedit: Like relation_hexedit, but first prints the byte offsets of
+# the B-Tree root page and the non-leaf children of the root, to paste into
+# ImHex's "Goto" dialog for quick navigation.  (Pattern Data's per-block rows
+# serve the same purpose once evaluation finishes.)
 
 usage() {
   cat <<EOM
@@ -18,33 +20,22 @@ source ./hexedit.cfg
 
 relname=$1
 
-# Generate offsets to all non-leaf children of the root pages in "Go to Offset"
-# dialog cache (only do this when they're non-leaf pages to avoid having an
-# offset to every page in the index).
 if ! psql --no-psqlrc -c "CREATE EXTENSION IF NOT EXISTS pageinspect"
 then
   echo "creating pageinspect extension failed"
   exit 1
 fi
 
-if ! TRUE_ROOT_OFFSET=$(psql --no-psqlrc -tA -c "SELECT 'GoToOffset0=' || (root * 2^13)::text FROM bt_metap('$relname')")
+echo "Root page and non-leaf children of root (paste offsets into ImHex Goto):"
+if ! psql --no-psqlrc -P pager=off -c "SELECT 'root' AS page, root AS block,
+       (root * 2^13)::int8 AS offset_bytes FROM bt_metap('$relname')
+UNION ALL
+SELECT 'child of root', substring(ctid::text from '([0-9]+)')::int8,
+       (substring(ctid::text from '([0-9]+)')::int8 * (2^13))::int8
+FROM bt_page_items('$relname', (SELECT root::int4 FROM bt_metap('$relname') WHERE level > 1));"
 then
-  echo "obtaining true root block for offset dialog failed; is $relname a btree?"
+  echo "obtaining root/children offsets failed; is $relname a btree?"
   exit 1
 fi
 
-if ! ROOT_CHILD_OFFSETS=$(psql --no-psqlrc -tA -c "WITH offset_strings(line) AS (
-  SELECT 'GoToOffset' || ROW_NUMBER() OVER() || '=' || (substring(ctid::text from '([0-9]+)')::int8 * (2^13))
-  FROM bt_page_items('$relname', (SELECT root::int4 FROM bt_metap('$relname') where level > 1))
-)
-SELECT string_agg(line, chr(10)) FROM offset_strings;")
-then
-  echo "obtaining non-leaf children of root block for offset dialog failed"
-  exit 1
-fi
-# The root page is also added as a separate offset.
-OFFSETS="${TRUE_ROOT_OFFSET}"$'\n'"${ROOT_CHILD_OFFSETS}"
-
-export OFFSETS
-echo "Tip: 'Go to Offset' dialog (shortcut: Ctrl + G) will have children of root and root offsets cached"
 ./__open_relation "$relname"

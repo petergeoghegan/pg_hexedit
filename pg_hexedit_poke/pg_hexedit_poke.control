@@ -1,0 +1,6 @@
+# pg_hexedit_poke - dev-only raw shared-buffer page poking for pg_hexedit
+comment = 'write raw bytes into a shared-buffer page (dev only, not crash safe)'
+default_version = '1.0'
+module_pathname = '$libdir/pg_hexedit_poke'
+relocatable = true
+superuser = true

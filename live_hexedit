@@ -1,0 +1,125 @@
+#!/bin/bash
+#
+# live_hexedit: view a relation in ImHex with pages served live from the
+# server, instead of from the relation file on disk.
+#
+# Default (gdb) mode serves ImHex's built-in GDB Server provider directly
+# over a local socket -- no file involved at all.  Pages come from
+# shared_buffers via contrib/pageinspect's get_raw_page() (dirty pages
+# included, no CHECKPOINT).  Generated patterns start each evaluation by
+# flushing the provider's read cache, so re-evaluating the pattern always
+# shows the server's current bytes.  The provider is read-only; use
+# relation_hexedit for the editing workflow.
+#
+# "mirror" mode instead maintains a local read-only mirror file refreshed
+# from the server and opens that in ImHex.
+
+usage() {
+  cat <<EOM
+  Usage:
+  $(basename "$0") relname [port]     # GDB Server provider mode (default, read-only)
+  $(basename "$0") relname write      # GDB mode, edits write back to shared_buffers
+  $(basename "$0") relname mirror     # mirror-file mode
+
+EOM
+  exit 0
+}
+
+[ -z "$1" ] && { usage; }
+
+source ./hexedit.cfg
+
+relname=$1
+mode=gdb
+port=4441
+writable=""
+case "$2" in
+  mirror) mode=mirror ;;
+  write) writable="--writable" ;;
+  "") ;;
+  *) port=$2 ;;
+esac
+
+if ! command -v python3 > /dev/null 2>&1
+then
+  echo "python3 is required for the live bridge"
+  exit 1
+fi
+
+# Build the tuple descriptor and generate the pattern, exactly as
+# __open_relation does for the filesystem workflow
+export PGCLIENTENCODING="UTF8"
+if ! ATTRLIST=$(psql --no-psqlrc -tA -c "SELECT string_agg(attlen || ',\"' || attname  || '\",' || attalign::text || ',' || atttypid, ',' ORDER BY attnum)
+FROM pg_attribute WHERE attrelid = '$relname'::regclass AND attnum > 0;")
+then
+  echo "failed to generate attrlist string for -A option"
+  exit 1
+fi
+
+saferelname=$(printf '%s' "$relname" | tr -c 'A-Za-z0-9._-' '_')
+PATTERNFILE="${TMPDIR:-/tmp}/pg_hexedit_live_$saferelname.hexpat"
+
+# shellcheck disable=SC2086
+if ! ./pg_hexedit $EXTRAFLAGS -A "$ATTRLIST" -R "$MIN_BLOCK_TAGS" "$MAX_BLOCK_TAGS" -N "$relname" > "$PATTERNFILE"
+then
+  echo "Error encountered by pg_hexedit. Could not generate pattern."
+  exit 1
+fi
+echo "Generated pattern: $PATTERNFILE"
+
+# Install into ImHex's user patterns folder (single auto-offered pattern
+# policy, matching __open_relation)
+PATTERNDIR=""
+if [ -d "$HOME/Library/Application Support/imhex" ]; then
+  PATTERNDIR="$HOME/Library/Application Support/imhex/patterns"
+elif [ -d "${XDG_DATA_HOME:-$HOME/.local/share}/imhex" ]; then
+  PATTERNDIR="${XDG_DATA_HOME:-$HOME/.local/share}/imhex/patterns"
+fi
+if [ -n "$PATTERNDIR" ]; then
+  mkdir -p "$PATTERNDIR"
+  rm -f "$PATTERNDIR"/pg_hexedit_*.hexpat
+  cp "$PATTERNFILE" "$PATTERNDIR/pg_hexedit_$saferelname.hexpat"
+  echo "Installed \"pg_hexedit_$saferelname.hexpat\" into $PATTERNDIR"
+fi
+
+if [ "$mode" = "gdb" ]; then
+  echo
+  # Only one bridge runs at a time; rerunning the script restarts it
+  if pkill -f "pg_hexedit_live_bridge" 2> /dev/null; then
+    echo "(stopped previously running bridge)"
+    sleep 1
+  fi
+  # shellcheck disable=SC2086
+  exec python3 ./pg_hexedit_live_bridge "$relname" --port "$port" $writable
+fi
+
+MIRRORFILE="${TMPDIR:-/tmp}/pg_hexedit_live_$saferelname.heap"
+rm -f "$MIRRORFILE"
+
+# Only one bridge runs at a time; rerunning the script restarts it
+if pkill -f "pg_hexedit_live_bridge" 2> /dev/null; then
+  echo "(stopped previously running bridge)"
+  sleep 1
+fi
+
+python3 ./pg_hexedit_live_bridge "$relname" --mirror "$MIRRORFILE" &
+BRIDGEPID=$!
+trap 'kill $BRIDGEPID 2> /dev/null' INT TERM EXIT
+
+# Wait for the initial mirror sweep before opening ImHex
+tries=0
+while [ ! -s "$MIRRORFILE" ]; do
+  sleep 0.5
+  tries=$((tries + 1))
+  if [ $tries -gt 60 ] || ! kill -0 $BRIDGEPID 2> /dev/null; then
+    echo "mirror was not created; see bridge output above"
+    exit 1
+  fi
+done
+
+echo
+echo "Opening mirror in ImHex (accept the pattern prompt to annotate)..."
+"$IMHEX" --open "$MIRRORFILE" --pattern "$PATTERNFILE" &> /dev/null &
+
+echo "Mirror refresh running; Ctrl+C stops it."
+wait $BRIDGEPID

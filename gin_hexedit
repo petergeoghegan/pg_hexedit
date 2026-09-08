@@ -1,10 +1,8 @@
 #!/bin/bash
 #
-# gin_hexedit:  Don't set any offsets in wxHexEditor cache.  Instead, output
-# a summary of interesting offsets for the GIN index to stdout for user.
-#
-# Unlike relation_hexedit, this script does not set any offsets in the
-# wxHexEditor cache/registry.
+# gin_hexedit:  Output a summary of interesting offsets for the GIN index to
+# stdout (contiguous runs of pages with the same flags), then open the index
+# in ImHex like relation_hexedit does.
 
 usage() {
   cat <<EOM
@@ -88,6 +86,4 @@ then
   exit 1
 fi
 
-export OFFSETS=""
-echo "Note: no offsets are set in cache when using $(basename "$0") convenience script"
 ./__open_relation "$relname"

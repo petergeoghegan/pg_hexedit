@@ -9,7 +9,7 @@
 #
 #-------------------------------------------------------------------------
 
-PGFILEDESC = "pg_hexedit - emits descriptive XML tag format for PostgreSQL relation files"
+PGFILEDESC = "pg_hexedit - emits ImHex pattern annotations for PostgreSQL relation files"
 PGAPPICON=win32
 HEXEDIT_VERSION = 0.1
 
@@ -22,10 +22,9 @@ PGSQL_PKGLIB_DIR = $(shell $(PG_CONFIG) --pkglibdir)
 PGSQL_BIN_DIR = $(shell $(PG_CONFIG) --bindir)
 
 DISTFILES= README.md Makefile pg_hexedit.c
-TESTFILES= t/1249 t/2685 t/expected_attributes.tags \
-	t/expected_attributes_idx.tags t/expected_empty_lsn.tags \
-	t/expected_leaf_idx.tags t/expected_no_attributes.tags \
-	t/expected_no_attributes_idx.tags t/test_pg_hexedit
+TESTFILES= t/expected_no_attributes.hexpat t/expected_attributes.hexpat \
+	t/expected_attributes_legacy.hexpat t/expected_range_segment.hexpat \
+	t/test_pg_hexedit
 
 all: pg_hexedit
 
@@ -55,10 +54,10 @@ uninstall:
 	rm -f '$(DESTDIR)$(PGSQL_BIN_DIR)/pg_hexedit$(X)'
 
 clean:
-	rm -f t/*diff
-	rm -f t/output*tags
+	rm -f t/*.diff t/*.norm
+	rm -f t/output_*
 
 distclean:
-	rm -f t/*diff
-	rm -f t/output*tags
+	rm -f t/*.diff t/*.norm
+	rm -f t/output_*
 	rm -rf pg_hexedit-${HEXEDIT_VERSION} pg_hexedit-${HEXEDIT_VERSION}.tar.gz

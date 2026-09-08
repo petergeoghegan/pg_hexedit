@@ -1,14 +1,28 @@
 /*
- * pg_hexedit.c - PostgreSQL file dump utility for
- *                viewing heap (data) and index files in wxHexEditor.
+ * pg_hexedit.c - PostgreSQL relation file annotation generator for ImHex.
  *
  * Copyright (c) 2018-2021, Crunchy Data Solutions, Inc.
  * Copyright (c) 2017-2018, VMware, Inc.
  * Copyright (c) 2002-2010, Red Hat, Inc.
  * Copyright (c) 2011-2021, PostgreSQL Global Development Group
  *
- * This specialized fork of pg_filedump is modified to output XML that can be
- * used to annotate pages within the wxHexEditor hex editor.
+ * Historically a specialized fork of pg_filedump that emitted wxHexEditor
+ * XML tags.  Now a generator for the ImHex pattern language: it emits a
+ * self-contained .hexpat file to stdout that annotates PostgreSQL relation
+ * files (heap and all index access methods) when loaded into ImHex.
+ *
+ * pg_hexedit no longer reads relation files itself.  Page interpretation
+ * happens inside ImHex's pattern evaluator; the emitted pattern classifies
+ * each page by its special section (the same way the old tool's
+ * GetSpecialSectionType() did) and walks line pointers, tuples, and
+ * attributes accordingly.  What this program contributes is correctness by
+ * construction: every struct layout, offset, flag mask, and alignment rule
+ * in the emitted pattern is computed from the PostgreSQL headers that this
+ * program is compiled against, via sizeof/offsetof and the real macros.
+ *
+ * Attribute-level decoding requires a description of the relation's tuples,
+ * passed with -A (or legacy -D); the convenience scripts generate it from
+ * pg_attribute via SQL.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -59,19 +73,16 @@
 #include "access/itup.h"
 #include "access/nbtree.h"
 #include "access/spgist_private.h"
-#include "storage/checksum.h"
-#include "storage/checksum_impl.h"
-#include "utils/pg_crc.h"
 
 /*
  * Backend error-reporting stubs.
  *
  * Because we #undef FRONTEND before including the access headers, a few
  * static inline functions that live outside the headers' own FRONTEND guards
- * (notably typalign_to_alignby() in access/tupmacs.h) are compiled with their
- * backend elog(ERROR, ...) paths.  Those paths are unreachable for valid input
- * but still produce undefined references at link time.  Provide minimal stubs
- * so the binary links; if we ever do reach one, abort loudly.
+ * are compiled with their backend elog(ERROR, ...) paths.  Those paths are
+ * unreachable for valid input but still produce undefined references at link
+ * time.  Provide minimal stubs so the binary links; if we ever do reach one,
+ * abort loudly.
  */
 bool
 errstart_cold(int elevel, const char *domain)
@@ -96,343 +107,189 @@ errmsg_internal(const char *fmt,...)
 	return 0;
 }
 
-#define HEXEDIT_VERSION			"0.1"
+#define HEXEDIT_VERSION			"0.2"
 #define SEQUENCE_MAGIC			0x1717	/* PostgreSQL defined magic number */
-#define EOF_ENCOUNTERED 		(-1)	/* Indicator for partial read */
 
 /*
- * Postgres 12 removed WITH OIDS support.  Preserve on-disk compatibility with
- * prior versions, even though they're generally unsupported by us
+ * pg_hexedit color scheme, carried over from the wxHexEditor incarnation.
+ * ImHex has a single highlight color per pattern (no separate font color);
+ * status that used to be conveyed with font colors lives in formatted value
+ * text instead.
  */
-#define HEAP_HASOID	HEAP_HASOID_OLD
+#define COLOR_BLACK				"000000"
+#define COLOR_BLUE_DARK			"2980B9"
+#define COLOR_BLUE_LIGHT		"3498DB"
+#define COLOR_BROWN				"97333D"
+#define COLOR_GRAY				"808B96"
+#define COLOR_GREEN_BRIGHT		"50E964"
+#define COLOR_GREEN_DARK		"16A085"
+#define COLOR_GREEN_LIGHT		"1ABC9C"
+#define COLOR_MAROON			"E96950"
+#define COLOR_ORANGE			"FF8C00"
+#define COLOR_PINK				"E949D1"
+#define COLOR_RED_DARK			"912C21"
+#define COLOR_RED_LIGHT			"E74C3C"
+#define COLOR_WHITE				"CCD1D1"
+#define COLOR_YELLOW_DARK		"F1C40F"
+#define COLOR_YELLOW_LIGHT		"E9E850"
 
-#define COLOR_FONT_STANDARD		"#313739"
+/* Page kind codes used within the emitted pattern (mirrors SPEC_SECT_*) */
+#define KIND_UNKNOWN	0
+#define KIND_HEAP		1
+#define KIND_SEQUENCE	2
+#define KIND_BTREE		3
+#define KIND_HASH		4
+#define KIND_GIST		5
+#define KIND_GIN		6
+#define KIND_SPGIST		7
+#define KIND_BRIN		8
 
-#define COLOR_BLACK				"#000000"
-#define COLOR_BLUE_DARK			"#2980B9"
-#define COLOR_BLUE_LIGHT		"#3498DB"
-#define COLOR_BROWN				"#97333D"
-#define COLOR_GREEN_BRIGHT		"#50E964"
-#define COLOR_GREEN_DARK		"#16A085"
-#define COLOR_GREEN_LIGHT		"#1ABC9C"
-#define COLOR_MAROON			"#E96950"
-#define COLOR_ORANGE			"#FF8C00"
-#define COLOR_PINK				"#E949D1"
-#define COLOR_RED_DARK			"#912C21"
-#define COLOR_RED_LIGHT			"#E74C3C"
-#define COLOR_WHITE				"#CCD1D1"
-#define COLOR_YELLOW_DARK		"#F1C40F"
-#define COLOR_YELLOW_LIGHT		"#E9E850"
-
-typedef enum blockSwitches
+/* Attribute display classes, chosen from atttypid/attlen/attalign */
+typedef enum attClass
 {
-	BLOCK_RANGE = 0x00000020,	/* -R: Specific block range to dump */
-	BLOCK_CHECKSUMS = 0x00000040,	/* -k: verify block checksums */
-	BLOCK_ZEROSUMS = 0x00000080,	/* -z: verify block checksums when
-									 * non-zero */
-	BLOCK_SKIP_LEAF = 0x00000100,	/* -l: Skip leaf pages (use whole page
-									 * tag) */
-	BLOCK_SKIP_LSN = 0x00000200,	/* -x: Skip pages before LSN */
-	BLOCK_DECODE = 0x00000400	/* -D: Decode tuple attributes */
-} blockSwitches;
+	ATT_CLASS_BOOL,				/* bool */
+	ATT_CLASS_CHAR,				/* single byte "char" */
+	ATT_CLASS_INT16,
+	ATT_CLASS_INT32,
+	ATT_CLASS_INT64,
+	ATT_CLASS_UINT32,			/* oid, xid, cid, regclass etc */
+	ATT_CLASS_FLOAT32,
+	ATT_CLASS_FLOAT64,
+	ATT_CLASS_POINT,			/* two float8s */
+	ATT_CLASS_NAME,				/* fixed NAMEDATALEN string */
+	ATT_CLASS_FIXED_OPAQUE,		/* other fixed-length: raw bytes */
+	ATT_CLASS_VARLENA_TEXT,		/* text-like varlena */
+	ATT_CLASS_VARLENA_BIN,		/* other varlena */
+	ATT_CLASS_CSTRING			/* attlen -2 */
+} attClass;
 
-typedef enum segmentSwitches
-{
-	SEGMENT_SIZE_FORCED = 0x00000001,	/* -s: Segment size forced */
-	SEGMENT_NUMBER_FORCED = 0x00000002	/* -n: Segment number forced */
-} segmentSwitches;
-
-/* -R[start]:Block range start */
-static int	blockStart = -1;
-
-/* -R[end]:Block range end */
-static int	blockEnd = -1;
-
-/* -x:Skip pages whose LSN is before point */
-static XLogRecPtr afterThreshold = InvalidXLogRecPtr;
-static XLogRecPtr minPageLSN = (XLogRecPtr) PG_UINT64_MAX;
-static XLogRecPtr maxPageLSN = InvalidXLogRecPtr;
-static BlockNumber minPageLSNBlock = InvalidBlockNumber;
-static BlockNumber maxPageLSNBlock = InvalidBlockNumber;
-static BlockNumber maxBlockNumber = 0;
-static uint32	nblockstagged = 0;
-static uint32	nblocksskipped = 0;
-
-/* Possible value types for the Special Section */
-typedef enum specialSectionTypes
-{
-	SPEC_SECT_NONE,				/* No special section on block */
-	SPEC_SECT_SEQUENCE,			/* Sequence info in special section */
-	SPEC_SECT_INDEX_BTREE,		/* BTree index info in special section */
-	SPEC_SECT_INDEX_HASH,		/* Hash index info in special section */
-	SPEC_SECT_INDEX_GIST,		/* GIST index info in special section */
-	SPEC_SECT_INDEX_GIN,		/* GIN index info in special section */
-	SPEC_SECT_INDEX_SPGIST,		/* SP - GIST index info in special section */
-	SPEC_SECT_INDEX_BRIN,		/* BRIN index info in special section */
-	SPEC_SECT_ERROR_UNKNOWN,	/* Unknown error */
-	SPEC_SECT_ERROR_BOUNDARY	/* Boundary error */
-} specialSectionTypes;
-
-/* Special section type that was encountered first */
-static unsigned int firstType = SPEC_SECT_ERROR_UNKNOWN;
-
-/* Current block special section type */
-static unsigned int specialType = SPEC_SECT_NONE;
-
-/*
- * Possible return codes from option validation routine.
- *
- * pg_hexedit doesn't do much with them now but maybe in the future...
- */
-typedef enum optionReturnCodes
-{
-	OPT_RC_VALID,				/* All options are valid */
-	OPT_RC_INVALID,				/* Improper option string */
-	OPT_RC_FILE,				/* File problems */
-	OPT_RC_DUPLICATE,			/* Duplicate option encountered */
-	OPT_RC_COPYRIGHT			/* Copyright should be displayed */
-} optionReturnCodes;
-
-/*
- * Simple macro to check for duplicate options and then set an option flag for
- * later consumption
- */
-#define SET_OPTION(_x,_y,_z) if (_x & _y)				\
-							   {						\
-								 rc = OPT_RC_DUPLICATE; \
-								 duplicateSwitch = _z;	\
-							   }						\
-							 else						\
-							   _x |= _y;
-
-/*
- * Global variables for ease of use mostly
- */
-
-/* Segment-related options */
-static unsigned int segmentOptions = 0;
-
-/*	Options for Block formatting operations */
-static unsigned int blockOptions = 0;
-
-/* File to dump or format */
-static FILE *fp = NULL;
-
-/* File name for display */
-static char *fileName = NULL;
-
-/* Cache for current block */
-static char *buffer = NULL;
-
-/* Current block size */
-static unsigned int blockSize = 0;
-
-/* Current block in file */
-static unsigned int currentBlock = 0;
-
-/* Segment size in bytes */
-static unsigned int segmentSize = RELSEG_SIZE * BLCKSZ;
-
-/* Relation-relative block offset to beginning of the segment (our file) */
-static unsigned int segmentBlockDelta = 0;
-
-/* Number of current segment */
-static unsigned int segmentNumber = 0;
-
-/* Current wxHexEditor output tag number */
-static unsigned int tagNumber = 0;
-
-/* Offset of current block (in bytes) */
-static unsigned int pageOffset = 0;
-
-/* Number of bytes to format */
-static unsigned int bytesToFormat = 0;
-
-/* Block version number */
-static unsigned int blockVersion = 0;
-
-/* Number of attributes (used when decoding) */
+/* Per-relation tuple descriptor state, filled from -A/-D argument */
 static int	nrelatts = 0;
-
-/* attlen catalog metadata for relation (used when decoding) */
 static int *attlenrel = NULL;
-
-/* attnamerel catalog metadata for relation (used when decoding) */
 static char **attnamerel = NULL;
-
-/* attcolorrel attribute colors for relation (used when decoding) */
 static char **attcolorrel = NULL;
-
-/* attalign catalog metadata for relation (used when decoding) */
 static char *attalignrel = NULL;
+static unsigned int *atttypidrel = NULL;
+static attClass *attclassrel = NULL;
+static char **attplnamerel = NULL;	/* sanitized PL member identifiers */
 
-/* Program exit code */
+/* Options */
+static int	blockStart = -1;	/* -R start */
+static int	blockEnd = -1;		/* -R end */
+static unsigned int segmentNumber = 0;	/* -n */
+static unsigned int segmentSize = RELSEG_SIZE * BLCKSZ; /* -s */
+static char *relName = NULL;	/* -N, for provenance/labels only */
 static int	exitCode = 0;
 
-typedef enum formatChoice
-{
-	ITEM_HEAP,					/* Blocks contain HeapTuple items */
-	ITEM_INDEX,					/* Blocks contain IndexTuple items */
-	ITEM_SPG_INN,				/* Blocks contain SpGistInnerTuple items */
-	ITEM_SPG_LEAF,				/* Blocks contain SpGistLeafTuple items */
-	ITEM_BRIN					/* Blocks contain BrinTuple items */
-} formatChoice;
-
-static void DisplayOptions(unsigned int validOptions);
-static unsigned int GetSegmentNumberFromFileName(const char *fileName);
 static uint32 sdbmhash(const unsigned char *elem, size_t len);
 static char *GetColorFromAttrname(const char *attrName);
-static unsigned int ConsumeOptions(int numOptions, char **options);
-static int	GetOptionValue(char *optionString);
-static XLogRecPtr GetOptionXlogRecPtr(char *optionString);
-static bool ParseAttributeListString(const char *str);
-static unsigned int GetBlockSize(void);
-static unsigned int GetSpecialSectionType(Page page);
-static const char *GetSpecialSectionString(unsigned int type);
-static XLogRecPtr GetPageLsn(Page page);
-static char *GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2);
-static char *GetIndexTupleFlags(IndexTuple itup);
-static const char *GetSpGistStateString(unsigned int code);
-static char *GetSpGistInnerTupleState(SpGistInnerTuple itup);
-static char *GetSpGistLeafTupleState(SpGistLeafTuple itup);
-static char *GetBrinTupleFlags(BrinTuple *itup);
-static bool IsBrinPage(Page page);
-static bool IsHashBitmapPage(Page page);
-static bool IsLeafPage(Page page);
-static void EmitXmlPage(BlockNumber blkno);
-static void EmitXmlDocHeader(int numOptions, char **options);
-static void EmitXmlFooter(void);
-static void EmitXmlTag(BlockNumber blkno, uint32 level, const char *name,
-					   const char *color, uint32 relfileOff,
-					   uint32 relfileOffEnd);
-static void EmitXmlItemId(BlockNumber blkno, OffsetNumber offset,
-						  ItemId itemId, uint32 relfileOff,
-						  const char *textFlags);
-static inline void EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset,
-								   const char *name, const char *color,
-								   uint32 relfileOff, uint32 relfileOffEnd);
-static void EmitXmlTupleTagFont(BlockNumber blkno, OffsetNumber offset,
-								const char *name, const char *color,
-								const char *fontColor, uint32 relfileOff,
-								uint32 relfileOffEnd);
-static void EmitXmlTupleTagFontTwoName(BlockNumber blkno, OffsetNumber offset,
-									   const char *name1, const char *name2,
-									   const char *color, const char *fontColor,
-									   uint32 relfileOff, uint32 relfileOffEnd);
-static void EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
-								  uint32 relfileOff, HeapTupleHeader htup,
-								  int itemSize);
-static void EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
-								   uint32 relfileOff, IndexTuple itup,
-								   uint32 tupHeaderOff, int itemSize);
-static void EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
-								  uint32 relfileOff, unsigned char *tupdata,
-								  uint8 *t_bits, int nattrs, int datalen);
-static void EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
-							 HeapTupleHeader htup, uint32 relfileOff,
-							 int itemSize);
-static void EmitXmlIndexTuple(Page page, BlockNumber blkno,
-							  OffsetNumber offset, IndexTuple tuple,
-							  uint32 relfileOff, int itemSize, bool dead);
-static void EmitXmlSpGistInnerTuple(Page page, BlockNumber blkno,
-									OffsetNumber offset,
-									SpGistInnerTuple tuple,
-									uint32 relfileOff);
-static void EmitXmlSpGistLeafTuple(Page page, BlockNumber blkno,
-								   OffsetNumber offset,
-								   SpGistLeafTuple tuple,
-								   uint32 relfileOff);
-static void EmitXmlBrinTuple(Page page, BlockNumber blkno,
-							 OffsetNumber offset, BrinTuple *tuple,
-							 uint32 relfileOff, int itemSize);
-static int	EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level);
-static void EmitXmlPageMeta(BlockNumber blkno, uint32 level);
-static void EmitXmlPageItemIdArray(Page page, BlockNumber blkno);
-static void EmitXmlTuples(Page page, BlockNumber blkno);
-static void EmitXmlPostingTreeTids(Page page, BlockNumber blkno);
-static void EmitXmlHashBitmap(Page page, BlockNumber blkno);
-static void EmitXmlRevmap(Page page, BlockNumber blkno);
-static void EmitXmlSpecial(BlockNumber blkno, uint32 level);
-static void EmitXmlBody(void);
-
-
-/*	Send properly formed usage information to the user. */
-static void
-DisplayOptions(unsigned int validOptions)
-{
-	if (validOptions == OPT_RC_COPYRIGHT)
-		printf
-			("pg_hexedit %s (for PostgreSQL %s)"
-			 "\nCopyright (c) 2018-2021, Crunchy Data Solutions, Inc."
-			 "\nCopyright (c) 2017-2018, VMware, Inc."
-			 "\nCopyright (c) 2002-2010, Red Hat, Inc."
-			 "\nCopyright (c) 2011-2021, PostgreSQL Global Development Group\n",
-			 HEXEDIT_VERSION, PG_VERSION);
-
-	printf
-		("\nUsage: pg_hexedit [-hklz] [-D attrlist] [-n segnumber] [-R startblock [endblock]] [-s segsize] [-x lsn] file\n\n"
-		 "Output contents of PostgreSQL relation file as wxHexEditor XML tags\n"
-		 "  -D  Decode tuples using given comma separated list of attribute metadata\n"
-		 "      See README.md for an explanation of the attrlist format\n"
-		 "  -h  Display this information\n"
-		 "  -k  Verify all block checksums\n"
-		 "  -l  Skip leaf pages\n"
-		 "  -n  Force segment number to [segnumber]\n"
-		 "  -R  Display specific block ranges within the file (Blocks are\n"
-		 "      indexed from 0)\n" "        [startblock]: block to start at\n"
-		 "        [endblock]: block to end at\n"
-		 "      A startblock without an endblock will format the single block\n"
-		 "  -s  Force segment size to [segsize]\n"
-		 "  -x  Skip pages whose LSN is before [lsn]\n"
-		 "  -z  Verify block checksums when non-zero\n"
-		 "\nReport bugs to <pg@bowt.ie>\n");
-}
 
 /*
- * Determine segment number by segment file name. For instance, if file
- * name is /path/to/xxxx.7 procedure returns 7. Default return value is 0.
+ * Output helpers.  Emitted pattern text goes through these exclusively.
+ * L() emits a fixed line with no printf interpretation, which keeps the
+ * many '%' and '"' characters in pattern-language text readable.  F() is
+ * printf-style for lines that interpolate computed values.
  */
-static unsigned int
-GetSegmentNumberFromFileName(const char *fileName)
+static void
+L(const char *s)
 {
-	int			segnumOffset = strlen(fileName) - 1;
+	fputs(s, stdout);
+	fputc('\n', stdout);
+}
 
-	if (segnumOffset < 0)
-		return 0;
+static void
+F(const char *fmt,...)
+{
+	va_list		ap;
 
-	while (isdigit(fileName[segnumOffset]))
-	{
-		segnumOffset--;
-		if (segnumOffset < 0)
-			return 0;
-	}
-
-	if (fileName[segnumOffset] != '.')
-		return 0;
-
-	return atoi(&fileName[segnumOffset + 1]);
+	va_start(ap, fmt);
+	vprintf(fmt, ap);
+	va_end(ap);
+	fputc('\n', stdout);
 }
 
 /*
- * Hash function is taken from sdbm, a public-domain reimplementation of the
- * ndbm database library.
+ * Return color shaded towards black by a small fixed amount.  Used to make
+ * adjacent same-color annotations visually separable in ImHex, which has no
+ * gap or border between pattern highlights.  Returns a static buffer.
+ */
+static const char *
+ShadeColor(const char *color)
+{
+	static char shaded[8];
+	unsigned int r,
+				g,
+				b;
+
+	if (sscanf(color, "%2x%2x%2x", &r, &g, &b) != 3)
+		return color;
+	r = (r > 28) ? r - 28 : 0;
+	g = (g > 28) ? g - 28 : 0;
+	b = (b > 28) ? b - 28 : 0;
+	snprintf(shaded, sizeof(shaded), "%02X%02X%02X", r, g, b);
+	return shaded;
+}
+
+/*
+ * Runtime pattern colors (std::core::set_pattern_color) want ImGui ABGR;
+ * alpha 0x70 matches ImHex's native highlight translucency.  Rotating static
+ * buffers so that two calls can appear in one F() invocation.
+ */
+static const char *
+AbgrLit(const char *rrggbb)
+{
+	static char bufs[4][16];
+	static int	n = 0;
+	unsigned int r,
+				g,
+				b;
+	char	   *buf = bufs[n++ % 4];
+
+	if (sscanf(rrggbb, "%2x%2x%2x", &r, &g, &b) != 3)
+		return "0x70FFFFFF";
+	snprintf(buf, 16, "0x70%02X%02X%02X", b, g, r);
+	return buf;
+}
+
+/*
+ * Escape a string for embedding in a pattern-language double-quoted string
+ * literal.  Returns a palloc'd buffer.
+ */
+static char *
+PLString(const char *s)
+{
+	char	   *buf = pg_malloc(strlen(s) * 2 + 1);
+	char	   *p = buf;
+
+	for (; *s; s++)
+	{
+		if (*s == '"' || *s == '\\')
+			*p++ = '\\';
+		*p++ = *s;
+	}
+	*p = '\0';
+	return buf;
+}
+
+/*
+ * Hash function shared with historical pg_hexedit: sdbm hash from
+ * http://www.cse.yorku.ca/~oz/hash.html
  */
 static uint32
 sdbmhash(const unsigned char *elem, size_t len)
 {
 	uint32		hash = 0;
-	int			i;
+	size_t		i;
 
-	for (i = 0; i < len; elem++, i++)
-	{
-		hash = (*elem) + (hash << 6) + (hash << 16) - hash;
-	}
+	for (i = 0; i < len; i++)
+		hash = elem[i] + (hash << 6) + (hash << 16) - hash;
 
 	return hash;
 }
 
 /*
  * Return a cstring of an html color that is a function of attrName argument.
+ * (No leading '#'; ImHex [[color]] wants bare RRGGBB.)
  */
 static char *
 GetColorFromAttrname(const char *attrName)
@@ -449,400 +306,170 @@ GetColorFromAttrname(const char *attrName)
 	red = 150 + ((uint8) hash % 90);
 	green = 150 + ((uint8) (hash >> 8) % 90);
 	blue = 150 + ((uint8) (hash >> 16) % 90);
-	snprintf(colorStr, 8, "#%02X%02X%02X", red, green, blue);
+	snprintf(colorStr, 8, "%02X%02X%02X", red, green, blue);
 
 	return colorStr;
 }
 
 /*
- * Iterate through the provided options and set the option flags.  An error
- * will result in a positive rc and will force a display of the usage
- * information.  This routine returns enum option ReturnCode values.
+ * Choose display class for an attribute from type OID (0 when unknown),
+ * attlen, and attalign.
  */
-static unsigned int
-ConsumeOptions(int numOptions, char **options)
+static attClass
+GetAttClass(unsigned int typid, int attlen, char attalign)
 {
-	unsigned int rc = OPT_RC_VALID;
-	unsigned int x;
-	unsigned int optionStringLength;
-	char	   *optionString;
-	char		duplicateSwitch = 0x00;
-
-	for (x = 1; x < numOptions; x++)
+	switch (typid)
 	{
-		optionString = options[x];
-		optionStringLength = strlen(optionString);
-
-		/*
-		 * Range is a special case where we have to consume the next 1 or 2
-		 * parameters to mark the range start and end
-		 */
-		if ((optionStringLength == 2) && (strcmp(optionString, "-R") == 0))
-		{
-			int			range = 0;
-
-			SET_OPTION(blockOptions, BLOCK_RANGE, 'R');
-			/* Only accept the range option once */
-			if (rc == OPT_RC_DUPLICATE)
-				break;
-
-			/* Make sure there are options after the range identifier */
-			if (x >= (numOptions - 2))
-			{
-				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: missing range start identifier\n");
-				exitCode = 1;
-				break;
-			}
-
-			/*
-			 * Mark that we have the range and advance the option to what
-			 * should be the range start. Check the value of the next
-			 * parameter.
-			 */
-			optionString = options[++x];
-			if ((range = GetOptionValue(optionString)) < 0)
-			{
-				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: invalid range start identifier \"%s\"\n",
-						optionString);
-				exitCode = 1;
-				break;
-			}
-
-			/* The default is to dump only one block */
-			blockStart = blockEnd = (unsigned int) range;
-
-			/*
-			 * We have our range start marker, check if there is an end marker
-			 * on the option line.  Assume that the last option is the file we
-			 * are dumping, so check if there are options range start marker
-			 * and the file.
-			 */
-			if (x <= (numOptions - 3))
-			{
-				if ((range = GetOptionValue(options[x + 1])) >= 0)
-				{
-					/* End range must be => start range */
-					if (blockStart <= range)
-					{
-						blockEnd = (unsigned int) range;
-						x++;
-					}
-					else
-					{
-						rc = OPT_RC_INVALID;
-						fprintf(stderr, "pg_hexedit error: requested block range start %d is greater than end %d\n",
-								blockStart, range);
-						exitCode = 1;
-						break;
-					}
-				}
-			}
-		}
-
-		/* Check for the special case where the user requires tuple decoding */
-		else if ((optionStringLength == 2)
-				 && (strcmp(optionString, "-D") == 0))
-		{
-			SET_OPTION(blockOptions, BLOCK_DECODE, 'D');
-			/* Only accept the decode option once */
-			if (rc == OPT_RC_DUPLICATE)
-				break;
-
-			/*
-			 * The string immediately following -D is a list of attlen,
-			 * attname, and attalign tokens separated by commas.  There is one
-			 * set of each per attribute (i.e. there should be three times as
-			 * many entries in the list as there are user attributes in the
-			 * relation).
-			 */
-			if (x >= (numOptions - 2))
-			{
-				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: missing attrlist string\n");
-				exitCode = 1;
-				break;
-			}
-
-			/* Next option encountered must be attribute metadata string */
-			optionString = options[++x];
-
-			if (!ParseAttributeListString(optionString))
-			{
-				/* Give details of problem in ParseAttributeListString() */
-				rc = OPT_RC_INVALID;
-				fprintf(stderr, "invalid attrlist string %s\n",
-						optionString);
-				exitCode = 1;
-				break;
-			}
-		}
-
-		/*
-		 * Check for the special case where the user only requires tags for
-		 * pages whose LSN equals or exceeds a supplied threshold.
-		 */
-		else if ((optionStringLength == 2) && (strcmp(optionString, "-x") == 0))
-		{
-			SET_OPTION(blockOptions, BLOCK_SKIP_LSN, 'x');
-			/* Only accept the LSN option once */
-			if (rc == OPT_RC_DUPLICATE)
-				break;
-
-			/* Make sure that there is an LSN option */
-			if (x >= (numOptions - 2))
-			{
-				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: missing LSN\n");
-				exitCode = 1;
-				break;
-			}
-
-			/*
-			 * Mark that we have the LSN and advance the option to what should
-			 * be the LSN argument. Check the value of the next parameter.
-			 */
-			optionString = options[++x];
-			if ((afterThreshold = GetOptionXlogRecPtr(optionString)) == InvalidXLogRecPtr)
-			{
-				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: invalid LSN identifier \"%s\"\n",
-						optionString);
-				exitCode = 1;
-				break;
-			}
-		}
-		/* Check for the special case where the user forces a segment size. */
-		else if ((optionStringLength == 2)
-				 && (strcmp(optionString, "-s") == 0))
-		{
-			int			localSegmentSize;
-
-			SET_OPTION(segmentOptions, SEGMENT_SIZE_FORCED, 's');
-			/* Only accept the forced size option once */
-			if (rc == OPT_RC_DUPLICATE)
-				break;
-
-			/* The token immediately following -s is the segment size */
-			if (x >= (numOptions - 2))
-			{
-				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: missing segment size identifier\n");
-				exitCode = 1;
-				break;
-			}
-
-			/* Next option encountered must be forced segment size */
-			optionString = options[++x];
-			if ((localSegmentSize = GetOptionValue(optionString)) > 0)
-				segmentSize = (unsigned int) localSegmentSize;
-			else
-			{
-				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: invalid segment size requested \"%s\"\n",
-						optionString);
-				exitCode = 1;
-				break;
-			}
-		}
-
-		/*
-		 * Check for the special case where the user forces a segment number
-		 * instead of having the tool determine it by file name.
-		 */
-		else if ((optionStringLength == 2)
-				 && (strcmp(optionString, "-n") == 0))
-		{
-			int			localSegmentNumber;
-
-			SET_OPTION(segmentOptions, SEGMENT_NUMBER_FORCED, 'n');
-			/* Only accept the forced segment number option once */
-			if (rc == OPT_RC_DUPLICATE)
-				break;
-
-			/* The token immediately following -n is the segment number */
-			if (x >= (numOptions - 2))
-			{
-				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: missing segment number identifier\n");
-				exitCode = 1;
-				break;
-			}
-
-			/* Next option encountered must be forced segment number */
-			optionString = options[++x];
-			if ((localSegmentNumber = GetOptionValue(optionString)) > 0)
-				segmentNumber = (unsigned int) localSegmentNumber;
-			else
-			{
-				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: invalid segment number requested \"%s\"\n",
-						optionString);
-				exitCode = 1;
-				break;
-			}
-		}
-		/* The last option MUST be the file name */
-		else if (x == (numOptions - 1))
-		{
-			/* Check to see if this looks like an option string before opening */
-			if (optionString[0] != '-')
-			{
-				fp = fopen(optionString, "rb");
-				if (fp)
-				{
-					fileName = options[x];
-					if (!(segmentOptions & SEGMENT_NUMBER_FORCED))
-						segmentNumber = GetSegmentNumberFromFileName(fileName);
-				}
-				else
-				{
-					rc = OPT_RC_FILE;
-					fprintf(stderr, "pg_hexedit error: could not open file \"%s\"\n",
-							optionString);
-					exitCode = 1;
-					break;
-				}
-			}
-			else
-			{
-				/*
-				 * Could be the case where the help flag is used without a
-				 * filename. Otherwise, the last option isn't a file
-				 */
-				if (strcmp(optionString, "-h") == 0)
-					rc = OPT_RC_COPYRIGHT;
-				else
-				{
-					rc = OPT_RC_FILE;
-					fprintf(stderr, "pg_hexedit error: missing file name to dump\n");
-					exitCode = 1;
-				}
-				break;
-			}
-		}
-		else
-		{
-			unsigned int y;
-
-			/* Option strings must start with '-' and contain switches */
-			if (optionString[0] != '-')
-			{
-				rc = OPT_RC_INVALID;
-				fprintf(stderr, "pg_hexedit error: invalid option string \"%s\"\n",
-						optionString);
-				exitCode = 1;
-				break;
-			}
-
-			/*
-			 * Iterate through the singular option string, throw out garbage,
-			 * duplicates and set flags to be used in formatting
-			 */
-			for (y = 1; y < optionStringLength; y++)
-			{
-				switch (optionString[y])
-				{
-						/* Display the usage screen */
-					case 'h':
-						rc = OPT_RC_COPYRIGHT;
-						break;
-
-						/* Verify all block checksums */
-					case 'k':
-						SET_OPTION(blockOptions, BLOCK_CHECKSUMS, 'k');
-						break;
-
-						/* Verify block checksums when non-zero */
-					case 'z':
-						SET_OPTION(blockOptions, BLOCK_ZEROSUMS, 'z');
-						break;
-
-						/* Skip non-root leaf pages */
-					case 'l':
-						SET_OPTION(blockOptions, BLOCK_SKIP_LEAF, 'l');
-						break;
-
-					default:
-						rc = OPT_RC_INVALID;
-						fprintf(stderr, "pg_hexedit error: unknown option '%c'\n",
-								optionString[y]);
-						exitCode = 1;
-						break;
-				}
-
-				if (rc)
-					break;
-			}
-		}
+		case 16:				/* bool */
+			return ATT_CLASS_BOOL;
+		case 18:				/* "char" */
+			return ATT_CLASS_CHAR;
+		case 21:				/* int2 */
+			return ATT_CLASS_INT16;
+		case 23:				/* int4 */
+			return ATT_CLASS_INT32;
+		case 20:				/* int8 */
+			return ATT_CLASS_INT64;
+		case 26:				/* oid */
+		case 28:				/* xid */
+		case 29:				/* cid */
+		case 24:				/* regproc */
+		case 2202:				/* regprocedure */
+		case 2203:				/* regoper */
+		case 2204:				/* regoperator */
+		case 2205:				/* regclass */
+		case 2206:				/* regtype */
+			return ATT_CLASS_UINT32;
+		case 700:				/* float4 */
+			return ATT_CLASS_FLOAT32;
+		case 701:				/* float8 */
+			return ATT_CLASS_FLOAT64;
+		case 600:				/* point */
+			return ATT_CLASS_POINT;
+		case 19:				/* name */
+			return ATT_CLASS_NAME;
+		case 25:				/* text */
+		case 1042:				/* bpchar */
+		case 1043:				/* varchar */
+		case 114:				/* json */
+		case 142:				/* xml */
+			return ATT_CLASS_VARLENA_TEXT;
 	}
 
-	if (rc == OPT_RC_DUPLICATE)
-	{
-		fprintf(stderr, "pg_hexedit error: duplicate option listed '%c'\n",
-				duplicateSwitch);
-		exitCode = 1;
-	}
+	if (attlen == -1)
+		return ATT_CLASS_VARLENA_BIN;
+	if (attlen == -2)
+		return ATT_CLASS_CSTRING;
 
-	return (rc);
+	/* Fixed length with unknown type: display by width where natural */
+	switch (attlen)
+	{
+		case 1:
+			return ATT_CLASS_CHAR;
+		case 2:
+			return ATT_CLASS_INT16;
+		case 4:
+			return ATT_CLASS_INT32;
+		case 8:
+			return ATT_CLASS_INT64;
+		default:
+			return ATT_CLASS_FIXED_OPAQUE;
+	}
 }
 
 /*
- * Given the index into the parameter list, convert and return the current
- * string to a number if possible
+ * Turn attname into a valid, unique pattern-language identifier for use as a
+ * member name.  Falls back to att<N> style names.  Dropped columns become
+ * dropped_<N>.
  */
-static int
-GetOptionValue(char *optionString)
+static char *
+GetPLIdentifier(const char *attname, int attno)
 {
-	unsigned int x;
-	int			value = -1;
-	int			optionStringLength = strlen(optionString);
+	static const char *reserved[] = {
+		"if", "else", "while", "for", "fn", "struct", "union", "enum",
+		"bitfield", "namespace", "using", "return", "match", "in", "out",
+		"be", "le", "signed", "unsigned", "bool", "char", "str", "float",
+		"double", "padding", "parent", "this", "true", "false", "auto",
+		"ref", "null", "break", "continue", "import", "u8", "u16", "u24",
+		"u32", "u48", "u64", "u96", "u128", "s8", "s16", "s24", "s32",
+		"s48", "s64", "s96", "s128", "lp", "htup", "itup", "header",
+		"linp", "tuple"
+	};
+	char	   *ident;
+	int			i;
+	bool		ok;
 
-	/* Verify the next option looks like a number */
-	for (x = 0; x < optionStringLength; x++)
+	if (strncmp(attname, "........pg.dropped.", 19) == 0)
 	{
-		if (!isdigit((int) optionString[x]))
+		ident = pg_malloc(32);
+		snprintf(ident, 32, "dropped_%d", attno + 1);
+		return ident;
+	}
+
+	ident = pg_strdup(attname);
+	ok = (ident[0] != '\0');
+	for (i = 0; ident[i]; i++)
+	{
+		char		c = ident[i];
+		bool		valid = (c == '_' ||
+							 (c >= 'a' && c <= 'z') ||
+							 (c >= 'A' && c <= 'Z') ||
+							 (i > 0 && c >= '0' && c <= '9'));
+
+		if (!valid)
+		{
+			ok = false;
 			break;
+		}
+	}
+	if (ok && ident[0] >= '0' && ident[0] <= '9')
+		ok = false;
+	if (ok)
+	{
+		for (i = 0; i < (int) lengthof(reserved); i++)
+		{
+			if (strcmp(ident, reserved[i]) == 0)
+			{
+				ok = false;
+				break;
+			}
+		}
+	}
+	if (ok)
+	{
+		/* Reject duplicates of earlier columns */
+		for (i = 0; i < attno; i++)
+		{
+			if (attplnamerel[i] && strcmp(ident, attplnamerel[i]) == 0)
+			{
+				ok = false;
+				break;
+			}
+		}
 	}
 
-	/* Convert the string to a number if it looks good */
-	if (x == optionStringLength)
-		value = atoi(optionString);
-
-	return value;
+	if (!ok)
+	{
+		pg_free(ident);
+		ident = pg_malloc(32);
+		snprintf(ident, 32, "att%d", attno + 1);
+	}
+	return ident;
 }
 
 /*
- * Given an alphanumeric LSN, convert and return it to an XLogRecPtr if
- * possible
- */
-static XLogRecPtr
-GetOptionXlogRecPtr(char *optionString)
-{
-	uint32		xlogid;
-	uint32		xrecoff;
-	XLogRecPtr	value = InvalidXLogRecPtr;
-
-	if (sscanf(optionString, "%X/%X", &xlogid, &xrecoff) == 2)
-		value = (uint64) xlogid << 32 | xrecoff;
-
-	return value;
-}
-
-/*
- * Given an attrlist string (pg_hexedit -D argument string), deserialize into
- * data structures used by tuple decoding to create per-tuple, per-attribute
- * tags.
+ * Parse -A/-D attribute list argument.
  *
- * Returns false on failure, allowing caller to set exitCode and print
- * supplemental information common to all parse failures.
+ * The string is a list of comma separated values, groupsize values per
+ * attribute:  attlen,"attname",attalign  for the legacy 3-value form (-D),
+ * plus a trailing atttypid for the 4-value form (-A).  attname is double
+ * quoted since it might contain commas.
  */
 static bool
-ParseAttributeListString(const char *arg)
+ParseAttributeListString(const char *arg, int groupsize)
 {
 	char	   *attrlist;
-	int			lennamealign;
+	int			itemno;
 	char	   *curropt;
 	char	   *nextopt;
 
@@ -851,12 +478,15 @@ ParseAttributeListString(const char *arg)
 	attnamerel = pg_malloc(sizeof(char *) * MaxTupleAttributeNumber);
 	attcolorrel = pg_malloc(sizeof(char *) * MaxTupleAttributeNumber);
 	attalignrel = pg_malloc(sizeof(char) * MaxTupleAttributeNumber);
+	atttypidrel = pg_malloc0(sizeof(unsigned int) * MaxTupleAttributeNumber);
+	attclassrel = pg_malloc(sizeof(attClass) * MaxTupleAttributeNumber);
+	attplnamerel = pg_malloc0(sizeof(char *) * MaxTupleAttributeNumber);
 
 	/* Create copy of argument string to scribble on */
 	attrlist = pg_strdup(arg);
 
 	nrelatts = 0;
-	lennamealign = 0;
+	itemno = 0;
 	curropt = attrlist;
 	while (curropt)
 	{
@@ -884,55 +514,64 @@ ParseAttributeListString(const char *arg)
 			nextopt++;
 		}
 
-		if (lennamealign == 0)
+		switch (itemno)
 		{
-			int			attlen;
+			case 0:
+				if (sscanf(curropt, "%d", &attlenrel[nrelatts]) != 1)
+				{
+					fprintf(stderr, "pg_hexedit error: could not parse attlen from attrlist argument\n");
+					return false;
+				}
+				break;
+			case 1:
+				/* Copy attribute name, and dynamically generate color */
+				attnamerel[nrelatts] = pg_strdup(curropt);
+				attcolorrel[nrelatts] = GetColorFromAttrname(curropt);
+				break;
+			case 2:
+				{
+					char		attalign = *curropt;
 
-			if (sscanf(curropt, "%d", &attlen) != 1)
-			{
-				fprintf(stderr, "pg_hexedit error: could not parse attlen from attrlist argument\n");
-				return false;
-			}
-			attlenrel[nrelatts] = attlen;
-			/* Prepare for next item */
-			lennamealign++;
+					if (attalign != 'i' && attalign != 'c' && attalign != 'd' &&
+						attalign != 's')
+					{
+						fprintf(stderr, "pg_hexedit error: invalid attalign value '%c' in attrlist argument\n",
+								attalign);
+						return false;
+					}
+					if (attlenrel[nrelatts] == -2 && attalign != 'c')
+					{
+						fprintf(stderr, "pg_hexedit error: unexpected attalign '%c' for cstring in attrlist argument\n",
+								attalign);
+						return false;
+					}
+					attalignrel[nrelatts] = attalign;
+				}
+				break;
+			case 3:
+				if (sscanf(curropt, "%u", &atttypidrel[nrelatts]) != 1)
+				{
+					fprintf(stderr, "pg_hexedit error: could not parse atttypid from attrlist argument\n");
+					return false;
+				}
+				break;
 		}
-		else if (lennamealign == 1)
-		{
-			/*
-			 * Copy attribute name, and dynamically generate color for
-			 * attribute
-			 */
-			attnamerel[nrelatts] = pg_strdup(curropt);
-			attcolorrel[nrelatts] = GetColorFromAttrname(curropt);
-			/* Prepare for next item */
-			lennamealign++;
-		}
-		else
-		{
-			char		attalign = *curropt;
+		itemno++;
 
-			if (attalign != 'i' && attalign != 'c' && attalign != 'd' &&
-				attalign != 's')
-			{
-				fprintf(stderr, "pg_hexedit error: invalid attalign value '%c' in attrlist argument\n",
-						attalign);
-				return false;
-			}
-			if (attlenrel[nrelatts] == -2 && attalign != 'c')
-			{
-				fprintf(stderr, "pg_hexedit error: unexpected attalign '%c' for cstring in attrlist argument\n",
-						attalign);
-				return false;
-			}
-			attalignrel[nrelatts] = attalign;
-			/* Prepare for next item, and next attribute in "descriptor" */
+		if (itemno == groupsize)
+		{
+			/* Attribute complete */
+			attclassrel[nrelatts] = GetAttClass(atttypidrel[nrelatts],
+												attlenrel[nrelatts],
+												attalignrel[nrelatts]);
+			attplnamerel[nrelatts] = GetPLIdentifier(attnamerel[nrelatts],
+													 nrelatts);
 			if (nrelatts >= MaxTupleAttributeNumber)
 			{
 				fprintf(stderr, "pg_hexedit error: too many attributes represented in attrlist argument\n");
 				return false;
 			}
-			lennamealign = 0;
+			itemno = 0;
 			nrelatts++;
 		}
 
@@ -942,3112 +581,1919 @@ ParseAttributeListString(const char *arg)
 	/* Be tidy */
 	pg_free(attrlist);
 
-	/*
-	 * Should be at least one attribute, and should have attlen, attname, and
-	 * attalign for each attribute
-	 */
-	return nrelatts > 0 && lennamealign == 0;
+	return nrelatts > 0 && itemno == 0;
 }
 
 /*
- * Read the page header off of block 0 to determine the block size used in this
- * file.  Can be overridden using the -s option.  The returned value is the
- * block size of block 0 on disk.  If a valid page size could not be read,
- * assumes BLCKSZ.
- */
-static unsigned int
-GetBlockSize(void)
-{
-	unsigned int pageHeaderSize = sizeof(PageHeaderData);
-	unsigned int localSize = BLCKSZ;
-	int			bytesRead = 0;
-	char		localCache[sizeof(PageHeaderData)];
-
-	/* Read the first header off of block 0 to determine the block size */
-	bytesRead = fread(&localCache, 1, pageHeaderSize, fp);
-	rewind(fp);
-
-	if (bytesRead == pageHeaderSize)
-		localSize = (unsigned int) PageGetPageSize((Page) &localCache);
-	else
-	{
-		fprintf(stderr, "pg_hexedit error: unable to read full page header from first block\n"
-				"read %u bytes\n", bytesRead);
-		exitCode = 1;
-	}
-
-	if (localSize == 0 || ((localSize - 1) & localSize) != 0)
-	{
-		fprintf(stderr, "pg_hexedit error: invalid block size %u encountered in first block\n",
-				localSize);
-		exitCode = 1;
-		localSize = BLCKSZ;
-	}
-
-	return localSize;
-}
-
-/*
- * Determine the LSN of page as an XLogRecPtr
- */
-static XLogRecPtr
-GetPageLsn(Page page)
-{
-	PageHeader	pageHeader = (PageHeader) page;
-
-#if PG_VERSION_NUM < 190000
-	return PageXLogRecPtrGet(pageHeader->pd_lsn);
-#else
-	return PageXLogRecPtrGet(&pageHeader->pd_lsn);
-#endif
-}
-
-/*
- * Determine the contents of the special section on the block and return this
- * enum value
- */
-static unsigned int
-GetSpecialSectionType(Page page)
-{
-	unsigned int rc;
-	unsigned int specialOffset;
-	unsigned int specialSize;
-	unsigned int specialValue;
-	PageHeader	pageHeader = (PageHeader) page;
-
-	/*
-	 * If this is not a partial header, check the validity of the  special
-	 * section offset and contents
-	 */
-	if (bytesToFormat > sizeof(PageHeaderData))
-	{
-		specialOffset = (unsigned int) pageHeader->pd_special;
-
-		/*
-		 * Check that the special offset can remain on the block or the
-		 * partial block
-		 */
-		if ((specialOffset == 0) ||
-			(specialOffset > blockSize) || (specialOffset > bytesToFormat))
-			rc = SPEC_SECT_ERROR_BOUNDARY;
-		else
-		{
-			/* we may need to examine last 2 bytes of page to identify index */
-			uint16	   *ptype = (uint16 *) (buffer + blockSize - sizeof(uint16));
-
-			specialSize = blockSize - specialOffset;
-
-			/*
-			 * If there is a special section, use its size to guess its
-			 * contents, checking the last 2 bytes of the page in cases that
-			 * are ambiguous.  Note we don't attempt to dereference  the
-			 * pointers without checking bytesToFormat == blockSize.
-			 */
-			if (specialSize == 0)
-				rc = SPEC_SECT_NONE;
-			else if (specialSize == MAXALIGN(sizeof(uint32)))
-			{
-				/*
-				 * If MAXALIGN is 8, this could be either a sequence or
-				 * SP-GiST or GIN.
-				 */
-				if (bytesToFormat == blockSize)
-				{
-					specialValue = *((int *) (buffer + specialOffset));
-					if (specialValue == SEQUENCE_MAGIC)
-						rc = SPEC_SECT_SEQUENCE;
-					else if (specialSize == MAXALIGN(sizeof(SpGistPageOpaqueData)) &&
-							 *ptype == SPGIST_PAGE_ID)
-						rc = SPEC_SECT_INDEX_SPGIST;
-					else if (specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
-							 IsBrinPage(page))
-						rc = SPEC_SECT_INDEX_BRIN;
-					else if (specialSize == MAXALIGN(sizeof(GinPageOpaqueData)))
-						rc = SPEC_SECT_INDEX_GIN;
-					else
-						rc = SPEC_SECT_ERROR_UNKNOWN;
-				}
-				else
-					rc = SPEC_SECT_ERROR_UNKNOWN;
-			}
-
-			/*
-			 * SP-GiST and GIN have same size special section, so check the
-			 * page ID bytes first
-			 */
-			else if (specialSize == MAXALIGN(sizeof(SpGistPageOpaqueData)) &&
-					 bytesToFormat == blockSize &&
-					 *ptype == SPGIST_PAGE_ID)
-				rc = SPEC_SECT_INDEX_SPGIST;
-			else if (specialSize == MAXALIGN(sizeof(BrinSpecialSpace)) &&
-					 IsBrinPage(page))
-				rc = SPEC_SECT_INDEX_BRIN;
-			else if (specialSize == MAXALIGN(sizeof(GinPageOpaqueData)))
-				rc = SPEC_SECT_INDEX_GIN;
-			else if (specialSize > 2 && bytesToFormat == blockSize)
-			{
-				/*
-				 * As of 8.3, BTree, Hash, and GIST all have the same size
-				 * special section, but the last two bytes of the section can
-				 * be checked to determine what's what.
-				 */
-				if (*ptype <= MAX_BT_CYCLE_ID &&
-					specialSize == MAXALIGN(sizeof(BTPageOpaqueData)))
-					rc = SPEC_SECT_INDEX_BTREE;
-				else if (*ptype == HASHO_PAGE_ID &&
-						 specialSize == MAXALIGN(sizeof(HashPageOpaqueData)))
-					rc = SPEC_SECT_INDEX_HASH;
-				else if (*ptype == GIST_PAGE_ID &&
-						 specialSize == MAXALIGN(sizeof(GISTPageOpaqueData)))
-					rc = SPEC_SECT_INDEX_GIST;
-				else
-					rc = SPEC_SECT_ERROR_UNKNOWN;
-			}
-			else
-				rc = SPEC_SECT_ERROR_UNKNOWN;
-		}
-	}
-	else
-		rc = SPEC_SECT_ERROR_UNKNOWN;
-
-	return rc;
-}
-
-static const char *
-GetSpecialSectionString(unsigned int type)
-{
-	switch (type)
-	{
-		case SPEC_SECT_NONE:
-			return "SPEC_SECT_NONE";
-		case SPEC_SECT_SEQUENCE:
-			return "SPEC_SECT_SEQUENCE";
-		case SPEC_SECT_INDEX_BTREE:
-			return "SPEC_SECT_INDEX_BTREE";
-		case SPEC_SECT_INDEX_HASH:
-			return "SPEC_SECT_INDEX_HASH";
-		case SPEC_SECT_INDEX_GIST:
-			return "SPEC_SECT_INDEX_GIST";
-		case SPEC_SECT_INDEX_GIN:
-			return "SPEC_SECT_INDEX_GIN";
-		case SPEC_SECT_INDEX_SPGIST:
-			return "SPEC_SECT_INDEX_SPGIST";
-		case SPEC_SECT_INDEX_BRIN:
-			return "SPEC_SECT_INDEX_BRIN";
-		case SPEC_SECT_ERROR_UNKNOWN:
-			return "SPEC_SECT_ERROR_UNKNOWN";
-		case SPEC_SECT_ERROR_BOUNDARY:
-			return "SPEC_SECT_ERROR_BOUNDARY";
-		default:
-			return "???";
-	}
-}
-
-/*
- * Given Heap tuple header, return string buffer with t_infomask or t_infomask2
- * flags.
- *
- * Note:  Caller is responsible for pg_free()'ing returned buffer.
- */
-static char *
-GetHeapTupleHeaderFlags(HeapTupleHeader htup, bool isInfomask2)
-{
-	unsigned int bitmapLength = 0;
-	unsigned int oidLength = 0;
-	unsigned int computedLength;
-	unsigned int localHoff;
-	unsigned int localBitOffset;
-	char	   *flagString = NULL;
-
-	flagString = pg_malloc(512);
-	localHoff = htup->t_hoff;
-	localBitOffset = offsetof(HeapTupleHeaderData, t_bits);
-
-	/*
-	 * Place readable versions of the tuple info mask into a buffer. Assume
-	 * that the string can not expand beyond 512 bytes.
-	 */
-	flagString[0] = '\0';
-	if (!isInfomask2)
-	{
-		strcat(flagString, "t_infomask (");
-
-		if (htup->t_infomask & HEAP_HASNULL)
-			strcat(flagString, "HEAP_HASNULL|");
-		if (htup->t_infomask & HEAP_HASVARWIDTH)
-			strcat(flagString, "HEAP_HASVARWIDTH|");
-		if (htup->t_infomask & HEAP_HASEXTERNAL)
-			strcat(flagString, "HEAP_HASEXTERNAL|");
-		if (htup->t_infomask & HEAP_HASOID)
-			strcat(flagString, "HEAP_HASOID|");
-		if (htup->t_infomask & HEAP_XMAX_KEYSHR_LOCK)
-			strcat(flagString, "HEAP_XMAX_KEYSHR_LOCK|");
-		if (htup->t_infomask & HEAP_COMBOCID)
-			strcat(flagString, "HEAP_COMBOCID|");
-		if (htup->t_infomask & HEAP_XMAX_EXCL_LOCK)
-			strcat(flagString, "HEAP_XMAX_EXCL_LOCK|");
-		if (htup->t_infomask & HEAP_XMAX_LOCK_ONLY)
-			strcat(flagString, "HEAP_XMAX_LOCK_ONLY|");
-		if (htup->t_infomask & HEAP_XMIN_COMMITTED)
-			strcat(flagString, "HEAP_XMIN_COMMITTED|");
-		if (htup->t_infomask & HEAP_XMIN_INVALID)
-			strcat(flagString, "HEAP_XMIN_INVALID|");
-		if (htup->t_infomask & HEAP_XMAX_COMMITTED)
-			strcat(flagString, "HEAP_XMAX_COMMITTED|");
-		if (htup->t_infomask & HEAP_XMAX_INVALID)
-			strcat(flagString, "HEAP_XMAX_INVALID|");
-		if (htup->t_infomask & HEAP_XMAX_IS_MULTI)
-			strcat(flagString, "HEAP_XMAX_IS_MULTI|");
-		if (htup->t_infomask & HEAP_UPDATED)
-			strcat(flagString, "HEAP_UPDATED|");
-		if (htup->t_infomask & HEAP_MOVED_OFF)
-			strcat(flagString, "HEAP_MOVED_OFF|");
-		if (htup->t_infomask & HEAP_MOVED_IN)
-			strcat(flagString, "HEAP_MOVED_IN|");
-
-		if (strlen(flagString))
-			flagString[strlen(flagString) - 1] = '\0';
-		strcat(flagString, ")");
-	}
-	else
-	{
-		sprintf(flagString, "t_infomask2 HeapTupleHeaderGetNatts(): %d ",
-				HeapTupleHeaderGetNatts(htup));
-
-		if (htup->t_infomask2 & ~HEAP_NATTS_MASK)
-			strcat(flagString, "(");
-
-
-		if (htup->t_infomask2 & HEAP_KEYS_UPDATED)
-			strcat(flagString, "HEAP_KEYS_UPDATED|");
-		if (htup->t_infomask2 & HEAP_HOT_UPDATED)
-			strcat(flagString, "HEAP_HOT_UPDATED|");
-		if (htup->t_infomask2 & HEAP_ONLY_TUPLE)
-			strcat(flagString, "HEAP_ONLY_TUPLE|");
-
-		if (strlen(flagString))
-			flagString[strlen(flagString) - 1] = '\0';
-		if (htup->t_infomask2 & ~HEAP_NATTS_MASK)
-			strcat(flagString, ")");
-	}
-
-	/*
-	 * As t_bits is a variable length array, and may contain an Oid field,
-	 * determine the length of the header proper as a sanity check.
-	 */
-	if (htup->t_infomask & HEAP_HASNULL)
-		bitmapLength = BITMAPLEN(HeapTupleHeaderGetNatts(htup));
-	else
-		bitmapLength = 0;
-
-	if (htup->t_infomask & HEAP_HASOID)
-		oidLength += sizeof(Oid);
-
-	computedLength =
-		MAXALIGN(localBitOffset + bitmapLength + oidLength);
-
-	/*
-	 * Inform the user of a header size mismatch or dump the t_bits array
-	 */
-	if (computedLength != localHoff)
-	{
-		fprintf
-			(stderr,
-			 "pg_hexedit error: computed header length not equal to header size.\n"
-			 "computed: %u header: %d\n", computedLength, localHoff);
-
-		exitCode = 1;
-	}
-
-	return flagString;
-}
-
-/*
- * Given IndexTuple, return string buffer with t_info reported tuple length,
- * and flags.
- *
- * Note:  Caller is responsible for pg_free()'ing returned buffer.
- */
-static char *
-GetIndexTupleFlags(IndexTuple itup)
-{
-	char	   *flagString = NULL;
-
-	flagString = pg_malloc(512);
-
-	/*
-	 * Place readable versions of the tuple info mask into a buffer.  Assume
-	 * that the string can not expand beyond 128 bytes.
-	 */
-	flagString[0] = '\0';
-	sprintf(flagString, "t_info IndexTupleSize(): %zu",
-			IndexTupleSize(itup));
-
-	if (itup->t_info & ~INDEX_SIZE_MASK)
-		strcat(flagString, ", (");
-
-	/*
-	 * Use specific index AM local name for generic reserved
-	 * INDEX_AM_RESERVED_BIT IndexTuple status bit
-	 */
-	if (itup->t_info & INDEX_AM_RESERVED_BIT)
-	{
-		if (specialType == SPEC_SECT_INDEX_HASH)
-			strcat(flagString, "INDEX_MOVED_BY_SPLIT_MASK|");
-		else if (specialType == SPEC_SECT_INDEX_BTREE)
-			strcat(flagString, "INDEX_ALT_TID_MASK|");
-		else
-			strcat(flagString, "INDEX_AM_RESERVED_BIT|");
-	}
-	if (itup->t_info & INDEX_VAR_MASK)
-		strcat(flagString, "INDEX_VAR_MASK|");
-	if (itup->t_info & INDEX_NULL_MASK)
-		strcat(flagString, "INDEX_NULL_MASK|");
-
-	if (itup->t_info & ~INDEX_SIZE_MASK)
-	{
-		flagString[strlen(flagString) - 1] = '\0';
-		strcat(flagString, ")");
-	}
-
-	return flagString;
-}
-
-static const char *
-GetSpGistStateString(unsigned int code)
-{
-	switch (code)
-	{
-		case SPGIST_LIVE:
-			return "SPGIST_LIVE";
-		case SPGIST_REDIRECT:
-			return "SPGIST_REDIRECT";
-		case SPGIST_DEAD:
-			return "SPGIST_DEAD";
-		case SPGIST_PLACEHOLDER:
-			return "SPGIST_PLACEHOLDER";
-		default:
-			return "???";
-	}
-}
-
-/*
- * Given SpGistInnerTuple, return string buffer with tuple-reported state from
- * bitfields.
- *
- * Note:  Caller is responsible for pg_free()'ing returned buffer.
- */
-static char *
-GetSpGistInnerTupleState(SpGistInnerTuple itup)
-{
-	char	   *flagString = NULL;
-
-	flagString = pg_malloc(128);
-
-	sprintf(flagString, "tupstate: %s, allTheSame: %u, nNodes: %u, prefixSize: %u",
-			GetSpGistStateString(itup->tupstate), itup->allTheSame, itup->nNodes, itup->prefixSize);
-
-	return flagString;
-}
-
-/*
- * Given SpGistLeafTuple, return string buffer with tuple-reported state from
- * bitfields.
- *
- * Note:  Caller is responsible for pg_free()'ing returned buffer.
- */
-static char *
-GetSpGistLeafTupleState(SpGistLeafTuple itup)
-{
-	char	   *flagString = NULL;
-
-	flagString = pg_malloc(128);
-
-	sprintf(flagString, "tupstate: %s, size: %u",
-			GetSpGistStateString(itup->tupstate), itup->size);
-
-	return flagString;
-}
-
-/*
- * Given BrinTuple, return string buffer with bt_info reported data offset, and
- * tuple flags.
- *
- * Note:  Caller is responsible for pg_free()'ing returned buffer.
- */
-static char *
-GetBrinTupleFlags(BrinTuple *itup)
-{
-	char	   *flagString = NULL;
-
-	flagString = pg_malloc(128);
-
-	/*
-	 * Place readable versions of the tuple info mask into a buffer.  Assume
-	 * that the string can not expand beyond 128 bytes.
-	 */
-	flagString[0] = '\0';
-	sprintf(flagString, "bt_info BrinTupleDataOffset(): %zu",
-			BrinTupleDataOffset(itup));
-
-	if (itup->bt_info & (BRIN_PLACEHOLDER_MASK | BRIN_NULLS_MASK))
-		strcat(flagString, ", (");
-
-	if (itup->bt_info & BRIN_PLACEHOLDER_MASK)
-		strcat(flagString, "BRIN_PLACEHOLDER_MASK|");
-	if (itup->bt_info & BRIN_NULLS_MASK)
-		strcat(flagString, "BRIN_NULLS_MASK|");
-
-	if (itup->bt_info & (BRIN_PLACEHOLDER_MASK | BRIN_NULLS_MASK))
-	{
-		flagString[strlen(flagString) - 1] = '\0';
-		strcat(flagString, ")");
-	}
-
-	return flagString;
-}
-
-/*	Check whether page is a BRIN meta page */
-static bool
-IsBrinPage(Page page)
-{
-	if (bytesToFormat != blockSize)
-		return false;
-
-	if (BRIN_IS_META_PAGE(page) || BRIN_IS_REVMAP_PAGE(page) ||
-		BRIN_IS_REGULAR_PAGE(page))
-		return true;
-	return false;
-}
-
-/*	Check whether page is a hash bitmap page */
-static bool
-IsHashBitmapPage(Page page)
-{
-	HashPageOpaque opaque;
-
-	/* Defensive */
-	if (bytesToFormat != blockSize)
-		return false;
-	if (specialType != SPEC_SECT_INDEX_HASH)
-		return false;
-
-	opaque = (HashPageOpaque) PageGetSpecialPointer(page);
-	if (opaque->hasho_flag & LH_BITMAP_PAGE)
-		return true;
-
-	return false;
-}
-
-/* Check whether page is a leaf page */
-static bool
-IsLeafPage(Page page)
-{
-	if (specialType == SPEC_SECT_INDEX_BTREE)
-	{
-		BTPageOpaque btreeSection = (BTPageOpaque) PageGetSpecialPointer(page);
-
-		/*
-		 * Don't count a root page as a leaf (i.e.  the root before the first
-		 * root page split).
-		 */
-		if ((btreeSection->btpo_flags & BTP_LEAF) &&
-			!(btreeSection->btpo_flags & BTP_ROOT))
-			return true;
-	}
-	else if (specialType == SPEC_SECT_INDEX_GIST)
-	{
-		if (GistPageIsLeaf(page))
-			return true;
-	}
-	else if (specialType == SPEC_SECT_INDEX_GIN)
-	{
-		/* This works for both posting trees, and the main entry tree */
-		if (GinPageIsLeaf(page))
-			return true;
-	}
-	else if (specialType == SPEC_SECT_INDEX_SPGIST)
-	{
-		if (SpGistPageIsLeaf(page))
-			return true;
-	}
-
-	return false;
-}
-
-/*
- * For each block, dump out formatted header and content information
- */
-static void
-EmitXmlPage(BlockNumber blkno)
-{
-	Page		page = (Page) buffer;
-	uint32		level = UINT_MAX;
-	int			rc;
-
-	/*
-	 * Maintain max block number for blocks that have some kind of content
-	 * (could just be zero block, could be block that we'd skip due to current
-	 * -x option)
-	 */
-	maxBlockNumber = Max(maxBlockNumber, blkno);
-
-	if (PageIsNew(page))
-	{
-		/*
-		 * Assume new/zeroed block has LSN 0 for -x option (but don't update
-		 * minPageLSN because it's not useful to consider that 0)
-		 */
-		if ((blockOptions & BLOCK_SKIP_LSN))
-		{
-			nblocksskipped++;
-		}
-
-		return;
-	}
-
-	/* Get details of page first */
-	pageOffset = blockSize * currentBlock;
-	specialType = GetSpecialSectionType(page);
-
-	/*
-	 * A Postgres segment file should consists of blocks that are all of the
-	 * same special section reported type (excluding those blocks that have
-	 * yet to be initialized by PageInit()).  Raise error when this
-	 * expectation is not met.
-	 */
-	if (firstType == SPEC_SECT_ERROR_UNKNOWN)
-		firstType = specialType;
-
-	if (firstType != specialType)
-	{
-		fprintf(stderr, "pg_hexedit error: special section indicated type unexpectedly changed from \"%s\" to \"%s\" at file block %u\n",
-				GetSpecialSectionString(firstType),
-				GetSpecialSectionString(specialType), blkno);
-		exitCode = 1;
-	}
-
-	/*
-	 * Check to see if we must skip this block due to it falling behind LSN
-	 * threshold
-	 */
-	if ((blockOptions & BLOCK_SKIP_LSN))
-	{
-		XLogRecPtr	pageLSN = GetPageLsn(page);
-
-		if (pageLSN < afterThreshold)
-		{
-			rc = 0;
-			nblocksskipped++;
-			return;
-		}
-		else
-		{
-			nblockstagged++;
-
-			/* Maintain Min and Max LSNs for annotated pages */
-			if (pageLSN < minPageLSN)
-			{
-				minPageLSN = pageLSN;
-				minPageLSNBlock = blkno;
-			}
-			if (pageLSN > maxPageLSN)
-			{
-				maxPageLSN = pageLSN;
-				maxPageLSNBlock = blkno;
-			}
-		}
-	}
-
-	/* Get "level" for page.  Only B-Tree tags get a "level" */
-	if (specialType == SPEC_SECT_INDEX_BTREE)
-	{
-		BTPageOpaque btreeSection = (BTPageOpaque) PageGetSpecialPointer(page);
-
-		level = btreeSection->btpo_level;
-	}
-
-	/*
-	 * We optionally itemize leaf blocks as whole tags, in order to limit the
-	 * size of tag files sharply.  Internal pages can be more interesting when
-	 * debugging certain types of problems, such as problems with the balance
-	 * of some tree structure.
-	 */
-	if ((blockOptions & BLOCK_SKIP_LEAF) && IsLeafPage(page))
-	{
-		EmitXmlTag(blkno, level, "leaf page", COLOR_GREEN_DARK,
-				   pageOffset,
-				   (pageOffset + BLCKSZ) - 1);
-		rc = 0;
-		return;
-	}
-
-	/*
-	 * Every block that we aren't skipping will have header, items and
-	 * possibly special section tags created.  Beware of partial block reads,
-	 * though.
-	 */
-	rc = EmitXmlPageHeader(page, blkno, level);
-
-	/* If we didn't encounter a partial read in header, carry on...  */
-	if (rc != EOF_ENCOUNTERED)
-	{
-		/*
-		 * All AMs have a single metapage at block zero of the first segment,
-		 * with the exception of heapam and GiST. (Sequences more or less
-		 * reuse the heap format, and so don't have a metapage.)
-		 */
-		if (blkno == 0 && segmentNumber == 0 &&
-			specialType != SPEC_SECT_NONE &&
-			specialType != SPEC_SECT_INDEX_GIST &&
-			specialType != SPEC_SECT_SEQUENCE)
-		{
-			/* If it's a meta page, the meta block will have no tuples */
-			EmitXmlPageMeta(blkno, level);
-		}
-		else if (specialType == SPEC_SECT_INDEX_BTREE &&
-				 P_ISDELETED((BTPageOpaque) PageGetSpecialPointer(page)))
-		{
-			/*
-			 * Deleted nbtree pages only contain BTDeletedPageData on Postgres
-			 * 14+ -- don't bother distinguishing deleted pages.  Cannot trust
-			 * maxoff from page.
-			 */
-		}
-		else if (specialType == SPEC_SECT_INDEX_HASH && IsHashBitmapPage(page))
-		{
-			/* Hash bitmap pages don't use IndexTuple or ItemId */
-			EmitXmlHashBitmap(page, blkno);
-		}
-		else if (specialType == SPEC_SECT_INDEX_GIST && GistPageIsDeleted(page))
-		{
-			/*
-			 * Deleted GiST pages only contain GISTDeletedPageContents on
-			 * Postgres 12+ -- don't bother distinguishing deleted pages.
-			 * Cannot trust maxoff from page.
-			 */
-		}
-		else if (specialType == SPEC_SECT_INDEX_GIN && GinPageIsDeleted(page))
-		{
-			/*
-			 * Unfortunately, GIN_DELETED pages don't have page state needed
-			 * by GinPageIsData().  Don't attempt to emit tags for tuples on
-			 * deleted GIN pages.
-			 */
-		}
-		else if (specialType == SPEC_SECT_INDEX_GIN && GinPageIsData(page))
-		{
-			/* GIN data/posting tree pages don't use IndexTuple or ItemId */
-			EmitXmlPostingTreeTids(page, blkno);
-		}
-		else if (specialType == SPEC_SECT_INDEX_BRIN && BRIN_IS_REVMAP_PAGE(page))
-		{
-			/* BRIN revmap pages don't use IndexTuple/BrinTuple or ItemId */
-			EmitXmlRevmap(page, blkno);
-		}
-		else
-		{
-			/* Conventional heap/index page format */
-			EmitXmlPageItemIdArray(page, blkno);
-			EmitXmlTuples(page, blkno);
-		}
-
-		/* Only heapam doesn't have a special area (even sequences have one) */
-		if (specialType != SPEC_SECT_NONE)
-			EmitXmlSpecial(blkno, level);
-	}
-}
-
-/*
- * Display a header for the dump so we know the file name, the options and the
- * time the dump was taken
- */
-static void
-EmitXmlDocHeader(int numOptions, char **options)
-{
-	unsigned int x;
-	char		optionBuffer[52] = "\0";
-	char		timeStr[1000];
-
-	/* Format time without newline */
-	time_t		rightNow = time(NULL);
-	struct tm  *localNow = localtime(&rightNow);
-
-	strftime(timeStr, sizeof(timeStr), "%H:%M:%S %A, %B %d %Y", localNow);
-
-	/*
-	 * Iterate through the options and cache them. The maximum we can display
-	 * is 50 option characters + spaces.
-	 */
-	for (x = 1; x < (numOptions - 1); x++)
-	{
-		if ((strlen(optionBuffer) + strlen(options[x])) > 50)
-			break;
-		strcat(optionBuffer, options[x]);
-		strcat(optionBuffer, " ");
-	}
-
-	printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-	printf("<!-- Dump created on: %s -->\n", timeStr);
-	printf("<!-- Options used: %s -->\n", (strlen(optionBuffer)) ? optionBuffer : "None");
-	printf("<!-- Block size: %u -->\n", blockSize);
-	printf("<!-- pg_hexedit version: %s -->\n", HEXEDIT_VERSION);
-	printf("<!-- pg_hexedit build PostgreSQL version: %s -->\n", PG_VERSION);
-	printf("<wxHexEditor_XML_TAG>\n");
-	printf("  <filename path=\"%s\">\n", fileName);
-}
-
-static void
-EmitXmlFooter(void)
-{
-	printf("  </filename>\n");
-	printf("</wxHexEditor_XML_TAG>\n");
-}
-
-/*
- * Emit a generic wxHexEditor tag for tuple data.
- *
- * Note: endOffset is an offset to the last byte whose range the tag covers, so
- * callers generally pass (relfileOff + length) - 1.  This is slightly less
- * verbose than getting callers to pass length.
- *
- * B-Tree index callers may optionally pass a "level".  Passing
- * InvalidBlockNumber avoids emitting any block number.
- */
-static void
-EmitXmlTag(BlockNumber blkno, uint32 level, const char *name, const char *color,
-		   uint32 relfileOff, uint32 relfileOffEnd)
-{
-	Assert(relfileOff <= relfileOffEnd);
-
-	printf("    <TAG id=\"%u\">\n", tagNumber++);
-	printf("      <start_offset>%u</start_offset>\n", relfileOff);
-	printf("      <end_offset>%u</end_offset>\n", relfileOffEnd);
-	if (blkno == InvalidBlockNumber)
-		printf("      <tag_text>%s</tag_text>\n", name);
-	else if (level != UINT_MAX)
-		printf("      <tag_text>block %u (level %u) %s</tag_text>\n",
-			   blkno + segmentBlockDelta, level, name);
-	else
-		printf("      <tag_text>block %u %s</tag_text>\n",
-			   blkno + segmentBlockDelta, name);
-	printf("      <font_colour>" COLOR_FONT_STANDARD "</font_colour>\n");
-	printf("      <note_colour>%s</note_colour>\n", color);
-	printf("    </TAG>\n");
-}
-
-/*
- * Emit a wxHexEditor tag for a line pointer (ItemId).
- */
-static void
-EmitXmlItemId(BlockNumber blkno, OffsetNumber offset, ItemId itemId,
-			  uint32 relfileOff, const char *textFlags)
-{
-	char	   *fontColor;
-	char	   *itemIdColor;
-
-	fontColor = COLOR_FONT_STANDARD;
-	itemIdColor = COLOR_BLUE_LIGHT;
-
-	/*
-	 * The color of the tag and tag font is chosen to give a cue about line
-	 * pointer details.  Unused line pointers (which are reusable) have a
-	 * non-contrasting font color to deemphasize their importance.  LP_DEAD
-	 * line pointers (which are dead but not necessarily reusable yet) don't
-	 * stay around for long in most real world workloads, and so it seems
-	 * useful to make them stick out.
-	 */
-	if (ItemIdIsRedirected(itemId))
-		itemIdColor = COLOR_BLUE_DARK;
-	else if (ItemIdIsDead(itemId))
-		itemIdColor = COLOR_BROWN;
-	else if (!ItemIdIsUsed(itemId))
-		fontColor = COLOR_BLUE_DARK;
-
-	/* Interpret the content of each ItemId separately */
-	printf("    <TAG id=\"%u\">\n", tagNumber++);
-	printf("      <start_offset>%u</start_offset>\n", relfileOff);
-	printf("      <end_offset>%lu</end_offset>\n", (relfileOff + sizeof(ItemIdData)) - 1);
-	printf("      <tag_text>(%u,%d) lp_len: %u, lp_off: %u, lp_flags: %s</tag_text>\n",
-		   blkno + segmentBlockDelta, offset, ItemIdGetLength(itemId),
-		   ItemIdGetOffset(itemId), textFlags);
-	printf("      <font_colour>%s</font_colour>\n", fontColor);
-	printf("      <note_colour>%s</note_colour>\n", itemIdColor);
-	printf("    </TAG>\n");
-}
-
-/*
- * Emit a wxHexEditor tag for individual tuple, whose TID is to be represented
- * in the tag annotation.  Could be an IndexTuple, heap tuple, or special
- * tuple-like structure (e.g., GIN data/posting tree page item).
- *
- * Note: relfileOffEnd is an offset to the last byte whose range the tag
- * covers, so callers generally pass (relfileOff + length) - 1.  This is
- * slightly less verbose than getting callers to pass length.
- */
-static inline void
-EmitXmlTupleTag(BlockNumber blkno, OffsetNumber offset, const char *name,
-				const char *color, uint32 relfileOff, uint32 relfileOffEnd)
-{
-	EmitXmlTupleTagFont(blkno, offset, name, color, COLOR_FONT_STANDARD,
-						relfileOff, relfileOffEnd);
-}
-
-/*
- * Like EmitXmlTupleTag(), but lets caller specify font color
- */
-static void
-EmitXmlTupleTagFont(BlockNumber blkno, OffsetNumber offset, const char *name,
-					const char *color, const char *fontColor,
-					uint32 relfileOff, uint32 relfileOffEnd)
-{
-	if (relfileOff > relfileOffEnd)
-	{
-		fprintf(stderr, "pg_hexedit error: (%u,%u) tuple tag \"%s\" is malformed (%u > %u)\n",
-				blkno + segmentBlockDelta, offset, name, relfileOff,
-				relfileOffEnd);
-		exitCode = 1;
-		return;
-	}
-
-	printf("    <TAG id=\"%u\">\n", tagNumber++);
-	printf("      <start_offset>%u</start_offset>\n", relfileOff);
-	printf("      <end_offset>%u</end_offset>\n", relfileOffEnd);
-	printf("      <tag_text>(%u,%u) %s</tag_text>\n",
-		   blkno + segmentBlockDelta, offset, name);
-	printf("      <font_colour>%s</font_colour>\n", fontColor);
-	printf("      <note_colour>%s</note_colour>\n", color);
-	printf("    </TAG>\n");
-}
-
-/*
- * Like EmitXmlTupleTagFont(), but lets caller specify name in two parts
- */
-static void
-EmitXmlTupleTagFontTwoName(BlockNumber blkno, OffsetNumber offset,
-						   const char *name1, const char *name2,
-						   const char *color, const char *fontColor,
-						   uint32 relfileOff, uint32 relfileOffEnd)
-{
-	char	   *combinednames;
-
-	if (relfileOff > relfileOffEnd)
-	{
-		fprintf(stderr, "pg_hexedit error: (%u,%u) tuple tag \"%s - %s\" is malformed (%u > %u)\n",
-				blkno + segmentBlockDelta, offset, name1, name2, relfileOff,
-				relfileOffEnd);
-		exitCode = 1;
-		return;
-	}
-
-	combinednames = pg_malloc(strlen(name1) + strlen(name2) + 5);
-	combinednames[0] = '\0';
-	strcat(combinednames, name1);
-	strcat(combinednames, " - ");
-	strcat(combinednames, name2);
-
-	printf("    <TAG id=\"%u\">\n", tagNumber++);
-	printf("      <start_offset>%u</start_offset>\n", relfileOff);
-	printf("      <end_offset>%u</end_offset>\n", relfileOffEnd);
-	printf("      <tag_text>(%u,%u) %s</tag_text>\n",
-		   blkno + segmentBlockDelta, offset, combinednames);
-	printf("      <font_colour>%s</font_colour>\n", fontColor);
-	printf("      <note_colour>%s</note_colour>\n", color);
-	printf("    </TAG>\n");
-
-	pg_free(combinednames);
-}
-
-/*
- * Emit wxHexEditor tags for individual non-NULL attributes in heap tuple
- */
-static void
-EmitXmlAttributesHeap(BlockNumber blkno, OffsetNumber offset,
-					  uint32 relfileOff, HeapTupleHeader htup, int itemSize)
-{
-	unsigned char *tupdata = (unsigned char *) htup + htup->t_hoff;
-	uint8	   *t_bits;
-	int			nattrs = HeapTupleHeaderGetNatts(htup);
-	int			datalen = itemSize - htup->t_hoff;
-
-	/*
-	 * If an argument describing the relation's tuples was not provided, just
-	 * create a single tag
-	 */
-	if (nrelatts == 0)
-	{
-		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE, relfileOff,
-						(relfileOff + datalen) - 1);
-		return;
-	}
-
-	if (nattrs > nrelatts)
-	{
-		fprintf(stderr, "pg_hexedit error: %d attributes found in (%u,%u) exceeds the number inferred for relation from -D argument %d\n",
-				nattrs, blkno, offset, nrelatts);
-		exitCode = 1;
-		nattrs = nrelatts;
-	}
-
-	t_bits = (htup->t_infomask & HEAP_HASNULL) != 0 ? htup->t_bits : NULL;
-
-	EmitXmlAttributesData(blkno, offset, relfileOff, tupdata, t_bits, nattrs,
-						  datalen);
-}
-
-/*
- * Emit wxHexEditor tags for individual non-NULL attributes in index tuple
- */
-static void
-EmitXmlAttributesIndex(BlockNumber blkno, OffsetNumber offset,
-					   uint32 relfileOff, IndexTuple itup, uint32 tupHeaderOff,
-					   int itemSize)
-{
-	unsigned char *tupdata;
-	uint8	   *t_bits;
-	int			datalen;
-	int			nattrs = nrelatts;
-	bool		haveargreltuple = true;
-
-	/*
-	 * If an argument describing the relation's tuples was not provided, just
-	 * create a single tag, but show pivot tuple heap TID representation, or
-	 * posting list representation, since we don't need -D metadata for that.
-	 *
-	 * Play it safe here -- don't attempt to emit attribute values when an
-	 * error was already encountered.  We may be able to limp on for much
-	 * longer this way, especially in the event of an access method that we
-	 * know nothing about but follows the familiar bufpage.c conventions, such
-	 * as zheap.
-	 *
-	 * Multi-column GIN entries have two attributes in main entry key tuples:
-	 * an implicit int16 leading attribute that indicates which pg_attribute
-	 * listing the entry relates to, as well as the actual value.  This isn't
-	 * something that we currently support, though, so just treat this case as
-	 * if we had no catalog metadata.
-	 */
-	if (nrelatts == 0 || exitCode != 0 ||
-		(specialType == SPEC_SECT_INDEX_GIN && nrelatts > 1))
-	{
-		/* Won't be able to emit tags based on tuple metadata argument */
-		haveargreltuple = false;
-	}
-
-	/* Set up state for emitting attributes */
-	tupdata = (unsigned char *) itup + IndexInfoFindDataOffset(itup->t_info);
-	t_bits = IndexTupleHasNulls(itup) ?
-		(uint8 *) ((unsigned char *) itup + sizeof(IndexTupleData)) : NULL;
-	datalen = itemSize - IndexInfoFindDataOffset(itup->t_info) - 1;
-
-	/*
-	 * This is based on BTreeTupleGetNAtts(), which cannot be called from
-	 * frontend code.
-	 *
-	 * On Postgres v12+, account for possible heap TID tiebreaker attribute in
-	 * pivot tuples.  These TIDs are white because they are considered keys,
-	 * not pointers.  This color scheme is based on the precedent set by GIN's
-	 * internal posting tree pages.
-	 */
-	if (specialType == SPEC_SECT_INDEX_BTREE && BTreeTupleIsPivot(itup))
-	{
-		nattrs =
-			(ItemPointerGetOffsetNumberNoCheck(&(itup)->t_tid) &
-			 BT_OFFSET_MASK);
-
-		if (haveargreltuple && nattrs > nrelatts)
-		{
-			fprintf(stderr, "pg_hexedit error: %d attributes found in (%u,%u) exceeds the number inferred for relation from -D argument %d\n",
-					nattrs, blkno, offset, nrelatts);
-			exitCode = 1;
-			nattrs = nrelatts;
-		}
-		if (BTreeTupleGetHeapTID(itup) != NULL)
-		{
-			/*
-			 * Heap TID attribute is considered a column internally, but has
-			 * no pg_attribute entry.
-			 *
-			 * Note that this only handles the special representation of heap
-			 * TID that's used in pivot tuples (includes leaf page high key).
-			 * Non-pivot tuples represent heap TID using IndexTupleData.t_tid,
-			 * or by using a posting list.
-			 */
-			uint32		htidoffset;
-
-			htidoffset = (tupHeaderOff + IndexTupleSize(itup)) -
-				sizeof(ItemPointerData);
-			datalen -= sizeof(ItemPointerData);
-
-			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->bi_hi", COLOR_PINK,
-							htidoffset, (htidoffset + sizeof(uint16)) - 1);
-			htidoffset += sizeof(uint16);
-			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->bi_lo", COLOR_PINK,
-							htidoffset, (htidoffset + sizeof(uint16)) - 1);
-			htidoffset += sizeof(uint16);
-			EmitXmlTupleTag(blkno, offset, "BTreeTupleGetHeapTID()->offsetNumber", COLOR_PINK,
-							htidoffset, (htidoffset + sizeof(uint16)) - 1);
-		}
-	}
-
-	/*
-	 * nbtree posting list tuples
-	 */
-	else if (specialType == SPEC_SECT_INDEX_BTREE && BTreeTupleIsPosting(itup))
-	{
-		uint32	postoffset = tupHeaderOff + BTreeTupleGetPostingOffset(itup);
-		int		i;
-
-		datalen = postoffset - relfileOff - 1;
-
-		/*
-		 * Annotate each posting list TID individually, while alternating the
-		 * color to increase legibility.
-		 *
-		 * This deliberately doesn't look anything like pivot tuple heap TID
-		 * annotations, and deliberately doesn't recreate the slight variation
-		 * in color within TIDs from tuple headers.  Small posting list tuples
-		 * should appear prominently among duplicates that aren't posting
-		 * lists.
-		 */
-		for (i = 0; i < BTreeTupleGetNPosting(itup); i++)
-		{
-			char   *color = (i % 2 == 0 ? COLOR_RED_LIGHT : COLOR_GREEN_LIGHT);
-			char	tidstr[30];
-
-			sprintf(tidstr, "TID[%d] bi_hi", i);
-			EmitXmlTupleTag(blkno, offset, tidstr, color, postoffset,
-							(postoffset + sizeof(uint16)) - 1);
-			postoffset += sizeof(uint16);
-			sprintf(tidstr, "TID[%d] bi_lo", i);
-			EmitXmlTupleTag(blkno, offset, tidstr, color, postoffset,
-							(postoffset + sizeof(uint16)) - 1);
-			postoffset += sizeof(uint16);
-			sprintf(tidstr, "TID[%d] offsetNumber", i);
-			EmitXmlTupleTag(blkno, offset, tidstr, color, postoffset,
-							(postoffset + sizeof(uint16)) - 1);
-			postoffset += sizeof(uint16);
-		}
-	}
-
-	/*
-	 * Finally, emit pg_attribute-wise columns, or plain gray tag that
-	 * represents where the pg_attribute-wise tuple values would go if we had
-	 * valid -D info
-	 */
-	if (haveargreltuple)
-		EmitXmlAttributesData(blkno, offset, relfileOff, tupdata, t_bits,
-							  nattrs, MAXALIGN(datalen));
-	else
-		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
-						relfileOff, relfileOff + datalen);
-
-}
-
-/*
- * Emit wxHexEditor tags for individual non-NULL attributes.
- *
- * This relies on catalog metadata passed by user, since frontend code cannot
- * use tuple descriptors or access system catalog metadata itself.
- *
- * This code is loosely based on nocachegetattr(), though it works with both
- * heap and index tuple data areas.
- */
-static void
-EmitXmlAttributesData(BlockNumber blkno, OffsetNumber offset,
-					  uint32 relfileOff, unsigned char *tupdata, uint8 *t_bits,
-					  int nattrs, int datalen)
-{
-	unsigned char *attptr = tupdata;
-	int			off = 0;
-	int			i;
-
-	for (i = 0; i < nattrs; i++)
-	{
-		int			attlen = attlenrel[i];
-		char	   *attname = attnamerel[i];
-		char	   *attcolor = attcolorrel[i];
-		char		attalign = attalignrel[i];
-		int			truestartoff = 0;
-		int			truelen;
-
-		if (t_bits && att_isnull(i, t_bits))
-			continue;
-
-		if (attlen == -1)
-		{
-			char	   *hdrname = "";
-
-			/* Varlena header receives its own minimal tag */
-			off = att_align_pointer(off, attalign, -1, attptr);
-			truelen = VARSIZE_ANY(tupdata + off);
-
-			if (VARATT_IS_1B(attptr))
-			{
-				truestartoff = 1;
-				truelen -= 1;
-				if (VARATT_IS_1B_E(attptr))
-					hdrname = "varattrib_1b_e";
-				else
-					hdrname = "varattrib_1b";
-
-				EmitXmlTupleTagFontTwoName(blkno, offset, attname, hdrname,
-										   attcolor, COLOR_BROWN,
-										   relfileOff + off,
-										   relfileOff + off);
-			}
-			else if (VARATT_IS_4B(attptr))
-			{
-				truestartoff = 4;
-				truelen -= 4;
-				if (VARATT_IS_4B_U(attptr))
-					hdrname = "va_4byte";
-				else if (VARATT_IS_4B_C(attptr))
-					hdrname = "va_compressed";
-
-				EmitXmlTupleTagFontTwoName(blkno, offset, attname, hdrname,
-										   attcolor, COLOR_BROWN,
-										   relfileOff + off,
-										   relfileOff + off + 3);
-			}
-		}
-		else if (attlen == -2)
-		{
-			off = att_align_nominal(off, attalign);
-			truelen = strnlen((char *) attptr, datalen - off) + 1;
-		}
-		else
-		{
-			off = att_align_nominal(off, attalign);
-			truelen = attlen;
-		}
-
-		if (datalen < off + attlen)
-		{
-			fprintf(stderr, "pg_hexedit error: unexpected out of bounds tuple data for attnum %d in (%u,%u)\n",
-					i + 1, blkno, offset);
-			exitCode = 1;
-			return;
-		}
-
-		EmitXmlTupleTag(blkno, offset, attname, attcolor,
-						relfileOff + off + truestartoff,
-						relfileOff + off + truestartoff + truelen - 1);
-
-		/* Get possible address of next attribute, handling alignment */
-		off = att_addlength_pointer(off, attlen, tupdata + off);
-		attptr = tupdata + off;
-	}
-}
-
-/*
- * Emit a wxHexEditor tag for entire heap tuple.
- *
- * Note: Caller passes itemSize from ItemId because that's the only place that
- * it's available from.
- */
-static void
-EmitXmlHeapTuple(BlockNumber blkno, OffsetNumber offset,
-				 HeapTupleHeader htup, uint32 relfileOff,
-				 int itemSize)
-{
-	TransactionId rawXmin = HeapTupleHeaderGetRawXmin(htup);
-	TransactionId rawXmax = HeapTupleHeaderGetRawXmax(htup);
-	char		xmin[90];
-	char		xmax[90];
-	char	   *xminFontColor;
-	char	   *xmaxFontColor;
-	BlockNumber logBlock = blkno + segmentBlockDelta;
-	char	   *blkFontColor;
-	char	   *offsetFontColor;
-	char	   *flagString;
-	uint32		relfileOffNext = 0;
-	uint32		relfileOffOrig = relfileOff;
-
-	/*
-	 * Produce xmin and xmax tags for tuple.
-	 *
-	 * The choice of colors here is not completely arbitrary.  There is some
-	 * attempt at analogy in the choice of colors.  For example, xmin and xmax
-	 * are symmetric, and so are both COLOR_RED_LIGHT.
-	 *
-	 * Tuple freezing and MultiXacts leave us with a lot of potentially
-	 * interesting information to represent here.  We use special font colors
-	 * to represent special transaction IDs, and include certain special
-	 * status information about the TransactionId/MultiXact contained within
-	 * each field.  The extra information in the tags is redundant with the
-	 * infomask tags (tags for where the information is actually represented),
-	 * but it seems useful to add some visual cues.
-	 */
-	strcpy(xmin, "xmin");
-	strcpy(xmax, "xmax");
-	xminFontColor = COLOR_FONT_STANDARD;
-	xmaxFontColor = COLOR_FONT_STANDARD;
-
-	/*
-	 * HeapTupleHeaderXminFrozen() doesn't actually consider pre-9.4
-	 * pg_upgrad'ed tuples that have FrozenTransactionId as their raw xmin
-	 */
-	if (!HeapTupleHeaderXminFrozen(htup) && rawXmin != FrozenTransactionId)
-	{
-		if (rawXmin == BootstrapTransactionId)
-		{
-			strcat(xmin, " - BootstrapTransactionId");
-			xminFontColor = COLOR_WHITE;
-		}
-		else if (rawXmin == InvalidTransactionId)
-		{
-			strcat(xmin, " - InvalidTransactionId");
-			xminFontColor = COLOR_YELLOW_LIGHT;
-		}
-	}
-	else
-	{
-		/*
-		 * Raw xmin is frozen.  Frozen xmin XIDs are only preserved for
-		 * forensic reasons (on Postgres 9.4+), so use low-contrast font to
-		 * deemphasize the XID.  (Raw xmin could be FrozenTransactionId here
-		 * in a pg_upgrade'd database, which is just as uninteresting.)
-		 */
-		strcat(xmin, " - Frozen");
-		xminFontColor = COLOR_RED_DARK;
-	}
-
-	/*
-	 * Deliberately tag InvalidTransactionId and HEAP_XMAX_INVALID separately
-	 * for xmax annotation, since they can be set separately in a way that
-	 * might be interesting.  Also indicate (redundantly) if the xmax is a
-	 * MultiXactId, or is the XID on a non-updating locker xact.
-	 *
-	 * Representing HEAP_XMAX_IS_MULTI and HEAP_XMAX_LOCK_ONLY but not
-	 * HEAP_XMAX_COMMITTED here is a bit arbitrary.  We do this because
-	 * HEAP_XMAX_IS_MULTI and HEAP_XMAX_LOCK_ONLY are basic facts about the
-	 * class of data that the xmax field contains, as opposed to status
-	 * information for the tuple as a whole.
-	 *
-	 * The general idea is to make it as easy as possible for the user to get
-	 * a sense of the structure of update chains on the page.
-	 */
-	if ((htup->t_infomask & HEAP_XMAX_IS_MULTI) != 0)
-	{
-		strcat(xmax, " - HEAP_XMAX_IS_MULTI");
-		xmaxFontColor = COLOR_GREEN_DARK;
-	}
-	if (rawXmax == InvalidTransactionId)
-	{
-		strcat(xmax, " - InvalidTransactionId");
-		xmaxFontColor = COLOR_YELLOW_LIGHT;
-	}
-	if ((htup->t_infomask & HEAP_XMAX_INVALID) != 0)
-	{
-		strcat(xmax, " - HEAP_XMAX_INVALID");
-		/* Matches InvalidTransactionId case */
-		xmaxFontColor = COLOR_YELLOW_LIGHT;
-	}
-
-	/*
-	 * Handle HEAP_XMAX_LOCK_ONLY last, since the HEAP_XMAX_INVALID hint seems
-	 * like it shouldn't affect font color.
-	 */
-	if ((htup->t_infomask & HEAP_XMAX_LOCK_ONLY) != 0)
-	{
-		/*
-		 * This color is deliberately chosen to be similar to the special
-		 * t_ctid font colors
-		 */
-		strcat(xmax, " - HEAP_XMAX_LOCK_ONLY");
-		xmaxFontColor = COLOR_BLUE_DARK;
-	}
-
-	relfileOffNext = relfileOff + sizeof(TransactionId);
-	EmitXmlTupleTagFont(blkno, offset, xmin, COLOR_RED_LIGHT, xminFontColor,
-						relfileOff, relfileOffNext - 1);
-	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(TransactionId);
-	EmitXmlTupleTagFont(blkno, offset, xmax, COLOR_RED_LIGHT, xmaxFontColor,
-						relfileOff, relfileOffNext - 1);
-	relfileOff = relfileOffNext;
-
-	if (!(htup->t_infomask & HEAP_MOVED))
-	{
-		/*
-		 * t_cid is COLOR_RED_DARK in order to signal that it's associated
-		 * with though somewhat different to xmin and xmax.
-		 */
-		relfileOffNext += sizeof(CommandId);
-		EmitXmlTupleTag(blkno, offset, "t_cid", COLOR_RED_DARK, relfileOff,
-						relfileOffNext - 1);
-	}
-	else
-	{
-		/*
-		 * This must be a rare case where pg_upgrade has been run, and we're
-		 * left with a tuple with a t_xvac field instead of a t_cid field,
-		 * because at some point old-style VACUUM FULL was run. (This would
-		 * have had to have been on or before version 9.0, which has been out
-		 * of support for some time.)
-		 *
-		 * Make it COLOR_PINK, so that it sticks out like a sore thumb.
-		 */
-		StaticAssertStmt(sizeof(CommandId) == sizeof(TransactionId),
-						 "t_cid width must match t_xvac");
-		relfileOffNext += sizeof(TransactionId);
-		EmitXmlTupleTag(blkno, offset, "t_xvac", COLOR_PINK, relfileOff,
-						relfileOffNext - 1);
-	}
-
-	/*
-	 * Don't use ItemPointerData directly, to avoid having apparent mix in
-	 * endianness in these fields.  Delineate which subfield is which by using
-	 * multiple tags.
-	 *
-	 * The block component of each TID is COLOR_BLUE_LIGHT.  The same color is
-	 * used for ItemIds, since both are physical pointers.  offsetNumber is a
-	 * logical pointer, though, and so we make that COLOR_BLUE_DARK to
-	 * slightly distinguish it.
-	 *
-	 * It seems useful to provide a subtle cue about whether or not the tuple
-	 * is the latest version within the t_ctid subfields, since this helps the
-	 * user to notice update chains.  Check if tuple's t_ctid points to the
-	 * tuple itself; if it does, use non-contrasting font colors to
-	 * deemphasize.
-	 */
-	blkFontColor = COLOR_FONT_STANDARD;
-	offsetFontColor = COLOR_FONT_STANDARD;
-	if (ItemPointerGetBlockNumber(&htup->t_ctid) == logBlock &&
-		ItemPointerGetOffsetNumber(&htup->t_ctid) == offset)
-	{
-		blkFontColor = COLOR_BLUE_DARK;
-		offsetFontColor = COLOR_BLUE_LIGHT;
-	}
-	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(uint16);
-	EmitXmlTupleTagFont(blkno, offset, "t_ctid->bi_hi", COLOR_BLUE_LIGHT,
-						blkFontColor, relfileOff, relfileOffNext - 1);
-	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(uint16);
-	EmitXmlTupleTagFont(blkno, offset, "t_ctid->bi_lo", COLOR_BLUE_LIGHT,
-						blkFontColor, relfileOff, relfileOffNext - 1);
-
-	/*
-	 * Note: offsetNumber could be SpecTokenOffsetNumber, but we don't
-	 * annotate that
-	 */
-	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(uint16);
-	EmitXmlTupleTagFont(blkno, offset, "t_ctid->offsetNumber", COLOR_BLUE_DARK,
-						offsetFontColor, relfileOff, relfileOffNext - 1);
-
-	flagString = GetHeapTupleHeaderFlags(htup, true);
-	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(uint16);
-	EmitXmlTupleTag(blkno, offset, flagString, COLOR_GREEN_LIGHT, relfileOff,
-					relfileOffNext - 1);
-	pg_free(flagString);
-	flagString = GetHeapTupleHeaderFlags(htup, false);
-	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(uint16);
-	EmitXmlTupleTag(blkno, offset, flagString, COLOR_GREEN_DARK, relfileOff,
-					relfileOffNext - 1);
-	pg_free(flagString);
-
-	/*
-	 * Metadata about the tuple shape and width is COLOR_YELLOW_DARK, in line
-	 * with general convention.  t_hoff is a fixed addressable field, so we
-	 * make it COLOR_YELLOW_LIGHT to represent that it's associated but
-	 * distinct.
-	 */
-	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(uint8);
-	EmitXmlTupleTag(blkno, offset, "t_hoff", COLOR_YELLOW_LIGHT, relfileOff,
-					relfileOffNext - 1);
-
-	/*
-	 * We consider the size of the t_bits field (if any) to be what the
-	 * att_isnull() macro requires.  There is one bit per attribute, which is
-	 * rounded up to the nearest byte boundary.
-	 *
-	 * This often leaves a conspicuous empty space between the t_bits area and
-	 * the first attribute/beginning of tuple contents.  This happens because
-	 * the first attribute of the tuple must be accessed at a MAXALIGN()'d
-	 * offset relative to the start of the tuple (often 32 bytes from the
-	 * beginning of the tuple).  The empty space for alignment doesn't seem
-	 * like it should count as t_bits overhead.
-	 *
-	 * (t_bits doesn't have any alignment requirements, which is why there can
-	 * be a one byte t_bits array when there aren't so many attributes.  That
-	 * can fit snugly before the first attribute, which will only have a 24
-	 * byte offset from the beginning of the tuple provided there is no oid
-	 * field.)
-	 */
-	relfileOff = relfileOffNext;
-	relfileOffNext = relfileOffOrig + htup->t_hoff;
-	if (htup->t_infomask & HEAP_HASOID)
-		relfileOffNext -= sizeof(Oid);
-	if (htup->t_infomask & HEAP_HASNULL)
-		EmitXmlTupleTag(blkno, offset, "t_bits", COLOR_YELLOW_DARK, relfileOff,
-						relfileOff + ((HeapTupleHeaderGetNatts(htup) + 0x07) >> 3) - 1);
-
-	/*
-	 * Represent Oid as a distinct field with the same color as t_bits, since
-	 * it's also an optional heap tuple header.
-	 */
-	if (htup->t_infomask & HEAP_HASOID)
-	{
-		relfileOff = relfileOffNext;
-		relfileOffNext += sizeof(Oid);
-		EmitXmlTupleTag(blkno, offset, "HeapTupleHeaderGetOid()",
-						COLOR_YELLOW_DARK, relfileOff, relfileOffNext - 1);
-	}
-
-	/*
-	 * Handle rare edge case where tuple has no contents because it consists
-	 * entirely of NULL attributes.  We trust lp_len to handle this, which is
-	 * what caller passed us.
-	 */
-	if (itemSize == (relfileOffNext - relfileOffOrig))
-		return;
-	else if (itemSize < (relfileOffNext - relfileOffOrig))
-	{
-		fprintf(stderr, "pg_hexedit error: lp_len %d from (%u,%u) is undersized\n",
-				itemSize, blkno + segmentBlockDelta, offset);
-		exitCode = 1;
-		return;
-	}
-
-	relfileOff = relfileOffNext;
-	EmitXmlAttributesHeap(blkno, offset, relfileOff, htup, itemSize);
-}
-
-/*
- * Emit a wxHexEditor tag for entire index tuple.
- *
- * Function deals with B-Tree, GiST, and hash tuples in a generic way, because
- * they use the IndexTuple format without adornment.  These index AMs use line
- * pointer metadata to represent that index tuples are logically dead by
- * setting the LP_DEAD bit.  Unlike the heap LP_DEAD case, there will still be
- * a tuple on the page when this is set (the tuple "has storage").  Caller
- * passes an argument that has us redundantly use color to represent that the
- * index tuple is dead, meaning that the space it occupies will soon be
- * recycled.
- *
- * This function is also used for GIN tuples in pending list and main B-Tree
- * key pages, and so must deal with the various abuses of the IndexTuple format
- * that GIN makes to store posting lists in main B-Tree key pages (pending
- * pages don't compress TIDs, and posting tree pages are dealt with in special
- * GIN-only paths).
- *
- * This function is not used for BrinTuples, because they share nothing with
- * IndexTuples in terms of layout, despite being conceptually similar (BRIN
- * tuples store blocks, not exact TIDs).
- *
- * Note: Caller does not need to pass itemSize from ItemId, because that's
- * redundant in the case of IndexTuples, and because SP-GiST callers will not
- * be able to pass an lp_len for an inner-node-contained IndexTuple.  However,
- * most still pass it, since it's a useful cross-check in the event of
- * corruption such as a torn page.
- */
-static void
-EmitXmlIndexTuple(Page page, BlockNumber blkno, OffsetNumber offset,
-				  IndexTuple tuple, uint32 relfileOff, int itemSize, bool dead)
-{
-	uint32		relfileOffNext = 0;
-	uint32		relfileOffOrig = relfileOff;
-	char	   *tagColor;
-	char	   *fontColor;
-	char	   *flagString;
-
-	/* Make font color indicate if LP_DEAD bit is set */
-	fontColor = dead ? COLOR_BROWN : COLOR_FONT_STANDARD;
-
-	if (itemSize < 0)
-		itemSize = IndexTupleSize(tuple);
-	else if (itemSize != IndexTupleSize(tuple))
-	{
-		fprintf(stderr, "pg_hexedit error: (%u,%u) lp_len %u does not equal IndexTupleSize() %lu\n",
-				blkno + segmentBlockDelta, offset, itemSize,
-				IndexTupleSize(tuple));
-		exitCode = 1;
-		itemSize = Max(sizeof(IndexTupleData),
-					   Min(itemSize, IndexTupleSize(tuple)));
-	}
-
-	if (specialType != SPEC_SECT_INDEX_GIN || !GinPageIsLeaf(page) ||
-		GinIsPostingTree(tuple))
-	{
-		/*
-		 * Emit t_tid tags.  TID tag style should be kept consistent with
-		 * EmitXmlHeapTuple().
-		 */
-		relfileOffNext = relfileOff + sizeof(uint16);
-		tagColor = dead ? COLOR_BLACK : COLOR_BLUE_LIGHT;
-		EmitXmlTupleTagFont(blkno, offset, "t_tid->bi_hi",
-							tagColor, fontColor,
-							relfileOff, relfileOffNext - 1);
-		relfileOff = relfileOffNext;
-		relfileOffNext += sizeof(uint16);
-		EmitXmlTupleTagFont(blkno, offset, "t_tid->bi_lo",
-							tagColor, fontColor,
-							relfileOff, relfileOffNext - 1);
-
-		/*
-		 * Handle cases where item pointer offset is abused, but t_tid still
-		 * contains a valid block number.  These cases are handled here
-		 * because they involve IndexTuples that contain a t_tid that is still
-		 * essentially a conventional TID.  These cases are:
-		 *
-		 * 1. GIN posting tree pointers (within the leaf level of the main
-		 * entry tree).  The fact that it's a posting tree pointer (and not
-		 * the start of a posting list) is indicated by using the magic offset
-		 * number GIN_TREE_POSTING.  We use GinIsPostingTree() to test this.
-		 *
-		 * 2. nbtree pivot tuples, which use the item offset field to
-		 * represent how many suffix attributes remain (suffix truncation
-		 * optimization makes the number variable for pivot tuples).  This is
-		 * indicated by the INDEX_ALT_TID_MASK bit having been set.  Note that
-		 * nbtree uses BTreeTupleGetNAtts() to obtain the number of suffix
-		 * attributes.
-		 */
-		relfileOff = relfileOffNext;
-		relfileOffNext += sizeof(uint16);
-		tagColor = dead ? COLOR_BLACK : COLOR_BLUE_DARK;
-		if (specialType == SPEC_SECT_INDEX_GIN && GinIsPostingTree(tuple))
-			EmitXmlTupleTagFont(blkno, offset,
-								"t_tid->offsetNumber/GinIsPostingTree()",
-								tagColor, fontColor,
-								relfileOff, relfileOffNext - 1);
-		else if (specialType == SPEC_SECT_INDEX_BTREE && BTreeTupleIsPivot(tuple))
-			EmitXmlTupleTagFont(blkno, offset,
-								"t_tid->offsetNumber/BTreeTupleGetNAtts()",
-								tagColor, fontColor,
-								relfileOff, relfileOffNext - 1);
-		else if (specialType == SPEC_SECT_INDEX_BTREE &&
-				 BTreeTupleIsPosting(tuple))
-			EmitXmlTupleTagFont(blkno, offset,
-								"t_tid->offsetNumber/BTreeTupleGetNPosting()",
-								tagColor, fontColor,
-								relfileOff, relfileOffNext - 1);
-
-		/*
-		 * Regular/common case, where offset number is actually intended to be
-		 * accessed as a conventional offset (i.e. accessed using macros such
-		 * as ItemPointerGetOffsetNumber())
-		 */
-		else
-			EmitXmlTupleTagFont(blkno, offset, "t_tid->offsetNumber",
-								tagColor, fontColor,
-								relfileOff, relfileOffNext - 1);
-	}
-	else
-	{
-		/*
-		 * GIN posting lists (within the leaf level of the main entry tree)
-		 * abuse every item pointer field, so everything is handled here all
-		 * at once.  Naturally, there are block numbers (as well as offset
-		 * numbers) contained within posting lists, since a posting list is
-		 * literally a list of TIDs.  However, none of this information is
-		 * accessed in the conventional manner.
-		 */
-		relfileOffNext = relfileOff + sizeof(uint16);
-		tagColor = dead ? COLOR_BLACK : COLOR_BLUE_LIGHT;
-		EmitXmlTupleTagFont(blkno, offset, "t_tid->bi_hi/GinItupIsCompressed()",
-							tagColor, fontColor,
-							relfileOff, relfileOffNext - 1);
-		relfileOff = relfileOffNext;
-		relfileOffNext += sizeof(uint16);
-		EmitXmlTupleTagFont(blkno, offset,
-							"t_tid->bi_lo/GinGetPostingOffset()",
-							tagColor, fontColor,
-							relfileOff, relfileOffNext - 1);
-		relfileOff = relfileOffNext;
-		relfileOffNext += sizeof(uint16);
-		tagColor = dead ? COLOR_BLACK : COLOR_BLUE_DARK;
-		EmitXmlTupleTagFont(blkno, offset,
-							"t_tid->offsetNumber/GinGetNPosting()",
-							tagColor, fontColor,
-							relfileOff, relfileOffNext - 1);
-	}
-
-	/*
-	 * Metadata about the tuple shape and width is COLOR_YELLOW_DARK, which
-	 * also matches EmitXmlHeapTuple()
-	 */
-	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(unsigned short);
-	flagString = GetIndexTupleFlags(tuple);
-	tagColor = dead ? COLOR_BLACK : COLOR_YELLOW_DARK;
-	EmitXmlTupleTagFont(blkno, offset, flagString,
-						tagColor, fontColor,
-						relfileOff, relfileOffNext - 1);
-	pg_free(flagString);
-	relfileOff = relfileOffNext;
-
-	/*
-	 * NULL bitmap, if any, is counted as a separate tag, and not an extension
-	 * of t_info.  This is a little arbitrary, but makes more sense overall.
-	 * This matches heap tuple header tags.
-	 *
-	 * GIN has special rules for multicolumn indexes.  We don't break down the
-	 * structure of GIN's special representation of NULLness because doing so
-	 * requires access to catalog metadata.  See the GIN README for details.
-	 *
-	 * SP-GiST node tuples (from internal SP-GiST pages) do not have a NULL
-	 * bitmap, since there is implicitly only ever one attribute that could be
-	 * NULL, so the bit alone suffices.  See comments above
-	 * SpGistNodeTupleData.
-	 */
-	Assert(specialType != SPEC_SECT_INDEX_SPGIST || !SpGistPageIsLeaf(page));
-	if (IndexTupleHasNulls(tuple) && specialType != SPEC_SECT_INDEX_SPGIST)
-	{
-		relfileOffNext +=
-			(IndexInfoFindDataOffset(tuple->t_info) - (relfileOff - relfileOffOrig));
-
-		tagColor = dead ? COLOR_BLACK : COLOR_YELLOW_DARK;
-		EmitXmlTupleTagFont(blkno, offset, "IndexAttributeBitMapData array",
-							tagColor, fontColor,
-							relfileOff, relfileOffNext - 1);
-		relfileOff = relfileOffNext;
-	}
-
-	/*
-	 * Tuple contents, plus possible posting list for GIN leaf pages.
-	 *
-	 * All-attributes-NULL IndexTuples will not have any contents here, so we
-	 * avoid creating a tuple content tag entirely.  The same applies to
-	 * "minus infinity" items from nbtree internal pages (though they don't
-	 * have a NULL bitmap).
-	 *
-	 * Tuple contents is represented in the same way in the event of a dead
-	 * tuple.
-	 */
-	relfileOffNext = relfileOffOrig + itemSize;
-	if (relfileOff < relfileOffNext)
-	{
-		/*
-		 * If this is a GIN page, we've already determined that this tuple is
-		 * from the main key B-Tree (posting trees don't use IndexTuples at
-		 * all).  We should only treat it as containing a posting list (in
-		 * addition to tuple contents) if:
-		 *
-		 * 1. It does not point to a posting tree.  Pointers to posting trees
-		 * are always simple block numbers (the posting tree root page block)
-		 * with magic offset number GIN_TREE_POSTING.
-		 *
-		 * 2. The posting list consists of one or more items.  See
-		 * ginReadTuple().
-		 *
-		 * 3. This isn't an internal page IndexTuple.  These use the item
-		 * pointer representation in the conventional way.
-		 *
-		 * 4. This isn't a pending list page.  These also don't abuse the item
-		 * pointer representation.
-		 *
-		 * The !GinPageIsLeaf() part of the test handles points 3 and 4.
-		 */
-		if (specialType != SPEC_SECT_INDEX_GIN || !GinPageIsLeaf(page) ||
-			GinIsPostingTree(tuple) || GinGetNPosting(tuple) == 0)
-			EmitXmlAttributesIndex(blkno, offset, relfileOff, tuple,
-								   relfileOffOrig, itemSize);
-		else
-		{
-			Size		postoffset = itemSize - GinGetPostingOffset(tuple);
-			const char *color;
-
-			EmitXmlAttributesIndex(blkno, offset, relfileOff, tuple, relfileOffOrig,
-								   GinGetPostingOffset(tuple));
-			relfileOff = relfileOffNext - postoffset;
-
-			/*
-			 * Compressed TIDs are orange.  Old Postgres versions have
-			 * old-style uncompressed lists of TIDs in leaf pages, so their
-			 * posting lists should be blue instead of orange, like regular
-			 * block number item pointer fields.  See ginPostingListDecode()
-			 * for details on how this representation is decompressed.
-			 */
-			color =
-			GinItupIsCompressed(tuple) ? COLOR_ORANGE : COLOR_BLUE_LIGHT;
-
-			EmitXmlTupleTag(blkno, offset, "posting list", color, relfileOff,
-							relfileOffNext - 1);
-		}
-	}
-}
-
-/*
- * Emit a wxHexEditor tag for internal SP-GiST page tuple.
- *
- * This is similar to EmitXmlIndexTuple(), but SP-GiST never directly uses
- * IndexTuple representation, so requires this custom tuple formatting
- * function.  (Actually, SP-GiST internal/inner tuples end up reusing the
- * IndexTuple representation internally, which we must deal with here.)
- *
- * We are prepared for the possibility that tuple is actually SpGistDeadTuple.
- *
- * Note that lp_len isn't needed here, since it's redundant, just as it is with
- * the IndexTuple representation.
- */
-static void
-EmitXmlSpGistInnerTuple(Page page, BlockNumber blkno, OffsetNumber offset,
-						SpGistInnerTuple tuple, uint32 relfileOff)
-{
-	SpGistNodeTuple node;
-	uint32		relfileOffNext = 0;
-	uint32		relfileOffOrig = relfileOff;
-	char	   *flagString;
-	bool		dead = (tuple->tupstate != SPGIST_LIVE);
-	int			i;
-
-	Assert(!SpGistPageIsLeaf(page));
-	Assert(!SpGistPageIsMeta(page));
-
-	/*
-	 * Reuse dead tuple handling within leaf tuple routine.  This correctly
-	 * indicates "inner page leaf tuple" size by interpreting the leaf tuple
-	 * "size" field, and there are no other fields that could be interpreted
-	 * incorrectly, so this seems to be the right approach.
-	 */
-	if (dead)
-	{
-		EmitXmlSpGistLeafTuple(page, blkno, offset, (SpGistLeafTuple) tuple,
-							   relfileOff);
-		return;
-	}
-
-	/*
-	 * Metadata about the tuple shape and width is COLOR_YELLOW_LIGHT, to
-	 * indicate that the field is metadata, but to create a contrast with
-	 * IndexTuple metadata fields (which are COLOR_YELLOW_DARK).
-	 */
-	flagString = GetSpGistInnerTupleState(tuple);
-	relfileOffNext = relfileOff + sizeof(unsigned int);
-	EmitXmlTupleTag(blkno, offset, flagString, COLOR_YELLOW_LIGHT, relfileOff,
-					relfileOffNext - 1);
-	pg_free(flagString);
-
-	relfileOff = relfileOffNext;
-	relfileOffNext = relfileOff + sizeof(uint16);
-	EmitXmlTupleTag(blkno, offset, "SpGistInnerTuple size", COLOR_YELLOW_LIGHT,
-					relfileOff, relfileOffNext - 1);
-
-	/*
-	 * Emit node tuple's contents (prefix).  The prefix value is optional.
-	 * Some SP-GiST operator classes never use them.  See spgist/README.
-	 */
-	relfileOff = relfileOffOrig + SGNTHDRSZ;
-	relfileOffNext = relfileOffOrig + SGNTHDRSZ + tuple->prefixSize;
-	if (relfileOff < relfileOffNext)
-		EmitXmlTupleTag(blkno, offset, "contents (prefix)", COLOR_WHITE,
-						relfileOff, relfileOffNext - 1);
-
-	/*
-	 * Print all SpGistNodeTuple entries, which actually share IndexTuple
-	 * representation
-	 */
-	SGITITERATE(tuple, i, node)
-	{
-		EmitXmlIndexTuple(page, blkno, offset, node,
-						  relfileOffOrig + ((char *) node - (char *) tuple),
-						  -1, false);
-	}
-}
-
-/*
- * Emit a wxHexEditor tag for leaf SP-GiST page tuple.
- *
- * We are prepared for the possibility that tuple is actually SpGistDeadTuple.
- */
-static void
-EmitXmlSpGistLeafTuple(Page page, BlockNumber blkno, OffsetNumber offset,
-					   SpGistLeafTuple tuple, uint32 relfileOff)
-{
-	uint32		relfileOffNext = 0;
-	uint32		relfileOffOrig = relfileOff;
-	char	   *flagString;
-	bool		dead = (tuple->tupstate != SPGIST_LIVE);
-
-	Assert(!SpGistPageIsMeta(page));
-
-	/*
-	 * Metadata about the tuple shape and width is COLOR_YELLOW_LIGHT, to
-	 * indicate that the field is metadata, but to create a contrast with
-	 * IndexTuple metadata fields (which are COLOR_YELLOW_DARK).
-	 */
-	flagString = GetSpGistLeafTupleState(tuple);
-	relfileOffNext = relfileOff + sizeof(unsigned int);
-	EmitXmlTupleTag(blkno, offset, flagString, COLOR_YELLOW_LIGHT, relfileOff,
-					relfileOffNext - 1);
-	pg_free(flagString);
-
-	relfileOff = relfileOffNext;
-	relfileOffNext = relfileOff + sizeof(OffsetNumber);
-	EmitXmlTupleTag(blkno, offset, "nextOffset", COLOR_YELLOW_DARK,
-					relfileOff, relfileOffNext - 1);
-
-	/* Heap pointer */
-	relfileOff = relfileOffNext;
-	relfileOffNext = relfileOff + sizeof(uint16);
-	EmitXmlTupleTag(blkno, offset, dead ? "pointer->bi_hi" : "heapPtr->bi_hi",
-					COLOR_BLUE_LIGHT, relfileOff, relfileOffNext - 1);
-	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(uint16);
-	EmitXmlTupleTag(blkno, offset, dead ? "pointer->bi_lo" : "heapPtr->bi_lo",
-					COLOR_BLUE_LIGHT, relfileOff, relfileOffNext - 1);
-	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(uint16);
-	EmitXmlTupleTag(blkno, offset, dead ? "pointer->offsetNumber" : "heapPtr->offsetNumber",
-					COLOR_BLUE_DARK, relfileOff, relfileOffNext - 1);
-
-	if (!dead)
-	{
-		/* Must not be inner tuple if not dead */
-		Assert(SpGistPageIsLeaf(page));
-
-		/* Emit tuple contents */
-		relfileOff = relfileOffOrig + SGLTHDRSZ(SGLT_GET_HASNULLMASK(tuple));
-		relfileOffNext = relfileOffOrig + tuple->size;
-		if (relfileOff < relfileOffNext)
-			EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE,
-							relfileOff, relfileOffNext - 1);
-	}
-	else
-	{
-		/* XID */
-		relfileOff = relfileOffNext;
-		relfileOffNext = relfileOff + sizeof(TransactionId);
-		EmitXmlTupleTag(blkno, offset, "xid", COLOR_RED_LIGHT,
-						relfileOff, relfileOffNext - 1);
-	}
-}
-
-/*
- * Emit a wxHexEditor tag for entire BRIN regular page tuple.
- *
- * This is similar to EmitXmlIndexTuple(), but BRIN never uses IndexTuple
- * representation, so requires this custom tuple formatting function.
- */
-static void
-EmitXmlBrinTuple(Page page, BlockNumber blkno, OffsetNumber offset,
-				 BrinTuple *tuple, uint32 relfileOff, int itemSize)
-{
-	uint32		relfileOffNext = 0;
-	uint32		relfileOffOrig = relfileOff;
-	char	   *flagString;
-
-	if (!BRIN_IS_REGULAR_PAGE(page))
-	{
-		fprintf(stderr, "pg_hexedit error: non-regular BRIN page formatted as regular");
-		exitCode = 1;
-	}
-
-	/*
-	 * Emit bt_info tags.  A straight block number is used here, in contrast
-	 * to the legacy bi_hi/bi_lo representation used everywhere else.  We
-	 * still match color/style, though.
-	 */
-	relfileOffNext = relfileOff + sizeof(BlockNumber);
-	EmitXmlTupleTag(blkno, offset, "bt_blkno", COLOR_BLUE_LIGHT, relfileOff,
-					relfileOffNext - 1);
-
-	/*
-	 * Metadata about the tuple shape and width is COLOR_YELLOW_DARK, which
-	 * also matches EmitXmlHeapTuple()
-	 */
-	relfileOff = relfileOffNext;
-	relfileOffNext += sizeof(unsigned short);
-	flagString = GetBrinTupleFlags(tuple);
-	EmitXmlTupleTag(blkno, offset, flagString, COLOR_YELLOW_DARK, relfileOff,
-					relfileOffNext - 1);
-	pg_free(flagString);
-	relfileOff = relfileOffNext;
-
-	/*
-	 * NULL bitmap, if any, is counted as a separate tag, and not an extension
-	 * of bt_info.  This matches index tuples.
-	 */
-	if (BrinTupleHasNulls(tuple))
-	{
-		relfileOffNext +=
-			(BrinTupleDataOffset(tuple) - (relfileOff - relfileOffOrig));
-
-		EmitXmlTupleTag(blkno, offset, "IndexAttributeBitMapData array",
-						COLOR_YELLOW_DARK, relfileOff, relfileOffNext - 1);
-		relfileOff = relfileOffNext;
-	}
-
-	/*
-	 * Tuple contents.
-	 *
-	 * All-attributes-NULL BrinTuples will not have any contents here, so we
-	 * avoid creating a tuple content tag entirely.
-	 *
-	 * We use the lp_len value here, since there is no IndexTupleSize()
-	 * equivalent -- lp_len is really all we have to go on in the case of BRIN
-	 * tuples.
-	 *
-	 * Tagging individual attributes is hard for BRIN indexes, so we don't do
-	 * that here.  We'd need to know how many columns are stored for each
-	 * attribute, which isn't stored in the system catalogs or in the on-disk
-	 * representation.  BrinOpcInfo.oi_nstored stores this information, which
-	 * is returned by one of the opclass methods, so full backend access is
-	 * truly necessary (in practice it's 2 for minmax operator classes, and 3
-	 * for inclusion operator classes).
-	 */
-	relfileOffNext = relfileOffOrig + itemSize;
-	if (relfileOff < relfileOffNext)
-		EmitXmlTupleTag(blkno, offset, "contents", COLOR_WHITE, relfileOff,
-						relfileOffNext - 1);
-}
-
-/*
- * Dump out a formatted block header for the requested block.
+ * Alignment requirement in bytes for an attalign code
  */
 static int
-EmitXmlPageHeader(Page page, BlockNumber blkno, uint32 level)
+AlignBytes(char attalign)
 {
-	int			rc = 0;
-	unsigned int headerBytes;
-
-	/*
-	 * Only attempt to format the header if the entire header (minus the item
-	 * array) is available
-	 */
-	if (bytesToFormat < offsetof(PageHeaderData, pd_linp[0]))
+	switch (attalign)
 	{
-		headerBytes = bytesToFormat;
-		rc = EOF_ENCOUNTERED;
+		case 'c':
+			return 1;
+		case 's':
+			return ALIGNOF_SHORT;
+		case 'i':
+			return ALIGNOF_INT;
+		case 'd':
+			return ALIGNOF_DOUBLE;
 	}
-	else
+	return 1;
+}
+
+static void
+DisplayOptions(void)
+{
+	printf
+		("\npg_hexedit (for PostgreSQL " PG_VERSION ")"
+		 " - emits an ImHex pattern (.hexpat) that annotates PostgreSQL relation files\n\n"
+		 "Copyright (c) 2017-2018, VMware, Inc.\n"
+		 "Copyright (c) 2018-2021, Crunchy Data Solutions, Inc.\n"
+		 "Copyright (c) 2002-2010 Red Hat, Inc.\n"
+		 "Copyright (c) 2011-2021, PostgreSQL Global Development Group\n\n"
+		 "Usage: pg_hexedit [-hn] [-A attrlist | -D attrlist] [-R startblock endblock] [-n segnumber] [-s segsize] [-N relname]\n\n"
+		 "The pattern is written to stdout; redirect it to a .hexpat file and\n"
+		 "load it in ImHex together with (a copy of) the relation file.\n\n"
+		 "Options:\n"
+		 "  -A  Decode tuple attributes; argument is a comma separated list of\n"
+		 "      attlen,\"attname\",attalign,atttypid values, one group per attribute\n"
+		 "  -D  Legacy form of -A without atttypid\n"
+		 "  -R  Only fully annotate blocks in the given (inclusive) file-relative range;\n"
+		 "      other blocks get page headers only.  Bounds evaluator memory usage\n"
+		 "  -n  Force segment number (normally derived by the convenience scripts);\n"
+		 "      makes TIDs in annotations relation-relative for .1, .2, ... segments\n"
+		 "  -s  Force segment size (default from build: %u)\n"
+		 "  -N  Relation name, used in annotations and provenance comments\n"
+		 "  -h  Display this information\n\n"
+		 "Report bugs to <pg@bowt.ie>\n", RELSEG_SIZE * BLCKSZ);
+}
+
+/*
+ * Option consumption.  Returns true when the program should proceed to
+ * pattern emission.
+ */
+static bool
+ConsumeOptions(int numOptions, char **options)
+{
+	int			x;
+
+	for (x = 1; x < numOptions; x++)
 	{
-		/* Interpret the contents of the header */
-		PageHeader	pageHeader = (PageHeader) page;
-		XLogRecPtr	pageLSN = GetPageLsn(page);
-		int			maxOffset = PageGetMaxOffsetNumber(page);
-		char	   *flagString;
+		char	   *optionString = options[x];
 
-		headerBytes = offsetof(PageHeaderData, pd_linp[0]);
-		blockVersion = (unsigned int) PageGetPageLayoutVersion(page);
-
-		/* We don't count itemidarray as header */
-		if (maxOffset > 0)
+		if (strcmp(optionString, "-A") == 0 || strcmp(optionString, "-D") == 0)
 		{
-			unsigned int itemsLength = maxOffset * sizeof(ItemIdData);
+			int			groupsize = (optionString[1] == 'A') ? 4 : 3;
 
-			if (bytesToFormat < (headerBytes + itemsLength))
+			if (x >= numOptions - 1)
 			{
-				headerBytes = bytesToFormat;
-				rc = EOF_ENCOUNTERED;
+				fprintf(stderr, "pg_hexedit error: missing attrlist string\n");
+				return false;
+			}
+			if (nrelatts > 0)
+			{
+				fprintf(stderr, "pg_hexedit error: duplicate attrlist option\n");
+				return false;
+			}
+			optionString = options[++x];
+			if (!ParseAttributeListString(optionString, groupsize))
+			{
+				fprintf(stderr, "pg_hexedit error: invalid attrlist string %s\n",
+						optionString);
+				return false;
 			}
 		}
-
-		/*
-		 * For historical reasons, the 64-bit page header LSN value is stored
-		 * as two 32-bit values.  This makes interpreting what is really just
-		 * a 64-bit unsigned int confusing on little-endian systems, because
-		 * the bytes are "in big endian order" across its two 32-bit halves,
-		 * but are in the expected little-endian order *within* each half.
-		 *
-		 * This is rather similar to the situation with t_ctid.  Unlike in
-		 * that case, we choose to make LSN a single field here, because we
-		 * don't want to have two tooltips with the format value for each
-		 * field.
-		 */
-		flagString = pg_malloc(128);
-		sprintf(flagString, "LSN: %X/%08X", (uint32) (pageLSN >> 32), (uint32) pageLSN);
-		EmitXmlTag(blkno, level, flagString, COLOR_YELLOW_LIGHT, pageOffset,
-				   (pageOffset + sizeof(PageXLogRecPtr)) - 1);
-		EmitXmlTag(blkno, level, "checksum", COLOR_GREEN_DARK,
-				   pageOffset + offsetof(PageHeaderData, pd_checksum),
-				   (pageOffset + offsetof(PageHeaderData, pd_flags)) - 1);
-
-		/* Generate generic page header flags (reuse buffer) */
-		flagString[0] = '\0';
-		strcat(flagString, "pd_flags - ");
-		if (pageHeader->pd_flags & PD_HAS_FREE_LINES)
-			strcat(flagString, "PD_HAS_FREE_LINES|");
-		if (pageHeader->pd_flags & PD_PAGE_FULL)
-			strcat(flagString, "PD_PAGE_FULL|");
-		if (pageHeader->pd_flags & PD_ALL_VISIBLE)
-			strcat(flagString, "PD_ALL_VISIBLE|");
-		if (strlen(flagString))
-			flagString[strlen(flagString) - 1] = '\0';
-
-		EmitXmlTag(blkno, level, flagString, COLOR_YELLOW_DARK,
-				   pageOffset + offsetof(PageHeaderData, pd_flags),
-				   (pageOffset + offsetof(PageHeaderData, pd_lower)) - 1);
-		pg_free(flagString);
-		EmitXmlTag(blkno, level, "pd_lower", COLOR_MAROON,
-				   pageOffset + offsetof(PageHeaderData, pd_lower),
-				   (pageOffset + offsetof(PageHeaderData, pd_upper)) - 1);
-		EmitXmlTag(blkno, level, "pd_upper", COLOR_MAROON,
-				   pageOffset + offsetof(PageHeaderData, pd_upper),
-				   (pageOffset + offsetof(PageHeaderData, pd_special)) - 1);
-		EmitXmlTag(blkno, level, "pd_special", COLOR_GREEN_BRIGHT,
-				   pageOffset + offsetof(PageHeaderData, pd_special),
-				   (pageOffset + offsetof(PageHeaderData, pd_pagesize_version)) - 1);
-		EmitXmlTag(blkno, level, "pd_pagesize_version", COLOR_BROWN,
-				   pageOffset + offsetof(PageHeaderData, pd_pagesize_version),
-				   (pageOffset + offsetof(PageHeaderData, pd_prune_xid)) - 1);
-		EmitXmlTag(blkno, level, "pd_prune_xid", COLOR_RED_LIGHT,
-				   pageOffset + offsetof(PageHeaderData, pd_prune_xid),
-				   (pageOffset + offsetof(PageHeaderData, pd_linp[0])) - 1);
-
-		/*
-		 * Eye the contents of the header and alert the user to possible
-		 * problems
-		 */
-		if ((maxOffset < 0) ||
-			(maxOffset > blockSize) ||
-			(blockVersion != PG_PAGE_LAYOUT_VERSION) || /* only one we support */
-			(pageHeader->pd_upper > blockSize) ||
-			(pageHeader->pd_upper > pageHeader->pd_special) ||
-			(pageHeader->pd_lower <
-			 (sizeof(PageHeaderData) - sizeof(ItemIdData)))
-			|| (pageHeader->pd_lower > blockSize)
-			|| (pageHeader->pd_upper < pageHeader->pd_lower)
-			|| (pageHeader->pd_special > blockSize))
+		else if (strcmp(optionString, "-R") == 0)
 		{
-			fprintf(stderr, "pg_hexedit error: invalid header information\n");
-			exitCode = 1;
-		}
-
-		/*
-		 * Verify checksums as valid if requested.
-		 *
-		 * Caller may want us to skip zero checksums.
-		 */
-		if (blockOptions & BLOCK_CHECKSUMS ||
-			((blockOptions & BLOCK_ZEROSUMS) && pageHeader->pd_checksum != 0))
-		{
-			uint16		calc_checksum;
-
-			calc_checksum = pg_checksum_page(page, blkno + segmentBlockDelta);
-			if (calc_checksum != pageHeader->pd_checksum)
+			if (x >= numOptions - 2)
 			{
-				fprintf(stderr, "pg_hexedit error: checksum failure in block %u (calculated 0x%04x)\n",
-						blkno, calc_checksum);
-				exitCode = 1;
+				fprintf(stderr, "pg_hexedit error: -R requires start and end block\n");
+				return false;
+			}
+			blockStart = atoi(options[++x]);
+			blockEnd = atoi(options[++x]);
+			if (blockStart < 0 || blockEnd < blockStart)
+			{
+				fprintf(stderr, "pg_hexedit error: invalid -R block range\n");
+				return false;
 			}
 		}
-	}
-
-	/*
-	 * If we have reached the end of file while interpreting the header, give
-	 * up
-	 */
-	if (rc == EOF_ENCOUNTERED)
-	{
-		fprintf(stderr, "pg_hexedit error: end of block encountered within page header with bytes read: %4u\n",
-				bytesToFormat);
-		exitCode = 1;
-	}
-
-	return rc;
-}
-
-/*
- * Dump out a formatted metapage tags for metapage block.
- */
-static void
-EmitXmlPageMeta(BlockNumber blkno, uint32 level)
-{
-	uint32		metaStartOffset = pageOffset + MAXALIGN(SizeOfPageHeaderData);
-
-	if (specialType == SPEC_SECT_INDEX_BTREE && blkno == BTREE_METAPAGE)
-	{
-		EmitXmlTag(InvalidBlockNumber, level, "btm_magic", COLOR_PINK,
-				   metaStartOffset + offsetof(BTMetaPageData, btm_magic),
-				   (metaStartOffset + offsetof(BTMetaPageData, btm_version) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "btm_version", COLOR_PINK,
-				   metaStartOffset + offsetof(BTMetaPageData, btm_version),
-				   (metaStartOffset + offsetof(BTMetaPageData, btm_root) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "btm_root", COLOR_PINK,
-				   metaStartOffset + offsetof(BTMetaPageData, btm_root),
-				   (metaStartOffset + offsetof(BTMetaPageData, btm_level) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "btm_level", COLOR_PINK,
-				   metaStartOffset + offsetof(BTMetaPageData, btm_level),
-				   (metaStartOffset + offsetof(BTMetaPageData, btm_fastroot) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "btm_fastroot", COLOR_PINK,
-				   metaStartOffset + offsetof(BTMetaPageData, btm_fastroot),
-				   (metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "btm_fastlevel", COLOR_PINK,
-				   metaStartOffset + offsetof(BTMetaPageData, btm_fastlevel),
-				   (metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_delpages) - 1));
-
-		/*
-		 * These fields are only actually active when btm_version >= 3 (which
-		 * is v11's standard BTREE_VERSION)
-		 */
-		EmitXmlTag(InvalidBlockNumber, level, "btm_last_cleanup_num_delpages", COLOR_PINK,
-				   metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_delpages),
-				   (metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_heap_tuples) - 1));
-
-		EmitXmlTag(InvalidBlockNumber, level, "btm_last_cleanup_num_heap_tuples", COLOR_PINK,
-				   metaStartOffset + offsetof(BTMetaPageData, btm_last_cleanup_num_heap_tuples),
-				   (metaStartOffset + offsetof(BTMetaPageData, btm_allequalimage) - 1));
-
-		EmitXmlTag(InvalidBlockNumber, level, "btm_allequalimage", COLOR_PINK,
-				   metaStartOffset + offsetof(BTMetaPageData, btm_allequalimage),
-				   (metaStartOffset + sizeof(BTMetaPageData) - 1));
-	}
-	else if (specialType == SPEC_SECT_INDEX_HASH && blkno == HASH_METAPAGE)
-	{
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_magic", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_magic),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_version) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_version", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_version),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_ntuples) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_ntuples", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_ntuples),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_ffactor) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_ffactor", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_ffactor),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_bsize) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_bsize", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_bsize),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_bmsize) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_bmsize", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_bmsize),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_bmshift) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_bmshift", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_bmshift),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_maxbucket) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_maxbucket", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_maxbucket),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_highmask) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_highmask", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_highmask),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_lowmask) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_lowmask", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_lowmask),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_ovflpoint) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_ovflpoint", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_ovflpoint),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_firstfree) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_firstfree", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_firstfree),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_nmaps) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_nmaps", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_nmaps),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_procid) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_procid", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_procid),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_spares) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_spares", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_spares),
-				   (metaStartOffset + offsetof(HashMetaPageData, hashm_mapp) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "hashm_mapp", COLOR_PINK,
-				   metaStartOffset + offsetof(HashMetaPageData, hashm_mapp),
-				   (metaStartOffset + sizeof(HashMetaPageData)) - 1);
-	}
-	else if (specialType == SPEC_SECT_INDEX_GIN && blkno == GIN_METAPAGE_BLKNO)
-	{
-		EmitXmlTag(InvalidBlockNumber, level, "head", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, head),
-				   (metaStartOffset + offsetof(GinMetaPageData, tail) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "tail", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, tail),
-				   (metaStartOffset + offsetof(GinMetaPageData, tailFreeSize) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "tailFreeSize", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, tailFreeSize),
-				   (metaStartOffset + offsetof(GinMetaPageData, nPendingPages) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "nPendingPages", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, nPendingPages),
-				   (metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "nPendingHeapTuples", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, nPendingHeapTuples),
-				   (metaStartOffset + offsetof(GinMetaPageData, nTotalPages) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "nTotalPages", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, nTotalPages),
-				   (metaStartOffset + offsetof(GinMetaPageData, nEntryPages) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "nEntryPages", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, nEntryPages),
-				   (metaStartOffset + offsetof(GinMetaPageData, nDataPages) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "nDataPages", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, nDataPages),
-				   (metaStartOffset + offsetof(GinMetaPageData, nEntries) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "nEntries", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, nEntries),
-				   (metaStartOffset + offsetof(GinMetaPageData, ginVersion) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "ginVersion", COLOR_PINK,
-				   metaStartOffset + offsetof(GinMetaPageData, ginVersion),
-				   (metaStartOffset + sizeof(GinMetaPageData)) - 1);
-	}
-	else if (specialType == SPEC_SECT_INDEX_SPGIST && blkno == SPGIST_METAPAGE_BLKNO)
-	{
-		uint32		cachedOffset = metaStartOffset;
-		int			i;
-
-		EmitXmlTag(InvalidBlockNumber, level, "magicNumber", COLOR_PINK,
-				   metaStartOffset + offsetof(SpGistMetaPageData, magicNumber),
-				   (metaStartOffset + offsetof(SpGistMetaPageData, lastUsedPages) - 1));
-
-		cachedOffset += offsetof(SpGistMetaPageData, lastUsedPages);
-
-		for (i = 0; i < SPGIST_CACHED_PAGES; i++)
+		else if (strcmp(optionString, "-n") == 0)
 		{
-			EmitXmlTag(InvalidBlockNumber, level, "lastUsedPages.blkno", COLOR_PINK,
-					   cachedOffset,
-					   (cachedOffset + offsetof(SpGistLastUsedPage, freeSpace)) - 1);
-			cachedOffset += offsetof(SpGistLastUsedPage, freeSpace);
-			EmitXmlTag(InvalidBlockNumber, level, "lastUsedPages.freeSpace", COLOR_PINK,
-					   cachedOffset,
-					   (cachedOffset + sizeof(int) - 1));
-			cachedOffset += sizeof(int);
+			if (x >= numOptions - 1)
+			{
+				fprintf(stderr, "pg_hexedit error: -n requires segment number\n");
+				return false;
+			}
+			segmentNumber = (unsigned int) atoi(options[++x]);
+		}
+		else if (strcmp(optionString, "-s") == 0)
+		{
+			if (x >= numOptions - 1)
+			{
+				fprintf(stderr, "pg_hexedit error: -s requires segment size\n");
+				return false;
+			}
+			segmentSize = (unsigned int) atoi(options[++x]);
+			if (segmentSize == 0 || segmentSize % BLCKSZ != 0)
+			{
+				fprintf(stderr, "pg_hexedit error: invalid segment size\n");
+				return false;
+			}
+		}
+		else if (strcmp(optionString, "-N") == 0)
+		{
+			if (x >= numOptions - 1)
+			{
+				fprintf(stderr, "pg_hexedit error: -N requires relation name\n");
+				return false;
+			}
+			relName = options[++x];
+		}
+		else if (strcmp(optionString, "-h") == 0)
+			return false;
+		else
+		{
+			fprintf(stderr, "pg_hexedit error: unknown option \"%s\"\n",
+					optionString);
+			return false;
 		}
 	}
-	else if (specialType == SPEC_SECT_INDEX_BRIN && blkno == BRIN_METAPAGE_BLKNO)
-	{
-		EmitXmlTag(InvalidBlockNumber, level, "brinMagic", COLOR_PINK,
-				   metaStartOffset + offsetof(BrinMetaPageData, brinMagic),
-				   (metaStartOffset + offsetof(BrinMetaPageData, brinVersion) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "brinVersion", COLOR_PINK,
-				   metaStartOffset + offsetof(BrinMetaPageData, brinVersion),
-				   (metaStartOffset + offsetof(BrinMetaPageData, pagesPerRange) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "pagesPerRange", COLOR_PINK,
-				   metaStartOffset + offsetof(BrinMetaPageData, pagesPerRange),
-				   (metaStartOffset + offsetof(BrinMetaPageData, lastRevmapPage) - 1));
-		EmitXmlTag(InvalidBlockNumber, level, "lastRevmapPage", COLOR_PINK,
-				   metaStartOffset + offsetof(BrinMetaPageData, lastRevmapPage),
-				   (metaStartOffset + sizeof(BrinMetaPageData)) - 1);
-	}
-	else
-	{
-		fprintf(stderr, "pg_hexedit error: unsupported metapage special section type \"%s\"\n",
-				GetSpecialSectionString(specialType));
-		exitCode = 1;
-	}
+
+	return true;
+}
+
+/* ----------------------------------------------------------------
+ * Pattern emission
+ * ----------------------------------------------------------------
+ */
+
+/*
+ * Struct field emitter that tracks a running offset and inserts padding[]
+ * wherever the C compiler laid out padding, so emitted layouts follow
+ * offsetof() by construction.  Reset emitOff to 0 at each struct start.
+ */
+static int	emitOff = 0;
+
+static void
+EFIELD(const char *pltype, const char *name, int off, int size,
+	   const char *color)
+{
+	if (off > emitOff)
+		F("    padding[%d];", off - emitOff);
+	F("    %s %s [[color(\"%s\")]];", pltype, name, color);
+	emitOff = off + size;
 }
 
 /*
- * Emit formatted ItemId tags for tuples that reside on this block.
+ * Prologue: pragmas, imports, provenance, and the evaluation-state globals
+ * that page/tuple structs use to communicate with nested types (pattern
+ * struct locals are not visible to nested struct evaluations, but globals
+ * are assignable from struct bodies).
  */
 static void
-EmitXmlPageItemIdArray(Page page, BlockNumber blkno)
+EmitProlog(int numOptions, char **options)
 {
-	int			maxOffset = PageGetMaxOffsetNumber(page);
-	OffsetNumber offset;
-	unsigned int headerBytes;
+	time_t		rightNow = time(NULL);
+	struct tm  *localNow = localtime(&rightNow);
+	int			i;
 
-	headerBytes = offsetof(PageHeaderData, pd_linp[0]);
-
-	/*
-	 * It's either a non-meta index page, or a heap page.  Create tags for all
-	 * ItemId entries/line pointers on page.
-	 */
-	for (offset = FirstOffsetNumber;
-		 offset <= maxOffset;
-		 offset = OffsetNumberNext(offset))
-	{
-		ItemId		itemId;
-		unsigned int itemFlags;
-		char		textFlags[16];
-
-		itemId = PageGetItemId(page, offset);
-
-		itemFlags = (unsigned int) ItemIdGetFlags(itemId);
-
-		switch (itemFlags)
-		{
-			case LP_UNUSED:
-				strcpy(textFlags, "LP_UNUSED");
-				break;
-			case LP_NORMAL:
-				strcpy(textFlags, "LP_NORMAL");
-				break;
-			case LP_REDIRECT:
-				strcpy(textFlags, "LP_REDIRECT");
-				break;
-			case LP_DEAD:
-				strcpy(textFlags, "LP_DEAD");
-				break;
-			default:
-				sprintf(textFlags, "0x%02x", itemFlags);
-				fprintf(stderr, "pg_hexedit error: invalid line pointer flags for (%u,%u): %s\n",
-						blkno + segmentBlockDelta, offset, textFlags);
-				exitCode = 1;
-				break;
-		}
-
-		EmitXmlItemId(blkno, offset, itemId,
-					  pageOffset + headerBytes + (sizeof(ItemIdData) * (offset - 1)),
-					  textFlags);
-	}
+	L("// PostgreSQL relation file annotations for ImHex.");
+	F("// Generated by pg_hexedit " HEXEDIT_VERSION " for PostgreSQL " PG_VERSION "%s%s",
+	  relName ? ", relation: " : "", relName ? relName : "");
+	printf("// Options:");
+	for (i = 1; i < numOptions; i++)
+		printf(" %s", options[i]);
+	printf("\n");
+	F("// Generated on: %04d-%02d-%02d %02d:%02d:%02d",
+	  localNow->tm_year + 1900, localNow->tm_mon + 1, localNow->tm_mday,
+	  localNow->tm_hour, localNow->tm_min, localNow->tm_sec);
+	F("// Build parameters: BLCKSZ=%u MAXIMUM_ALIGNOF=%u INDEX_MAX_KEYS=%u RELSEG_SIZE=%u",
+	  (unsigned int) BLCKSZ, (unsigned int) MAXIMUM_ALIGNOF,
+	  (unsigned int) INDEX_MAX_KEYS, (unsigned int) RELSEG_SIZE);
+	L("//");
+	L("// All struct layouts, offsets, and flag masks in this file were computed");
+	L("// with sizeof/offsetof against the PostgreSQL headers at generation time.");
+	L("");
+	F("#pragma description PostgreSQL relation file%s%s (pg_hexedit)",
+	  relName ? " " : "", relName ? relName : "");
+	L("// Match any PostgreSQL page file: pd_pagesize_version on block 0.");
+	L("// When this pattern sits in ImHex's user patterns folder, ImHex offers");
+	L("// to apply it automatically whenever a matching file is opened.");
+	F("#pragma magic [ %02X %02X ] @ 0x%02X",
+	  (unsigned int) ((BLCKSZ | PG_PAGE_LAYOUT_VERSION) & 0xFF),
+	  (unsigned int) (((BLCKSZ | PG_PAGE_LAYOUT_VERSION) >> 8) & 0xFF),
+	  (unsigned int) offsetof(PageHeaderData, pd_pagesize_version));
+	L("#pragma endian little");
+	L("#pragma pattern_limit 0x1000000");
+	L("#pragma array_limit 0x100000");
+	L("");
+	L("import std.core;");
+	L("import std.io;");
+	L("import std.mem;");
+	L("import std.string;");
+	L("");
+	F("// Only blocks in this (file-relative) range are fully annotated; others");
+	L("// get page headers only.  Regenerate with -R to move the window.");
+	F("u32 FIRST_TAG_BLOCK = %d;", blockStart >= 0 ? blockStart : 0);
+	F("u32 LAST_TAG_BLOCK = %d;", blockEnd >= 0 ? blockEnd : 0x7FFFFFFF);
+	F("u32 BASE_BLOCK = %u;      // segment number %u at %u blocks per segment",
+	  segmentNumber * (unsigned int) (segmentSize / BLCKSZ), segmentNumber,
+	  (unsigned int) (segmentSize / BLCKSZ));
+	L("");
+	L("// Per-page/per-tuple evaluation state (see generator comments)");
+	F("u8  g_kind = %d;", KIND_UNKNOWN);
+	L("u32 g_blk = 0;          // relation-relative block number of current page");
+	L("bool g_isleaf = false;  // page-level leaf flag (GIN entry / SP-GiST)");
+	L("u64 g_item_end = 0;     // absolute end of current item's storage");
+	L("u32 g_natts = 0;        // attribute walk: this tuple's attribute count");
+	L("u64 g_bits_addr = 0;    // attribute walk: NULL bitmap address (0 = no NULLs)");
+	L("u64 g_data_end = 0;     // attribute walk: absolute end of tuple data");
+	L("bool g_walk_bad = false; // attribute walk: stop decoding this tuple");
+	L("u32 g_special_off = 0;  // current page's pd_special");
+	L("u32 g_content_len = 0;  // page content length for raw regions");
+	L("");
+	L("fn att_present(u32 attno) {");
+	L("    if (g_bits_addr == 0)");
+	L("        return true;");
+	L("    return ((std::mem::read_unsigned(g_bits_addr + (attno >> 3), 1) >> (attno & 7)) & 1) != 0;");
+	L("};");
+	L("");
 }
 
 /*
- * Emit formatted tuples that reside on this block.
+ * Page-level basics: LSN, page header (with pd_flags bitfield), line
+ * pointers, item pointers.
+ */
+static void
+EmitPageBasics(void)
+{
+	L("// ---------------- page header ----------------");
+	L("");
+	L("// Unsealed so xlogid and xrecoff are individually editable in Pattern");
+	L("// Data (in live --writable mode, edits poke shared_buffers); the");
+	L("// collapsed row still reads X/XXXXXXXX via the format.");
+	L("struct PageXLogRecPtr {");
+	L("    u32 xlogid;");
+	L("    u32 xrecoff;");
+	L("} [[format(\"fmt_lsn\")]];");
+	L("");
+	L("fn fmt_lsn(ref auto l) {");
+	L("    return std::format(\"{:X}/{:08X}\", l.xlogid, l.xrecoff);");
+	L("};");
+	L("");
+	L("bitfield PageFlags {");
+	F("    PD_HAS_FREE_LINES : 1;	// 0x%04X", (unsigned int) PD_HAS_FREE_LINES);
+	F("    PD_PAGE_FULL      : 1;	// 0x%04X", (unsigned int) PD_PAGE_FULL);
+	F("    PD_ALL_VISIBLE    : 1;	// 0x%04X", (unsigned int) PD_ALL_VISIBLE);
+	L("    padding           : 13;");
+	L("} [[format(\"fmt_pd_flags\")]];");
+	L("");
+	L("fn fmt_pd_flags(ref auto f) {");
+	L("    str s = \"\";");
+	L("    if (f.PD_HAS_FREE_LINES) s = s + \"PD_HAS_FREE_LINES|\";");
+	L("    if (f.PD_PAGE_FULL)      s = s + \"PD_PAGE_FULL|\";");
+	L("    if (f.PD_ALL_VISIBLE)    s = s + \"PD_ALL_VISIBLE|\";");
+	L("    if (std::string::length(s) == 0) return \"(none)\";");
+	L("    return std::string::substr(s, 0, std::string::length(s) - 1);");
+	L("};");
+	L("");
+	L("struct PageHeaderData {");
+	F("    PageXLogRecPtr pd_lsn       [[color(\"%s\")]];", COLOR_YELLOW_LIGHT);
+	F("    u16 pd_checksum             [[color(\"%s\")]];", COLOR_GREEN_DARK);
+	F("    PageFlags pd_flags          [[color(\"%s\")]];", COLOR_YELLOW_DARK);
+	F("    u16 pd_lower                [[color(\"%s\")]];", COLOR_MAROON);
+	F("    u16 pd_upper                [[color(\"%s\")]];", ShadeColor(COLOR_MAROON));
+	F("    u16 pd_special              [[color(\"%s\")]];", COLOR_GREEN_BRIGHT);
+	F("    u16 pd_pagesize_version     [[color(\"%s\")]];", COLOR_BROWN);
+	F("    u32 pd_prune_xid            [[color(\"%s\")]];", COLOR_RED_LIGHT);
+	L("};");
+	L("");
+	L("// ---------------- line pointers ----------------");
+	L("");
+	L("fn lp_flags_str(u8 f) {");
+	L("    match (f) {");
+	L("        (0): return \"LP_UNUSED\";");
+	L("        (1): return \"LP_NORMAL\";");
+	L("        (2): return \"LP_REDIRECT\";");
+	L("        (3): return \"LP_DEAD\";");
+	L("    }");
+	L("    return \"?\";");
+	L("};");
+	L("");
+	L("bitfield ItemIdData {");
+	L("    lp_off   : 15;");
+	L("    lp_flags : 2;");
+	L("    lp_len   : 15;");
+	L("} [[format(\"fmt_itemid\")]];");
+	L("");
+	L("fn fmt_itemid(ref auto lp) {");
+	L("    if (lp.lp_flags == 0 && lp.lp_off == 0 && lp.lp_len == 0)");
+	L("        return \"LP_UNUSED\";");
+	L("    if (lp.lp_flags == 2)");
+	L("        return std::format(\"LP_REDIRECT -> lp {}\", lp.lp_off);");
+	L("    return std::format(\"{} off={} len={}\",");
+	L("                       lp_flags_str(lp.lp_flags), lp.lp_off, lp.lp_len);");
+	L("};");
+	L("");
+	L("// ---------------- item pointers ----------------");
+	L("");
+	L("struct ItemPointerData {");
+	F("    u16 bi_hi                   [[color(\"%s\")]];", COLOR_BLUE_LIGHT);
+	F("    u16 bi_lo                   [[color(\"%s\")]];", ShadeColor(COLOR_BLUE_LIGHT));
+	F("    u16 ip_posid                [[color(\"%s\")]];", COLOR_BLUE_DARK);
+	L("} [[format(\"fmt_ctid\")]];");
+	L("");
+	L("fn fmt_ctid(ref auto c) {");
+	L("    return std::format(\"({},{})\", (c.bi_hi << 16) | c.bi_lo, c.ip_posid);");
+	L("};");
+	L("");
+}
+
+/*
+ * Attribute value types and the attribute walk, generated from the -A/-D
+ * tuple descriptor.  The walk is shared by heap tuples and index tuples: the
+ * enclosing tuple struct sets g_natts/g_bits_addr/g_data_end and then places
+ * a TupleAttrs member at the start of tuple data.
  *
- * This is responsible for emitting tuples from all pages that use an ItemId
- * array.  This includes heapam, sequences, B-Tree, GiST, hash, regular BRIN
- * pages, and GIN pages for the main B-Tree over key values (not data/posting
- * tree pages).  It's also responsible for pending list GIN pages, which are
- * similar to GIN pages for the main B-Tree.
+ * Two invariants, carried over from the old implementation:
+ *
+ * 1. The per-tuple attribute count (heap: HeapTupleHeaderGetNatts(); nbtree
+ * pivots: BTreeTupleGetNAtts()) governs the walk, not the catalog's column
+ * count.  Tuples that predate ALTER TABLE ADD COLUMN have fewer attributes.
+ *
+ * 2. Dropped columns must remain in the descriptor; they still occupy space
+ * in existing tuples, so omitting them would skew every later offset.
  */
 static void
-EmitXmlTuples(Page page, BlockNumber blkno)
+EmitTupleAttrs(void)
 {
-	OffsetNumber offset;
-	int			itemSize;
-	int			itemOffset;
-	unsigned int itemFlags;
-	ItemId		itemId;
-	int			formatAs;
-	int			maxOffset = PageGetMaxOffsetNumber(page);
+	int			i;
 
-	/* Loop through the items on the block */
-	if (maxOffset == 0)
-		return;
-	else if ((maxOffset < 0) || (maxOffset > blockSize))
+	L("// ---------------- attribute values ----------------");
+	L("");
+
+	if (nrelatts == 0)
 	{
-		fprintf(stderr, "pg_hexedit error: corrupt PageGetMaxOffsetNumber() offset %d found on file block %u\n",
-				maxOffset, blkno);
-		exitCode = 1;
+		/*
+		 * Without a tuple descriptor there is nothing to decode; emit a
+		 * TupleAttrs that shows tuple data as raw contents.
+		 */
+		L("struct TupleAttrs {");
+		L("    if ($ < g_data_end) {");
+		F("        u8 contents[g_data_end - $] [[sealed, color(\"%s\")]];", COLOR_WHITE);
+		L("    }");
+		L("};");
+		L("");
 		return;
 	}
 
-	/* Use the special section to determine the format style */
-	switch (specialType)
+	/*
+	 * Shared attribute value types.  Type names show up in ImHex's hover
+	 * tooltip (that line is not suppressible from the pattern side), so keep
+	 * them short and informative rather than generated-looking.
+	 */
+	L("fn fmt_att_str(ref auto a) { return std::format(\"\\\"{}\\\"\", a.data); };");
+	L("fn fmt_att_bin(ref auto a) { return std::format(\"{} bytes\", sizeof(a.data)); };");
+	L("fn fmt_att_toast(ref auto a) {");
+	L("    return std::format(\"TOAST valueid={} rawsize={}\", a.va_valueid, a.va_rawsize);");
+	L("};");
+	L("fn fmt_att_point(ref auto a) { return std::format(\"({},{})\", a.x, a.y); };");
+	L("fn fmt_att_compressed(ref auto a) {");
+	L("    return std::format(\"compressed ({} bytes)\", (a.va_header >> 2) - 8);");
+	L("};");
+	L("");
+	L("// Fixed scalar columns are emitted as bare typed members in the walk");
+	L("// (below), so their values are directly editable in the Pattern Data");
+	L("// view.  Only types that genuinely need a struct keep one: point pairs");
+	L("// its two doubles (unsealed, so x and y stay individually editable");
+	L("// while the collapsed row still reads \"(x,y)\"), and varlena keeps its");
+	L("// header/value split.");
+	L("struct pgpoint { double x; double y; } [[format(\"fmt_att_point\")]];");
+	L("");
+
+	/*
+	 * Varlena types are emitted per column: the header member is represented
+	 * separately from the value (just as the old tool tagged varattrib_1b/
+	 * va_4byte/va_compressed headers apart from the attribute value), in a
+	 * shaded variant of the column's color, and colors are static type
+	 * attributes.
+	 */
+	for (i = 0; i < nrelatts; i++)
 	{
-		case SPEC_SECT_NONE:
-		case SPEC_SECT_SEQUENCE:
-			formatAs = ITEM_HEAP;
-			break;
-		case SPEC_SECT_INDEX_BTREE:
-		case SPEC_SECT_INDEX_HASH:
-		case SPEC_SECT_INDEX_GIST:
-		case SPEC_SECT_INDEX_GIN:
-			formatAs = ITEM_INDEX;
-			break;
-		case SPEC_SECT_INDEX_SPGIST:
-			if (!SpGistPageIsLeaf(page))
-				formatAs = ITEM_SPG_INN;
+		const char *color = attcolorrel[i];
+		const char *shade;
+		char	   *plname = attplnamerel[i];
+		attClass	class = attclassrel[i];
+		const char *base;
+		const char *datatype;
+		const char *datafmt;
+
+		if (class != ATT_CLASS_VARLENA_TEXT && class != ATT_CLASS_VARLENA_BIN)
+			continue;
+
+		shade = pg_strdup(ShadeColor(color));
+		base = (class == ATT_CLASS_VARLENA_TEXT) ? "pgtext" : "pgvarlena";
+		datatype = (class == ATT_CLASS_VARLENA_TEXT) ? "char" : "u8";
+		datafmt = (class == ATT_CLASS_VARLENA_TEXT) ? "fmt_att_str" : "fmt_att_bin";
+
+		F("// varlena shapes for attribute %d: \"%s\"", i + 1, attnamerel[i]);
+		F("struct %s_1b_%s {", base, plname);
+		F("    u8 va_header [[color(\"%s\"), name(\"varattrib_1b\")]];", shade);
+		F("    %s data[(va_header >> 1) - 1] [[color(\"%s\")]];", datatype, color);
+		F("} [[format(\"%s\")]];", datafmt);
+		F("struct %s_4b_%s {", base, plname);
+		F("    u32 va_header [[color(\"%s\"), name(\"va_4byte\")]];", shade);
+		F("    %s data[(va_header >> 2) - 4] [[color(\"%s\")]];", datatype, color);
+		F("} [[format(\"%s\")]];", datafmt);
+		F("struct %s_4bc_%s {", base, plname);
+		F("    u32 va_header [[color(\"%s\"), name(\"va_compressed\")]];", shade);
+		F("    u32 va_tcinfo [[color(\"%s\")]];", shade);
+		F("    u8 cdata[(va_header >> 2) - 8] [[sealed, color(\"%s\")]];", color);
+		L("} [[format(\"fmt_att_compressed\")]];");
+		F("struct %s_toast_%s {", base, plname);
+		F("    u8 va_header [[color(\"%s\"), name(\"varattrib_1b_e\")]];", shade);
+		F("    u8 va_tag [[color(\"%s\")]];", shade);
+		F("    s32 va_rawsize [[color(\"%s\")]];", color);
+		F("    u32 va_extinfo [[color(\"%s\")]];", shade);
+		F("    u32 va_valueid [[color(\"%s\")]];", color);
+		F("    u32 va_toastrelid [[color(\"%s\")]];", shade);
+		L("} [[format(\"fmt_att_toast\")]];");
+		pg_free((void *) shade);
+	}
+	L("");
+
+	/*
+	 * The walk itself.  Cursor starts at the beginning of tuple data (the
+	 * enclosing tuple struct is responsible for getting it there).
+	 */
+	L("struct TupleAttrs {");
+	for (i = 0; i < nrelatts; i++)
+	{
+		attClass	class = attclassrel[i];
+		int			attlen = attlenrel[i];
+		int			alignb = AlignBytes(attalignrel[i]);
+		char	   *plname = attplnamerel[i];
+		const char *base = (class == ATT_CLASS_VARLENA_TEXT) ? "pgtext" : "pgvarlena";
+		const char *fixedtype = NULL;	/* bare PL type token */
+		char		arraysuffix[16];	/* "" or "[n]" or "[]" */
+
+		arraysuffix[0] = '\0';
+		switch (class)
+		{
+			case ATT_CLASS_BOOL:
+				fixedtype = "bool";
+				break;
+			case ATT_CLASS_CHAR:
+				fixedtype = "char";
+				break;
+			case ATT_CLASS_INT16:
+				fixedtype = "s16";
+				break;
+			case ATT_CLASS_INT32:
+				fixedtype = "s32";
+				break;
+			case ATT_CLASS_INT64:
+				fixedtype = "s64";
+				break;
+			case ATT_CLASS_UINT32:
+				fixedtype = "u32";
+				break;
+			case ATT_CLASS_FLOAT32:
+				fixedtype = "float";
+				break;
+			case ATT_CLASS_FLOAT64:
+				fixedtype = "double";
+				break;
+			case ATT_CLASS_POINT:
+				fixedtype = "pgpoint";
+				break;
+			case ATT_CLASS_NAME:
+				fixedtype = "char";
+				snprintf(arraysuffix, sizeof(arraysuffix), "[%d]", attlen);
+				break;
+			case ATT_CLASS_CSTRING:
+				fixedtype = "char";
+				snprintf(arraysuffix, sizeof(arraysuffix), "[]");
+				break;
+			case ATT_CLASS_FIXED_OPAQUE:
+				fixedtype = "u8";
+				snprintf(arraysuffix, sizeof(arraysuffix), "[%d]", attlen);
+				break;
+			case ATT_CLASS_VARLENA_TEXT:
+			case ATT_CLASS_VARLENA_BIN:
+				break;
+		}
+
+		F("    // attribute %d: \"%s\"", i + 1, attnamerel[i]);
+		F("    if (!g_walk_bad && g_natts >= %d && att_present(%d)) {", i + 1, i);
+		if (attlen >= 0 || class == ATT_CLASS_CSTRING)
+		{
+			/* att_align_nominal(): unconditional alignment */
+			if (alignb > 1)
+				F("        padding[(%d - ($ %% %d)) %% %d];", alignb, alignb, alignb);
+			if (class == ATT_CLASS_CSTRING)
+				L("        if ($ < g_data_end) {");
 			else
-				formatAs = ITEM_SPG_LEAF;
-			break;
-		case SPEC_SECT_INDEX_BRIN:
-			formatAs = ITEM_BRIN;
-			break;
-		default:
-			/* Only complain the first time an error like this is seen */
-			if (exitCode == 0)
-				fprintf(stderr, "pg_hexedit error: unsupported special section type \"%s\"\n",
-						GetSpecialSectionString(specialType));
-			formatAs = ITEM_INDEX;
-			exitCode = 1;
-	}
-
-	for (offset = FirstOffsetNumber;
-		 offset <= maxOffset;
-		 offset = OffsetNumberNext(offset))
-	{
-		itemId = PageGetItemId(page, offset);
-		itemSize = (int) ItemIdGetLength(itemId);
-		itemOffset = (int) ItemIdGetOffset(itemId);
-		itemFlags = (unsigned int) ItemIdGetFlags(itemId);
-
-		/* LD_DEAD items may have storage, so we go by lp_len alone */
-		if (itemSize == 0)
-		{
-			if (itemFlags == LP_NORMAL)
-			{
-				fprintf(stderr, "pg_hexedit error: (%u,%u) LP_NORMAL item has lp_len 0\n",
-						blkno + segmentBlockDelta, offset);
-				exitCode = 1;
-			}
-			continue;
-		}
-		/* Sanitize */
-		if (itemFlags == LP_REDIRECT || itemFlags == LP_UNUSED)
-		{
-			fprintf(stderr, "pg_hexedit error: (%u,%u) LP_REDIRECT or LP_UNUSED item has lp_len %u\n",
-					blkno + segmentBlockDelta, offset, itemSize);
-			exitCode = 1;
-			continue;
-		}
-
-		/*
-		 * Make sure the item can physically fit on this block before
-		 * formatting
-		 */
-		if (itemOffset + itemSize > blockSize ||
-			itemOffset + itemSize > bytesToFormat)
-		{
-			fprintf(stderr, "pg_hexedit error: (%u,%u) item contents extend beyond block.\n"
-					"blocksize %d bytes, read %d bytes, item start offset %d.\n",
-					blkno + segmentBlockDelta, offset, blockSize,
-					bytesToFormat, itemOffset + itemSize);
-			exitCode = 1;
-			continue;
-		}
-
-		if (formatAs == ITEM_HEAP)
-		{
-			HeapTupleHeader htup;
-
-			htup = (HeapTupleHeader) PageGetItem(page, itemId);
-
-			EmitXmlHeapTuple(blkno, offset, htup,
-							 pageOffset + itemOffset, itemSize);
-		}
-		else if (formatAs == ITEM_INDEX)
-		{
-			IndexTuple	tuple;
-			bool		dead;
-
-			tuple = (IndexTuple) PageGetItem(page, itemId);
-			dead = ItemIdIsDead(itemId);
-
-			EmitXmlIndexTuple(page, blkno, offset, tuple,
-							  pageOffset + itemOffset, itemSize, dead);
-		}
-		else if (formatAs == ITEM_SPG_INN)
-		{
-			SpGistInnerTuple tuple;
-
-			tuple = (SpGistInnerTuple) PageGetItem(page, itemId);
-
-			EmitXmlSpGistInnerTuple(page, blkno, offset, tuple,
-									pageOffset + itemOffset);
-		}
-		else if (formatAs == ITEM_SPG_LEAF)
-		{
-			SpGistLeafTuple tuple;
-
-			tuple = (SpGistLeafTuple) PageGetItem(page, itemId);
-
-			EmitXmlSpGistLeafTuple(page, blkno, offset, tuple,
-								   pageOffset + itemOffset);
-		}
-		else if (formatAs == ITEM_BRIN)
-		{
-			BrinTuple  *tuple;
-
-			tuple = (BrinTuple *) PageGetItem(page, itemId);
-
-			EmitXmlBrinTuple(page, blkno, offset, tuple,
-							 pageOffset + itemOffset, itemSize);
-		}
-	}
-}
-
-/*
- * Emit posting tree page pseudo-tuples.
- *
- * Posting tree pages don't store regular tuples. Non-leaf pages contain
- * PostingItems, which are pairs of ItemPointers and child block numbers.  Leaf
- * pages contain GinPostingLists and an uncompressed array of item pointers.
- *
- * In a leaf page, the compressed posting lists are stored after the regular
- * page header, one after each other.  Although GIN does not store regular
- * tuples, pd_lower is used to indicate the end of the posting lists. After
- * that, free space follows.
- */
-static void
-EmitXmlPostingTreeTids(Page page, BlockNumber blkno)
-{
-	OffsetNumber offsetnum;
-	OffsetNumber maxoff = GinPageGetOpaque(page)->maxoff;
-	unsigned int itemOffset;
-	unsigned int itemOffsetNext;
-
-	Assert(GinPageIsData(page));
-
-	if (!GinPageIsLeaf(page))
-	{
-		itemOffset = GinDataPageGetData(page) - page;
-
-		for (offsetnum = FirstOffsetNumber;
-			 offsetnum <= maxoff;
-			 offsetnum = OffsetNumberNext(offsetnum))
-		{
-			EmitXmlTupleTag(blkno, offsetnum, "PostingItem->child_blkno->bi_hi", COLOR_BLUE_LIGHT,
-							pageOffset + itemOffset,
-							(pageOffset + itemOffset + sizeof(uint16)) - 1);
-			itemOffset += sizeof(uint16);
-			EmitXmlTupleTag(blkno, offsetnum, "PostingItem->child_blkno->bi_lo", COLOR_BLUE_LIGHT,
-							pageOffset + itemOffset,
-							(pageOffset + itemOffset + sizeof(uint16)) - 1);
-			itemOffset += sizeof(uint16);
-
-			/*
-			 * These TIDs are white because within this page (an internal
-			 * posting tree page) they are keys, not pointers.  This is
-			 * similar to nbtree internal pages (pivot tuples).
-			 */
-			EmitXmlTupleTag(blkno, offsetnum, "PostingItem->key->bi_hi", COLOR_WHITE,
-							pageOffset + itemOffset,
-							(pageOffset + itemOffset + sizeof(uint16)) - 1);
-			itemOffset += sizeof(uint16);
-			EmitXmlTupleTag(blkno, offsetnum, "PostingItem->key->bi_lo", COLOR_WHITE,
-							pageOffset + itemOffset,
-							(pageOffset + itemOffset + sizeof(uint16)) - 1);
-			itemOffset += sizeof(uint16);
-			EmitXmlTupleTag(blkno, offsetnum, "PostingItem->key->offsetNumber", COLOR_WHITE,
-							pageOffset + itemOffset,
-							(pageOffset + itemOffset + sizeof(uint16)) - 1);
-			itemOffset += sizeof(uint16);
-		}
-	}
-	else
-	{
-		GinPostingList *seg,
-				   *nextseg;
-		Pointer		endptr;
-
-		/*
-		 * See description of posting page/data page format at top of
-		 * ginpostlinglist.c for more information.
-		 *
-		 * We don't emit anything for pre-9.4 uncompressed data pages
-		 * versions, since those versions are unsupported by pg_hexedit.  They
-		 * could still be encountered if the database underwent pg_upgrade,
-		 * but that should be rare.
-		 */
-		if (!GinPageIsCompressed(page))
-			return;
-
-		itemOffset = GinDataPageGetData(page) - page;
-		offsetnum = FirstOffsetNumber;
-		seg = GinDataLeafPageGetPostingList(page);
-		nextseg = GinNextPostingListSegment(seg);
-		itemOffsetNext = itemOffset + ((char *) nextseg - (char *) seg);
-
-		endptr = ((char *) seg) + GinDataLeafPageGetPostingListSize(page);
-		do
-		{
-			EmitXmlTupleTag(blkno, offsetnum, "GinPostingList->first->bi_hi", COLOR_BLUE_LIGHT,
-							pageOffset + itemOffset,
-							(pageOffset + itemOffset + sizeof(uint16)) - 1);
-			itemOffset += sizeof(uint16);
-			EmitXmlTupleTag(blkno, offsetnum, "GinPostingList->first->bi_lo", COLOR_BLUE_LIGHT,
-							pageOffset + itemOffset,
-							(pageOffset + itemOffset + sizeof(uint16)) - 1);
-			itemOffset += sizeof(uint16);
-			EmitXmlTupleTag(blkno, offsetnum, "GinPostingList->first->offsetNumber", COLOR_BLUE_DARK,
-							pageOffset + itemOffset,
-							(pageOffset + itemOffset + sizeof(uint16)) - 1);
-			itemOffset += sizeof(uint16);
-
-			/* Make nbytes dark yellow, to match similar IndexTuple metadata */
-			EmitXmlTupleTag(blkno, offsetnum, "GinPostingList->nbytes", COLOR_YELLOW_DARK,
-							pageOffset + itemOffset,
-							(pageOffset + itemOffset + sizeof(uint16)) - 1);
-			itemOffset += sizeof(uint16);
-			/* Compressed TIDs are orange */
-			EmitXmlTupleTag(blkno, offsetnum, "varbyte encoded TIDs", COLOR_ORANGE,
-							pageOffset + itemOffset,
-							(pageOffset + itemOffset + seg->nbytes) - 1);
-			itemOffset = itemOffsetNext;
-			seg = nextseg;
-			nextseg = GinNextPostingListSegment(seg);
-			itemOffsetNext = itemOffset + ((char *) nextseg - (char *) seg);
-			offsetnum = OffsetNumberNext(offsetnum);
-		}
-		while ((Pointer) nextseg <= endptr);
-	}
-}
-
-/*
- * Emit hash bitmap page.
- *
- * This is just a matter of emitting a single tag for everything after the page
- * header, but before pd_lower.
- */
-static void
-EmitXmlHashBitmap(Page page, BlockNumber blkno)
-{
-	uint32		relfileOff = pageOffset + (PageGetContents(page) - page);
-	uint32		relfileOffNext = pageOffset + ((PageHeader) (page))->pd_lower;
-
-	EmitXmlTag(blkno, UINT_MAX, "hash bitmap", COLOR_YELLOW_DARK, relfileOff,
-			   relfileOffNext - 1);
-}
-
-/*
- * Emit BRIN revmap TIDs as pseudo-tuples.
- *
- * BRIN revmap pages don't store an ItemId array, or regular tuples.  Instead,
- * the page contains an array of straight TIDs.
- *
- * We don't look at pd_upper, in keeping with pageinspect's brin_revmap_data(),
- * which also always emits REVMAP_PAGE_MAXITEMS entries.
- */
-static void
-EmitXmlRevmap(Page page, BlockNumber blkno)
-{
-	OffsetNumber offsetnum;
-	uint32		relfileOff = pageOffset + (PageGetContents(page) - page);
-	uint32		relfileOffNext;
-
-	for (offsetnum = FirstOffsetNumber;
-		 offsetnum <= REVMAP_PAGE_MAXITEMS;
-		 offsetnum = OffsetNumberNext(offsetnum))
-	{
-		/*
-		 * Emit t_tid tags.  TID tag style should be kept consistent with
-		 * EmitXmlHeapTuple().
-		 *
-		 * Note: We use pseudo offset numbers here.  This is a somewhat
-		 * subjective interpretation of revmap page contents.  We want to
-		 * impose some conventions, even if they aren't particularly well
-		 * justified by struct definitions.
-		 */
-		relfileOffNext = relfileOff + sizeof(uint16);
-		EmitXmlTupleTag(blkno, offsetnum, "rm_tids[i]->bi_hi", COLOR_BLUE_LIGHT, relfileOff,
-						relfileOffNext - 1);
-		relfileOff = relfileOffNext;
-		relfileOffNext += sizeof(uint16);
-		EmitXmlTupleTag(blkno, offsetnum, "rm_tids[i]->bi_lo", COLOR_BLUE_LIGHT, relfileOff,
-						relfileOffNext - 1);
-		relfileOff = relfileOffNext;
-		relfileOffNext += sizeof(uint16);
-		EmitXmlTupleTag(blkno, offsetnum, "rm_tids[i]->offsetNumber", COLOR_BLUE_DARK,
-						relfileOff, relfileOffNext - 1);
-		relfileOff = relfileOffNext;
-	}
-}
-
-/*
- * On blocks that have special sections, print the contents according to
- * previously determined special section type.
- *
- * Color of special section fields should be COLOR_GREEN_BRIGHT, to match
- * pd_special field in page header.
- */
-static void
-EmitXmlSpecial(BlockNumber blkno, uint32 level)
-{
-	PageHeader	pageHeader = (PageHeader) buffer;
-	unsigned int specialOffset = pageHeader->pd_special;
-	char	   *flagString;
-
-	flagString = pg_malloc(256);
-	flagString[0] = '\0';
-
-	switch (specialType)
-	{
-		case SPEC_SECT_NONE:
-		case SPEC_SECT_ERROR_UNKNOWN:
-		case SPEC_SECT_ERROR_BOUNDARY:
-			fprintf(stderr, "pg_hexedit error: invalid special section type \"%s\"\n",
-					GetSpecialSectionString(specialType));
-			exitCode = 1;
-			break;
-
-		case SPEC_SECT_SEQUENCE:
-			{
-				/* Special area consists of a single uint32, "magic" */
-				EmitXmlTag(blkno, level, "magic", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset,
-						   (pageOffset + specialOffset + sizeof(uint32) - 1));
-			}
-			break;
-
-		case SPEC_SECT_INDEX_BTREE:
-			{
-				BTPageOpaque btreeSection = (BTPageOpaque) (buffer + specialOffset);
-
-				EmitXmlTag(blkno, level, "btpo_prev", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_prev),
-						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_next)) - 1);
-				EmitXmlTag(blkno, level, "btpo_next", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_next),
-						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_level)) - 1);
-				EmitXmlTag(blkno, level, "btpo_level", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_level),
-						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_flags)) - 1);
-
-				/* Generate B-Tree special area flags */
-				strcat(flagString, "btpo_flags - ");
-				if (btreeSection->btpo_flags & BTP_LEAF)
-					strcat(flagString, "BTP_LEAF|");
-				if (btreeSection->btpo_flags & BTP_ROOT)
-					strcat(flagString, "BTP_ROOT|");
-				if (btreeSection->btpo_flags & BTP_DELETED)
-					strcat(flagString, "BTP_DELETED|");
-				if (btreeSection->btpo_flags & BTP_META)
-					strcat(flagString, "BTP_META|");
-				if (btreeSection->btpo_flags & BTP_HALF_DEAD)
-					strcat(flagString, "BTP_HALF_DEAD|");
-				if (btreeSection->btpo_flags & BTP_SPLIT_END)
-					strcat(flagString, "BTP_SPLIT_END|");
-				if (btreeSection->btpo_flags & BTP_HAS_GARBAGE)
-					strcat(flagString, "BTP_HAS_GARBAGE|");
-				if (btreeSection->btpo_flags & BTP_INCOMPLETE_SPLIT)
-					strcat(flagString, "BTP_INCOMPLETE_SPLIT|");
-				if (strlen(flagString))
-					flagString[strlen(flagString) - 1] = '\0';
-
-				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_flags),
-						   (pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_cycleid)) - 1);
-				EmitXmlTag(blkno, level, "btpo_cycleid", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(BTPageOpaqueData, btpo_cycleid),
-						   (pageOffset + specialOffset + sizeof(BTPageOpaqueData) - 1));
-			}
-			break;
-
-		case SPEC_SECT_INDEX_HASH:
-			{
-				HashPageOpaque hashSection = (HashPageOpaque) (buffer + specialOffset);
-
-				EmitXmlTag(blkno, level, "hasho_prevblkno", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_prevblkno),
-						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_nextblkno)) - 1);
-				EmitXmlTag(blkno, level, "hasho_nextblkno", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_nextblkno),
-						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_bucket)) - 1);
-				EmitXmlTag(blkno, level, "hasho_bucket", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_bucket),
-						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_flag)) - 1);
-
-				/* Generate hash special area flags */
-				strcat(flagString, "hasho_flag - ");
-				if (hashSection->hasho_flag & LH_OVERFLOW_PAGE)
-					strcat(flagString, "LH_OVERFLOW_PAGE|");
-				if (hashSection->hasho_flag & LH_BUCKET_PAGE)
-					strcat(flagString, "LH_BUCKET_PAGE|");
-				if (hashSection->hasho_flag & LH_BITMAP_PAGE)
-					strcat(flagString, "LH_BITMAP_PAGE|");
-				if (hashSection->hasho_flag & LH_META_PAGE)
-					strcat(flagString, "LH_META_PAGE|");
-				if (hashSection->hasho_flag & LH_BUCKET_BEING_POPULATED)
-					strcat(flagString, "LH_BUCKET_BEING_POPULATED|");
-				if (hashSection->hasho_flag & LH_BUCKET_BEING_SPLIT)
-					strcat(flagString, "LH_BUCKET_BEING_SPLIT|");
-				if (hashSection->hasho_flag & LH_BUCKET_NEEDS_SPLIT_CLEANUP)
-					strcat(flagString, "LH_BUCKET_NEEDS_SPLIT_CLEANUP|");
-				if (hashSection->hasho_flag & LH_PAGE_HAS_DEAD_TUPLES)
-					strcat(flagString, "LH_PAGE_HAS_DEAD_TUPLES|");
-				if (strlen(flagString))
-					flagString[strlen(flagString) - 1] = '\0';
-
-				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_flag),
-						   (pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_page_id)) - 1);
-				EmitXmlTag(blkno, level, "hasho_page_id", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(HashPageOpaqueData, hasho_page_id),
-						   (pageOffset + specialOffset + sizeof(HashPageOpaqueData) - 1));
-			}
-			break;
-
-		case SPEC_SECT_INDEX_GIST:
-			{
-				GISTPageOpaque gistSection = (GISTPageOpaque) (buffer + specialOffset);
-
-				EmitXmlTag(blkno, level, "nsn", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(GISTPageOpaqueData, nsn),
-						   (pageOffset + specialOffset + offsetof(GISTPageOpaqueData, rightlink)) - 1);
-				EmitXmlTag(blkno, level, "rightlink", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(GISTPageOpaqueData, rightlink),
-						   (pageOffset + specialOffset + offsetof(GISTPageOpaqueData, flags)) - 1);
-
-				/* Generate GiST special area flags */
-				strcat(flagString, "flags - ");
-				if (gistSection->flags & F_LEAF)
-					strcat(flagString, "F_LEAF|");
-				if (gistSection->flags & F_DELETED)
-					strcat(flagString, "F_DELETED|");
-				if (gistSection->flags & F_TUPLES_DELETED)
-					strcat(flagString, "F_TUPLES_DELETED|");
-				if (gistSection->flags & F_FOLLOW_RIGHT)
-					strcat(flagString, "F_FOLLOW_RIGHT|");
-				if (gistSection->flags & F_HAS_GARBAGE)
-					strcat(flagString, "F_HAS_GARBAGE|");
-				if (strlen(flagString))
-					flagString[strlen(flagString) - 1] = '\0';
-
-				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(GISTPageOpaqueData, flags),
-						   (pageOffset + specialOffset + offsetof(GISTPageOpaqueData, gist_page_id)) - 1);
-				EmitXmlTag(blkno, level, "gist_page_id", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(GISTPageOpaqueData, gist_page_id),
-						   (pageOffset + specialOffset + sizeof(GISTPageOpaqueData) - 1));
-			}
-			break;
-
-		case SPEC_SECT_INDEX_GIN:
-			{
-				GinPageOpaque ginSection = (GinPageOpaque) (buffer + specialOffset);
-
-				EmitXmlTag(blkno, level, "rightlink", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, rightlink),
-						   (pageOffset + specialOffset + offsetof(GinPageOpaqueData, maxoff)) - 1);
-				EmitXmlTag(blkno, level, "maxoff", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, maxoff),
-						   (pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags)) - 1);
-
-				/* Generate GIN special area flags */
-				strcat(flagString, "flags - ");
-				if (ginSection->flags & GIN_DATA)
-					strcat(flagString, "GIN_DATA|");
-				if (ginSection->flags & GIN_LEAF)
-					strcat(flagString, "GIN_LEAF|");
-				if (ginSection->flags & GIN_DELETED)
-					strcat(flagString, "GIN_DELETED|");
-				if (ginSection->flags & GIN_META)
-					strcat(flagString, "GIN_META|");
-				if (ginSection->flags & GIN_LIST)
-					strcat(flagString, "GIN_LIST|");
-				if (ginSection->flags & GIN_LIST_FULLROW)
-					strcat(flagString, "GIN_LIST_FULLROW|");
-				if (ginSection->flags & GIN_INCOMPLETE_SPLIT)
-					strcat(flagString, "GIN_INCOMPLETE_SPLIT|");
-				if (ginSection->flags & GIN_COMPRESSED)
-					strcat(flagString, "GIN_COMPRESSED|");
-				if (strlen(flagString))
-					flagString[strlen(flagString) - 1] = '\0';
-
-				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(GinPageOpaqueData, flags),
-						   (pageOffset + specialOffset + sizeof(GinPageOpaqueData) - 1));
-			}
-			break;
-
-		case SPEC_SECT_INDEX_SPGIST:
-			{
-				SpGistPageOpaque spGistSection = (SpGistPageOpaque) (buffer + specialOffset);
-
-				/* Generate SP-GiST special area flags */
-				strcat(flagString, "flags - ");
-				if (spGistSection->flags & SPGIST_META)
-					strcat(flagString, "SPGIST_META|");
-				if (spGistSection->flags & SPGIST_DELETED)
-					strcat(flagString, "SPGIST_DELETED|");
-				if (spGistSection->flags & SPGIST_LEAF)
-					strcat(flagString, "SPGIST_LEAF|");
-				if (spGistSection->flags & SPGIST_NULLS)
-					strcat(flagString, "SPGIST_NULLS|");
-				if (strlen(flagString))
-					flagString[strlen(flagString) - 1] = '\0';
-
-				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, flags),
-						   (pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, nRedirection)) - 1);
-
-				EmitXmlTag(blkno, level, "nRedirection", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, nRedirection),
-						   (pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, nPlaceholder)) - 1);
-				EmitXmlTag(blkno, level, "nPlaceholder", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, nPlaceholder),
-						   (pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, spgist_page_id)) - 1);
-				EmitXmlTag(blkno, level, "spgist_page_id", COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(SpGistPageOpaqueData, spgist_page_id),
-						   (pageOffset + specialOffset + sizeof(SpGistPageOpaqueData) - 1));
-			}
-			break;
-
-		case SPEC_SECT_INDEX_BRIN:
-			{
-				/*
-				 * Details of array subscription are taken from
-				 * BrinPageFlags() and BringPageTupe() macros
-				 */
-				BrinSpecialSpace *brinSection = (BrinSpecialSpace *) (buffer + specialOffset);
-
-				/* Flags, of which there is currently only one, come first. */
-				strcat(flagString, "BrinPageFlags() - ");
-				if (brinSection->vector[MAXALIGN(1) / sizeof(uint16) - 2] & BRIN_EVACUATE_PAGE)
-					strcat(flagString, "BRIN_EVACUATE_PAGE|");
-				if (strlen(flagString))
-					flagString[strlen(flagString) - 1] = '\0';
-				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(BrinSpecialSpace, vector[MAXALIGN(1) / sizeof(uint16) - 2]),
-						   (pageOffset + specialOffset + offsetof(BrinSpecialSpace, vector[MAXALIGN(1) / sizeof(uint16) - 1])) - 1);
-
-				/* Generate BRIN special page type */
-				flagString[0] = '\0';
-				strcat(flagString, "BrinPageType() - ");
-				if (brinSection->vector[MAXALIGN(1) / sizeof(uint16) - 1] == BRIN_PAGETYPE_META)
-					strcat(flagString, "BRIN_PAGETYPE_META|");
-				else if (brinSection->vector[MAXALIGN(1) / sizeof(uint16) - 1] == BRIN_PAGETYPE_REVMAP)
-					strcat(flagString, "BRIN_PAGETYPE_REVMAP|");
-				else if (brinSection->vector[MAXALIGN(1) / sizeof(uint16) - 1] == BRIN_PAGETYPE_REGULAR)
-					strcat(flagString, "BRIN_PAGETYPE_REGULAR|");
-				if (strlen(flagString))
-					flagString[strlen(flagString) - 1] = '\0';
-
-				EmitXmlTag(blkno, level, flagString, COLOR_GREEN_BRIGHT,
-						   pageOffset + specialOffset + offsetof(BrinSpecialSpace, vector[MAXALIGN(1) / sizeof(uint16) - 1]),
-						   (pageOffset + specialOffset + sizeof(BrinSpecialSpace) - 1));
-			}
-			break;
-
-		default:
-			/* Only complain the first time an error like this is seen */
-			if (exitCode == 0)
-				fprintf(stderr, "pg_hexedit error: unsupported special section type \"%s\"\n",
-						GetSpecialSectionString(specialType));
-			exitCode = 1;
-	}
-
-	pg_free(flagString);
-}
-
-/*
- * Dump the main body of XML tags (does not include header, header comments, or
- * footer.)
- */
-static void
-EmitXmlBody(void)
-{
-	unsigned int initialRead = 1;
-	unsigned int contentsToDump = 1;
-
-	/*
-	 * Calculate an offset in blocks to the segment file, from the start of
-	 * the logical relation (or from the start of segment 0, if you prefer).
-	 * This is needed so that annotations and error messages do not emit
-	 * file-relative block numbers within TIDs.
-	 *
-	 * Relation-relative block numbers should always be used in annotations,
-	 * including when a raw block number is required, but should only be used
-	 * for TIDs in error messages.  If an error message references a block
-	 * number, then it is naturally file-relative; otherwise, a TID would have
-	 * been used.  The distinction between relation-relative and file-relative
-	 * block numbers is not just an implementation detail, since input options
-	 * like BLOCK_RANGE are always in terms of file-relative block numbers.
-	 */
-	segmentBlockDelta = (segmentSize / blockSize) * segmentNumber;
-
-	/*
-	 * If the user requested a block range, seek to the correct position
-	 * within the file for the start block.
-	 */
-	if (blockOptions & BLOCK_RANGE)
-	{
-		unsigned int position = blockSize * blockStart;
-
-		if (fseek(fp, position, SEEK_SET) != 0)
-		{
-			fprintf(stderr, "pg_hexedit error: seek error encountered before requested start block %d\n",
-					blockStart);
-			contentsToDump = 0;
-			exitCode = 1;
+				F("        if ($ + %d <= g_data_end) {", attlen);
+			F("            %s %s%s [[color(\"%s\")]];", fixedtype, plname,
+			  arraysuffix, attcolorrel[i]);
+			L("        } else {");
+			L("            g_walk_bad = true;");
+			L("        }");
 		}
 		else
-			currentBlock = blockStart;
-	}
-
-	/*
-	 * Iterate through the blocks in the file until you reach the end or the
-	 * requested range end
-	 */
-	while (contentsToDump)
-	{
-		bytesToFormat = fread(buffer, 1, blockSize, fp);
-
-		if (bytesToFormat == 0)
 		{
 			/*
-			 * fseek() won't pop an error if you seek passed eof.  The next
-			 * subsequent read gets the error.
+			 * att_align_pointer(): a varlena starting with an odd byte is a
+			 * 1-byte-header datum with no alignment padding; otherwise pad
+			 * to attalign and expect a 4-byte header.  A zero first byte
+			 * must be alignment padding.
 			 */
-			if (initialRead)
-			{
-				fprintf(stderr, "pg_hexedit error: premature end of file encountered\n");
-				exitCode = 1;
-			}
-			contentsToDump = 0;
+			F("        u8 va_first_%d = std::mem::read_unsigned($, 1);", i + 1);
+			F("        if ((va_first_%d & 0x01) == 0x01) {", i + 1);
+			F("            if (va_first_%d == 0x01) {", i + 1);
+			L("                // TOAST pointer: 1-byte header with zero length");
+			F("                if ($ + 2 + %d <= g_data_end) {",
+			  (int) sizeof(varatt_external));
+			F("                    %s_toast_%s %s;", base, plname, plname);
+			L("                } else {");
+			L("                    g_walk_bad = true;");
+			L("                }");
+			F("            } else if ($ + (va_first_%d >> 1) <= g_data_end) {", i + 1);
+			F("                %s_1b_%s %s;", base, plname, plname);
+			L("            } else {");
+			L("                g_walk_bad = true;");
+			L("            }");
+			L("        } else {");
+			if (alignb > 1)
+				F("            padding[(%d - ($ %% %d)) %% %d];", alignb, alignb, alignb);
+			F("            u32 va_hdr32_%d = std::mem::read_unsigned($, 4);", i + 1);
+			F("            if ((va_hdr32_%d & 0x03) == 0x02) {", i + 1);
+			F("                if ($ + (va_hdr32_%d >> 2) <= g_data_end && (va_hdr32_%d >> 2) >= 8) {", i + 1, i + 1);
+			F("                    %s_4bc_%s %s;", base, plname, plname);
+			L("                } else {");
+			L("                    g_walk_bad = true;");
+			L("                }");
+			F("            } else if ($ + (va_hdr32_%d >> 2) <= g_data_end && (va_hdr32_%d >> 2) >= 4) {", i + 1, i + 1);
+			F("                %s_4b_%s %s;", base, plname, plname);
+			L("            } else {");
+			L("                g_walk_bad = true;");
+			L("            }");
+			L("        }");
 		}
-		else
-			EmitXmlPage(currentBlock);
-
-		/* Check to see if we are at the end of the requested range. */
-		if ((blockOptions & BLOCK_RANGE) &&
-			(currentBlock >= blockEnd) && (contentsToDump))
-		{
-			contentsToDump = 0;
-		}
-		else
-			currentBlock++;
-
-		initialRead = 0;
+		L("    }");
 	}
+	L("};");
+	L("");
 }
 
 /*
- * Consume the options and iterate through the given file, formatting as
- * requested.
+ * Heap tuples: infomask bitfields with grep-able base flag names, plus
+ * HeapTupleHeaderData.  Bit positions are derived from the real HEAP_* mask
+ * values at generation time.
  */
+static void
+EmitHeapStructs(void)
+{
+	L("// ---------------- heap tuples ----------------");
+	L("");
+	L("bitfield HeapInfomask2 {");
+	F("    natts             : 11;	// HEAP_NATTS_MASK 0x%04X", (unsigned int) HEAP_NATTS_MASK);
+	L("    padding           : 2;");
+	F("    HEAP_KEYS_UPDATED : 1;	// 0x%04X", (unsigned int) HEAP_KEYS_UPDATED);
+	F("    HEAP_HOT_UPDATED  : 1;	// 0x%04X", (unsigned int) HEAP_HOT_UPDATED);
+	F("    HEAP_ONLY_TUPLE   : 1;	// 0x%04X", (unsigned int) HEAP_ONLY_TUPLE);
+	L("} [[format(\"fmt_infomask2\")]];");
+	L("");
+	L("fn fmt_infomask2(ref auto m) {");
+	L("    str s = \"\";");
+	L("    if (m.HEAP_KEYS_UPDATED) s = s + \"|HEAP_KEYS_UPDATED\";");
+	L("    if (m.HEAP_HOT_UPDATED)  s = s + \"|HEAP_HOT_UPDATED\";");
+	L("    if (m.HEAP_ONLY_TUPLE)   s = s + \"|HEAP_ONLY_TUPLE\";");
+	L("    return std::format(\"natts={}{}\", m.natts, s);");
+	L("};");
+	L("");
+	L("bitfield HeapInfomask {");
+	F("    HEAP_HASNULL          : 1;	// 0x%04X", (unsigned int) HEAP_HASNULL);
+	F("    HEAP_HASVARWIDTH      : 1;	// 0x%04X", (unsigned int) HEAP_HASVARWIDTH);
+	F("    HEAP_HASEXTERNAL      : 1;	// 0x%04X", (unsigned int) HEAP_HASEXTERNAL);
+	F("    HEAP_HASOID_OLD       : 1;	// 0x%04X", (unsigned int) HEAP_HASOID_OLD);
+	F("    HEAP_XMAX_KEYSHR_LOCK : 1;	// 0x%04X", (unsigned int) HEAP_XMAX_KEYSHR_LOCK);
+	F("    HEAP_COMBOCID         : 1;	// 0x%04X", (unsigned int) HEAP_COMBOCID);
+	F("    HEAP_XMAX_EXCL_LOCK   : 1;	// 0x%04X", (unsigned int) HEAP_XMAX_EXCL_LOCK);
+	F("    HEAP_XMAX_LOCK_ONLY   : 1;	// 0x%04X", (unsigned int) HEAP_XMAX_LOCK_ONLY);
+	F("    HEAP_XMIN_COMMITTED   : 1;	// 0x%04X", (unsigned int) HEAP_XMIN_COMMITTED);
+	F("    HEAP_XMIN_INVALID     : 1;	// 0x%04X", (unsigned int) HEAP_XMIN_INVALID);
+	F("    HEAP_XMAX_COMMITTED   : 1;	// 0x%04X", (unsigned int) HEAP_XMAX_COMMITTED);
+	F("    HEAP_XMAX_INVALID     : 1;	// 0x%04X", (unsigned int) HEAP_XMAX_INVALID);
+	F("    HEAP_XMAX_IS_MULTI    : 1;	// 0x%04X", (unsigned int) HEAP_XMAX_IS_MULTI);
+	F("    HEAP_UPDATED          : 1;	// 0x%04X", (unsigned int) HEAP_UPDATED);
+	F("    HEAP_MOVED_OFF        : 1;	// 0x%04X", (unsigned int) HEAP_MOVED_OFF);
+	F("    HEAP_MOVED_IN         : 1;	// 0x%04X", (unsigned int) HEAP_MOVED_IN);
+	L("} [[format(\"fmt_infomask\")]];");
+	L("");
+	L("fn fmt_infomask(ref auto m) {");
+	L("    str s = \"\";");
+	L("    if (m.HEAP_HASNULL)          s = s + \"HEAP_HASNULL|\";");
+	L("    if (m.HEAP_HASVARWIDTH)      s = s + \"HEAP_HASVARWIDTH|\";");
+	L("    if (m.HEAP_HASEXTERNAL)      s = s + \"HEAP_HASEXTERNAL|\";");
+	L("    if (m.HEAP_HASOID_OLD)       s = s + \"HEAP_HASOID_OLD|\";");
+	L("    if (m.HEAP_XMAX_KEYSHR_LOCK) s = s + \"HEAP_XMAX_KEYSHR_LOCK|\";");
+	L("    if (m.HEAP_COMBOCID)         s = s + \"HEAP_COMBOCID|\";");
+	L("    if (m.HEAP_XMAX_EXCL_LOCK)   s = s + \"HEAP_XMAX_EXCL_LOCK|\";");
+	L("    if (m.HEAP_XMAX_LOCK_ONLY)   s = s + \"HEAP_XMAX_LOCK_ONLY|\";");
+	L("    if (m.HEAP_XMIN_COMMITTED)   s = s + \"HEAP_XMIN_COMMITTED|\";");
+	L("    if (m.HEAP_XMIN_INVALID)     s = s + \"HEAP_XMIN_INVALID|\";");
+	L("    if (m.HEAP_XMAX_COMMITTED)   s = s + \"HEAP_XMAX_COMMITTED|\";");
+	L("    if (m.HEAP_XMAX_INVALID)     s = s + \"HEAP_XMAX_INVALID|\";");
+	L("    if (m.HEAP_XMAX_IS_MULTI)    s = s + \"HEAP_XMAX_IS_MULTI|\";");
+	L("    if (m.HEAP_UPDATED)          s = s + \"HEAP_UPDATED|\";");
+	L("    if (m.HEAP_MOVED_OFF)        s = s + \"HEAP_MOVED_OFF|\";");
+	L("    if (m.HEAP_MOVED_IN)         s = s + \"HEAP_MOVED_IN|\";");
+	L("    if (std::string::length(s) == 0) return \"(none)\";");
+	L("    return std::string::substr(s, 0, std::string::length(s) - 1);");
+	L("};");
+	L("");
+	L("struct HeapTupleHeaderData {");
+	L("    u64 tupstart = $;");
+	F("    u32 t_xmin                  [[color(\"%s\")]];", COLOR_RED_LIGHT);
+	F("    u32 t_xmax                  [[color(\"%s\")]];", ShadeColor(COLOR_RED_LIGHT));
+	L("");
+	L("    // t_field3 is the t_cid/t_xvac union; resolve it the way the old");
+	L("    // tool did, by peeking at t_infomask for HEAP_MOVED bits");
+	F("    if ((std::mem::read_unsigned($ + %d, 2) & 0x%04X) != 0) {",
+	  (int) (offsetof(HeapTupleHeaderData, t_infomask) -
+			 offsetof(HeapTupleHeaderData, t_choice.t_heap.t_field3)),
+	  (unsigned int) HEAP_MOVED);
+	F("        u32 t_xvac              [[color(\"%s\")]];", COLOR_PINK);
+	L("    } else {");
+	F("        u32 t_cid               [[color(\"%s\")]];", COLOR_RED_DARK);
+	L("    }");
+	L("");
+	L("    ItemPointerData t_ctid;");
+	F("    HeapInfomask2 t_infomask2   [[color(\"%s\")]];", COLOR_GREEN_LIGHT);
+	F("    HeapInfomask t_infomask     [[color(\"%s\")]];", COLOR_GREEN_DARK);
+	F("    u8  t_hoff                  [[color(\"%s\")]];", COLOR_YELLOW_LIGHT);
+	L("");
+	L("    // Per-tuple natts governs the attribute walk, NOT the catalog count");
+	L("    u16 tnatts = t_infomask2.natts;");
+	L("");
+	L("    u16 bl = 0;");
+	L("    if (t_infomask.HEAP_HASNULL) {");
+	L("        bl = (tnatts + 7) / 8;");
+	F("        u8 t_bits[bl] [[color(\"%s\")]];", COLOR_YELLOW_DARK);
+	L("    }");
+	L("");
+	L("    // Sanity: t_hoff must be MAXALIGN(bitmap end).  If it is not, this");
+	L("    // tuple is garbage; show the header but skip the attribute walk");
+	L("    // instead of aborting the whole evaluation on negative padding.");
+	F("    bool sane_hoff = t_hoff == ((%d + bl + %d) / %d) * %d;",
+	  (int) offsetof(HeapTupleHeaderData, t_bits),
+	  (int) MAXIMUM_ALIGNOF - 1, (int) MAXIMUM_ALIGNOF, (int) MAXIMUM_ALIGNOF);
+	L("    if (sane_hoff && g_item_end >= tupstart + t_hoff) {");
+	F("        padding[t_hoff - %d - bl];",
+	  (int) offsetof(HeapTupleHeaderData, t_bits));
+	L("        g_natts = tnatts;");
+	L("        g_bits_addr = bl > 0 ? tupstart + 23 : 0;");
+	L("        g_data_end = g_item_end;");
+	L("        g_walk_bad = false;");
+	L("        TupleAttrs attrs [[inline]];");
+	L("    }");
+	L("} [[format(\"fmt_heap_tuple\")]];");
+	L("");
+	L("// Collapsed-tuple summary.  Deliberately does NOT lead with t_ctid: for");
+	L("// an updated tuple that is the successor, not this tuple.  The tuple's");
+	L("// own TID goes into its display name in the naming pass.  Status the");
+	L("// old tool conveyed with font colors rides along as text: FROZEN and");
+	L("// ABORTED xmin; xmax shown only when it is not invalid.");
+	L("fn fmt_heap_tuple(ref auto t) {");
+	L("    str xmin = std::format(\"xmin={}\", t.t_xmin);");
+	L("    if (t.t_infomask.HEAP_XMIN_COMMITTED && t.t_infomask.HEAP_XMIN_INVALID)");
+	L("        xmin = xmin + \" FROZEN\";");
+	L("    else if (t.t_infomask.HEAP_XMIN_INVALID)");
+	L("        xmin = xmin + \" ABORTED\";");
+	L("    str xmax = \"\";");
+	L("    if (!t.t_infomask.HEAP_XMAX_INVALID) {");
+	L("        xmax = std::format(\" xmax={}\", t.t_xmax);");
+	L("        if (t.t_infomask.HEAP_XMAX_IS_MULTI)");
+	L("            xmax = xmax + \" (multi)\";");
+	L("        if (t.t_infomask.HEAP_XMAX_LOCK_ONLY)");
+	L("            xmax = xmax + \" (lock only)\";");
+	L("    }");
+	L("    return std::format(\"{}{} {} atts, ctid={}\",");
+	L("                       xmin, xmax, t.t_infomask2.natts, fmt_ctid(t.t_ctid));");
+	L("};");
+	L("");
+}
+
+/*
+ * Index tuples: IndexTupleData with the t_info bitfield, the fixed-size
+ * IndexAttributeBitMapData NULL bitmap, and nbtree's special t_tid
+ * interpretations (suffix-truncated pivot tuples with optional heap TID
+ * tiebreaker at the end of the tuple; posting list tuples from
+ * deduplication).
+ */
+static void
+EmitIndexStructs(void)
+{
+	L("// ---------------- index tuples ----------------");
+	L("");
+	L("bitfield IndexTInfo {");
+	F("    size               : 13;	// INDEX_SIZE_MASK 0x%04X", (unsigned int) INDEX_SIZE_MASK);
+	F("    INDEX_AM_RESERVED  : 1;	// 0x%04X (nbtree: INDEX_ALT_TID_MASK)", (unsigned int) INDEX_AM_RESERVED_BIT);
+	F("    INDEX_VAR_MASK     : 1;	// 0x%04X", (unsigned int) INDEX_VAR_MASK);
+	F("    INDEX_NULL_MASK    : 1;	// 0x%04X", (unsigned int) INDEX_NULL_MASK);
+	L("} [[format(\"fmt_t_info\")]];");
+	L("");
+	L("fn fmt_t_info(ref auto m) {");
+	L("    str s = \"\";");
+	L("    if (m.INDEX_AM_RESERVED) {");
+	F("        if (g_kind == %d) s = s + \"|INDEX_ALT_TID_MASK\";", KIND_BTREE);
+	F("        else if (g_kind == %d) s = s + \"|INDEX_MOVED_BY_SPLIT_MASK\";", KIND_HASH);
+	L("        else s = s + \"|INDEX_AM_RESERVED_BIT\";");
+	L("    }");
+	L("    if (m.INDEX_VAR_MASK)  s = s + \"|INDEX_VAR_MASK\";");
+	L("    if (m.INDEX_NULL_MASK) s = s + \"|INDEX_NULL_MASK\";");
+	L("    return std::format(\"IndexTupleSize()={}{}\", m.size, s);");
+	L("};");
+	L("");
+	F("struct BTPostingTid {");
+	F("    u16 bi_hi                   [[color(\"%s\")]];", COLOR_RED_LIGHT);
+	F("    u16 bi_lo                   [[color(\"%s\")]];", ShadeColor(COLOR_RED_LIGHT));
+	F("    u16 ip_posid                [[color(\"%s\")]];", COLOR_GREEN_LIGHT);
+	L("} [[format(\"fmt_ctid\")]];");
+	L("");
+	F("struct BTPivotHeapTid {");
+	F("    u16 bi_hi                   [[color(\"%s\")]];", COLOR_PINK);
+	F("    u16 bi_lo                   [[color(\"%s\")]];", ShadeColor(COLOR_PINK));
+	F("    u16 ip_posid                [[color(\"%s\")]];", COLOR_PINK);
+	L("} [[format(\"fmt_ctid\")]];");
+	L("");
+	L("struct IndexTupleData {");
+	L("    u64 tupstart = $;");
+	L("    g_walk_bad = false;");
+	L("    ItemPointerData t_tid;");
+	F("    IndexTInfo t_info           [[color(\"%s\")]];", COLOR_YELLOW_DARK);
+	L("");
+	L("    u32 itupsize = t_info.size;");
+	L("    g_data_end = tupstart + itupsize;");
+	L("");
+	L("    // nbtree tuples that abuse t_tid (see nbtree.h):");
+	F("    //   pivot:   INDEX_ALT_TID_MASK && !(ip_posid & BT_IS_POSTING 0x%04X)",
+	  (unsigned int) BT_IS_POSTING);
+	F("    //   posting: INDEX_ALT_TID_MASK && (ip_posid & BT_IS_POSTING)");
+	L("    bool bt_pivot = false;");
+	L("    bool bt_posting = false;");
+	F("    if (g_kind == %d && t_info.INDEX_AM_RESERVED) {", KIND_BTREE);
+	F("        if ((t_tid.ip_posid & 0x%04X) != 0) {", (unsigned int) BT_IS_POSTING);
+	L("            bt_posting = true;");
+	L("        } else {");
+	L("            bt_pivot = true;");
+	L("        }");
+	L("    }");
+	L("");
+	L("    // Attribute count for the walk: catalog count, except suffix");
+	L("    // truncation makes it variable for nbtree pivot tuples");
+	F("    u32 itnatts = %d;", nrelatts);
+	L("    if (bt_pivot) {");
+	F("        itnatts = t_tid.ip_posid & 0x%04X;	// BTreeTupleGetNAtts()", (unsigned int) BT_OFFSET_MASK);
+	F("        if (itnatts > %d) {", nrelatts);
+	L("            g_walk_bad = true;");
+	F("            itnatts = %d;", nrelatts);
+	L("        }");
+	L("        // Pivot tuples may store a heap TID tiebreaker in their final");
+	L("        // 6 bytes (BTreeTupleGetHeapTID())");
+	F("        if ((t_tid.ip_posid & 0x%04X) != 0 && itupsize >= %d) {",
+	  (unsigned int) BT_PIVOT_HEAP_TID_ATTR,
+	  (int) (sizeof(IndexTupleData) + sizeof(ItemPointerData)));
+	F("            BTPivotHeapTid pivot_htid @ tupstart + itupsize - %d [[no_unique_address]];",
+	  (int) sizeof(ItemPointerData));
+	F("            g_data_end = tupstart + itupsize - %d;",
+	  (int) sizeof(ItemPointerData));
+	L("        }");
+	L("    }");
+	L("");
+	L("    if (t_info.INDEX_NULL_MASK) {");
+	F("        u8 nullbitmap[%d] [[color(\"%s\"), name(\"IndexAttributeBitMapData\")]];",
+	  (int) sizeof(IndexAttributeBitMapData), COLOR_YELLOW_DARK);
+	F("        padding[%d];",
+	  (int) (IndexInfoFindDataOffset(INDEX_NULL_MASK) -
+			 sizeof(IndexTupleData) - sizeof(IndexAttributeBitMapData)));
+	F("        g_bits_addr = tupstart + %d;", (int) sizeof(IndexTupleData));
+	L("    } else {");
+	F("        padding[%d];",
+	  (int) (IndexInfoFindDataOffset(0) - sizeof(IndexTupleData)));
+	L("        g_bits_addr = 0;");
+	L("    }");
+	L("");
+	L("    // GIN main entry tree, leaf level: tuples can embed a compressed");
+	L("    // posting list (posid = number of items, bi_lo = offset), or point");
+	L("    // to a posting tree with magic offset GIN_TREE_POSTING");
+	F("    if (g_kind == %d && g_isleaf) {", KIND_GIN);
+	F("        if (t_tid.ip_posid != 0x%04X && t_tid.ip_posid > 0 &&",
+	  (unsigned int) GIN_TREE_POSTING);
+	F("            t_tid.bi_lo >= %d && t_tid.bi_lo <= itupsize) {",
+	  (int) sizeof(IndexTupleData));
+	F("            u8 gin_posting[itupsize - t_tid.bi_lo] @ tupstart + t_tid.bi_lo [[sealed, no_unique_address, color(\"%s\")]];",
+	  COLOR_ORANGE);
+	L("            g_data_end = tupstart + t_tid.bi_lo;");
+	L("        }");
+	L("    }");
+	L("    if (bt_posting) {");
+	L("        // Deduplication posting list tuple: keys, then an array of");
+	L("        // heap TIDs at BTreeTupleGetPostingOffset()");
+	F("        u32 bt_nposting = t_tid.ip_posid & 0x%04X;", (unsigned int) BT_OFFSET_MASK);
+	L("        u32 bt_postingoff = (t_tid.bi_hi << 16) | t_tid.bi_lo;");
+	F("        if (bt_postingoff >= %d && bt_postingoff < itupsize &&",
+	  (int) sizeof(IndexTupleData));
+	F("            bt_postingoff + bt_nposting * %d <= itupsize) {",
+	  (int) sizeof(ItemPointerData));
+	L("            BTPostingTid posting_tids[bt_nposting] @ tupstart + bt_postingoff [[no_unique_address]];");
+	L("            g_data_end = tupstart + bt_postingoff;");
+	L("        } else {");
+	L("            g_walk_bad = true;");
+	L("        }");
+	L("    }");
+	L("");
+	// Multi-column GIN entry tuples carry an implicit int16 attribute
+	// number prefix; we do not decode those (matches the old tool)
+	F("    if (g_kind == %d && %d > 1) g_walk_bad = true;", KIND_GIN, nrelatts);
+	L("    g_natts = itnatts;");
+	L("    if ($ <= g_data_end) {");
+	L("        TupleAttrs attrs [[inline]];");
+	L("    }");
+	L("} [[format(\"fmt_index_tuple\")]];");
+	L("");
+	L("fn fmt_index_tuple(ref auto t) {");
+	L("    return std::format(\"t_tid={} size={}\", fmt_ctid(t.t_tid), t.t_info.size);");
+	L("};");
+	L("");
+}
+
+/*
+ * Special sections and metapages.  Stage A emits the nbtree special/meta
+ * structs in full detail; other AMs currently get their special area as a
+ * labeled raw region (detailed structs follow the same pattern and are
+ * added AM by AM).
+ */
+static void
+EmitSpecialStructs(void)
+{
+	L("// ---------------- special sections ----------------");
+	L("");
+	L("bitfield BTPageFlags {");
+	F("    BTP_LEAF             : 1;	// 0x%04X", (unsigned int) BTP_LEAF);
+	F("    BTP_ROOT             : 1;	// 0x%04X", (unsigned int) BTP_ROOT);
+	F("    BTP_DELETED          : 1;	// 0x%04X", (unsigned int) BTP_DELETED);
+	F("    BTP_META             : 1;	// 0x%04X", (unsigned int) BTP_META);
+	F("    BTP_HALF_DEAD        : 1;	// 0x%04X", (unsigned int) BTP_HALF_DEAD);
+	F("    BTP_SPLIT_END        : 1;	// 0x%04X", (unsigned int) BTP_SPLIT_END);
+	F("    BTP_HAS_GARBAGE      : 1;	// 0x%04X", (unsigned int) BTP_HAS_GARBAGE);
+	F("    BTP_INCOMPLETE_SPLIT : 1;	// 0x%04X", (unsigned int) BTP_INCOMPLETE_SPLIT);
+	F("    BTP_HAS_FULLXID      : 1;	// 0x%04X", (unsigned int) BTP_HAS_FULLXID);
+	L("    padding              : 7;");
+	L("} [[format(\"fmt_btpo_flags\")]];");
+	L("");
+	L("fn fmt_btpo_flags(ref auto f) {");
+	L("    str s = \"\";");
+	L("    if (f.BTP_LEAF)             s = s + \"BTP_LEAF|\";");
+	L("    if (f.BTP_ROOT)             s = s + \"BTP_ROOT|\";");
+	L("    if (f.BTP_DELETED)          s = s + \"BTP_DELETED|\";");
+	L("    if (f.BTP_META)             s = s + \"BTP_META|\";");
+	L("    if (f.BTP_HALF_DEAD)        s = s + \"BTP_HALF_DEAD|\";");
+	L("    if (f.BTP_SPLIT_END)        s = s + \"BTP_SPLIT_END|\";");
+	L("    if (f.BTP_HAS_GARBAGE)      s = s + \"BTP_HAS_GARBAGE|\";");
+	L("    if (f.BTP_INCOMPLETE_SPLIT) s = s + \"BTP_INCOMPLETE_SPLIT|\";");
+	L("    if (f.BTP_HAS_FULLXID)      s = s + \"BTP_HAS_FULLXID|\";");
+	L("    if (std::string::length(s) == 0) return \"(none)\";");
+	L("    return std::string::substr(s, 0, std::string::length(s) - 1);");
+	L("};");
+	L("");
+	L("struct BTPageOpaqueData {");
+	F("    u32 btpo_prev               [[color(\"%s\")]];", COLOR_GREEN_BRIGHT);
+	F("    u32 btpo_next               [[color(\"%s\")]];", ShadeColor(COLOR_GREEN_BRIGHT));
+	F("    u32 btpo_level              [[color(\"%s\")]];", COLOR_GREEN_BRIGHT);
+	F("    BTPageFlags btpo_flags      [[color(\"%s\")]];", ShadeColor(COLOR_GREEN_BRIGHT));
+	F("    u16 btpo_cycleid            [[color(\"%s\")]];", COLOR_GREEN_BRIGHT);
+	L("} [[format(\"fmt_btree_special\")]];");
+	L("");
+	L("fn fmt_btree_special(ref auto s) {");
+	L("    return std::format(\"level={} prev={} next={} {}\",");
+	L("                       s.btpo_level, s.btpo_prev, s.btpo_next,");
+	L("                       fmt_btpo_flags(s.btpo_flags));");
+	L("};");
+	L("");
+	L("struct BTMetaPageData {");
+	F("    u32 btm_magic               [[color(\"%s\")]];", COLOR_PINK);
+	F("    u32 btm_version             [[color(\"%s\")]];", ShadeColor(COLOR_PINK));
+	F("    u32 btm_root                [[color(\"%s\")]];", COLOR_PINK);
+	F("    u32 btm_level               [[color(\"%s\")]];", ShadeColor(COLOR_PINK));
+	F("    u32 btm_fastroot            [[color(\"%s\")]];", COLOR_PINK);
+	F("    u32 btm_fastlevel           [[color(\"%s\")]];", ShadeColor(COLOR_PINK));
+	F("    u32 btm_last_cleanup_num_delpages [[color(\"%s\")]];", COLOR_PINK);
+	if (offsetof(BTMetaPageData, btm_last_cleanup_num_heap_tuples) >
+		offsetof(BTMetaPageData, btm_last_cleanup_num_delpages) + sizeof(uint32))
+		F("    padding[%d];",
+		  (int) (offsetof(BTMetaPageData, btm_last_cleanup_num_heap_tuples) -
+				 offsetof(BTMetaPageData, btm_last_cleanup_num_delpages) -
+				 sizeof(uint32)));
+	F("    double btm_last_cleanup_num_heap_tuples [[color(\"%s\")]];", ShadeColor(COLOR_PINK));
+	F("    bool btm_allequalimage      [[color(\"%s\")]];", COLOR_PINK);
+	L("} [[format(\"fmt_btree_meta\")]];");
+	L("");
+	L("fn fmt_btree_meta(ref auto m) {");
+	L("    return std::format(\"root={} level={} fastroot={} fastlevel={}\",");
+	L("                       m.btm_root, m.btm_level, m.btm_fastroot, m.btm_fastlevel);");
+	L("};");
+	L("");
+	L("struct SequenceMagic {");
+	F("    u32 magic                   [[color(\"%s\")]];", COLOR_GREEN_BRIGHT);
+	L("};");
+	L("");
+	/* ---- hash ---- */
+	L("bitfield HashPageFlags {");
+	F("    LH_OVERFLOW_PAGE              : 1;	// 0x%04X", (unsigned int) LH_OVERFLOW_PAGE);
+	F("    LH_BUCKET_PAGE                : 1;	// 0x%04X", (unsigned int) LH_BUCKET_PAGE);
+	F("    LH_BITMAP_PAGE                : 1;	// 0x%04X", (unsigned int) LH_BITMAP_PAGE);
+	F("    LH_META_PAGE                  : 1;	// 0x%04X", (unsigned int) LH_META_PAGE);
+	F("    LH_BUCKET_BEING_POPULATED     : 1;	// 0x%04X", (unsigned int) LH_BUCKET_BEING_POPULATED);
+	F("    LH_BUCKET_BEING_SPLIT         : 1;	// 0x%04X", (unsigned int) LH_BUCKET_BEING_SPLIT);
+	F("    LH_BUCKET_NEEDS_SPLIT_CLEANUP : 1;	// 0x%04X", (unsigned int) LH_BUCKET_NEEDS_SPLIT_CLEANUP);
+	F("    LH_PAGE_HAS_DEAD_TUPLES       : 1;	// 0x%04X", (unsigned int) LH_PAGE_HAS_DEAD_TUPLES);
+	L("    padding                       : 8;");
+	L("} [[format(\"fmt_hash_flags\")]];");
+	L("");
+	L("fn fmt_hash_flags(ref auto f) {");
+	L("    str s = \"\";");
+	L("    if (f.LH_OVERFLOW_PAGE)              s = s + \"LH_OVERFLOW_PAGE|\";");
+	L("    if (f.LH_BUCKET_PAGE)                s = s + \"LH_BUCKET_PAGE|\";");
+	L("    if (f.LH_BITMAP_PAGE)                s = s + \"LH_BITMAP_PAGE|\";");
+	L("    if (f.LH_META_PAGE)                  s = s + \"LH_META_PAGE|\";");
+	L("    if (f.LH_BUCKET_BEING_POPULATED)     s = s + \"LH_BUCKET_BEING_POPULATED|\";");
+	L("    if (f.LH_BUCKET_BEING_SPLIT)         s = s + \"LH_BUCKET_BEING_SPLIT|\";");
+	L("    if (f.LH_BUCKET_NEEDS_SPLIT_CLEANUP) s = s + \"LH_BUCKET_NEEDS_SPLIT_CLEANUP|\";");
+	L("    if (f.LH_PAGE_HAS_DEAD_TUPLES)       s = s + \"LH_PAGE_HAS_DEAD_TUPLES|\";");
+	L("    if (std::string::length(s) == 0) return \"(none)\";");
+	L("    return std::string::substr(s, 0, std::string::length(s) - 1);");
+	L("};");
+	L("");
+	L("struct HashPageOpaqueData {");
+	emitOff = 0;
+	EFIELD("u32", "hasho_prevblkno",
+		   (int) offsetof(HashPageOpaqueData, hasho_prevblkno), 4, COLOR_GREEN_BRIGHT);
+	EFIELD("u32", "hasho_nextblkno",
+		   (int) offsetof(HashPageOpaqueData, hasho_nextblkno), 4, ShadeColor(COLOR_GREEN_BRIGHT));
+	EFIELD("u32", "hasho_bucket",
+		   (int) offsetof(HashPageOpaqueData, hasho_bucket), 4, COLOR_GREEN_BRIGHT);
+	EFIELD("HashPageFlags", "hasho_flag",
+		   (int) offsetof(HashPageOpaqueData, hasho_flag), 2, ShadeColor(COLOR_GREEN_BRIGHT));
+	EFIELD("u16", "hasho_page_id",
+		   (int) offsetof(HashPageOpaqueData, hasho_page_id), 2, COLOR_GREEN_BRIGHT);
+	L("} [[format(\"fmt_hash_special\")]];");
+	L("");
+	L("fn fmt_hash_special(ref auto s) {");
+	L("    return std::format(\"bucket={} {}\", s.hasho_bucket, fmt_hash_flags(s.hasho_flag));");
+	L("};");
+	L("");
+	L("struct HashMetaPageData {");
+	emitOff = 0;
+	EFIELD("u32", "hashm_magic", (int) offsetof(HashMetaPageData, hashm_magic), 4, COLOR_PINK);
+	EFIELD("u32", "hashm_version", (int) offsetof(HashMetaPageData, hashm_version), 4, ShadeColor(COLOR_PINK));
+	EFIELD("double", "hashm_ntuples", (int) offsetof(HashMetaPageData, hashm_ntuples), 8, COLOR_PINK);
+	EFIELD("u16", "hashm_ffactor", (int) offsetof(HashMetaPageData, hashm_ffactor), 2, ShadeColor(COLOR_PINK));
+	EFIELD("u16", "hashm_bsize", (int) offsetof(HashMetaPageData, hashm_bsize), 2, COLOR_PINK);
+	EFIELD("u16", "hashm_bmsize", (int) offsetof(HashMetaPageData, hashm_bmsize), 2, ShadeColor(COLOR_PINK));
+	EFIELD("u16", "hashm_bmshift", (int) offsetof(HashMetaPageData, hashm_bmshift), 2, COLOR_PINK);
+	EFIELD("u32", "hashm_maxbucket", (int) offsetof(HashMetaPageData, hashm_maxbucket), 4, ShadeColor(COLOR_PINK));
+	EFIELD("u32", "hashm_highmask", (int) offsetof(HashMetaPageData, hashm_highmask), 4, COLOR_PINK);
+	EFIELD("u32", "hashm_lowmask", (int) offsetof(HashMetaPageData, hashm_lowmask), 4, ShadeColor(COLOR_PINK));
+	EFIELD("u32", "hashm_ovflpoint", (int) offsetof(HashMetaPageData, hashm_ovflpoint), 4, COLOR_PINK);
+	EFIELD("u32", "hashm_firstfree", (int) offsetof(HashMetaPageData, hashm_firstfree), 4, ShadeColor(COLOR_PINK));
+	EFIELD("u32", "hashm_nmaps", (int) offsetof(HashMetaPageData, hashm_nmaps), 4, COLOR_PINK);
+	EFIELD("u32", "hashm_procid", (int) offsetof(HashMetaPageData, hashm_procid), 4, ShadeColor(COLOR_PINK));
+	F("    u32 hashm_spares[%d] [[sealed, color(\"%s\")]];",
+	  (int) HASH_MAX_SPLITPOINTS, COLOR_PINK);
+	F("    u32 hashm_mapp[%d] [[sealed, color(\"%s\")]];",
+	  (int) HASH_MAX_BITMAPS, ShadeColor(COLOR_PINK));
+	L("} [[format(\"fmt_hash_meta\")]];");
+	L("");
+	L("fn fmt_hash_meta(ref auto m) {");
+	L("    return std::format(\"maxbucket={} ntuples={} ovflpoint={}\",");
+	L("                       m.hashm_maxbucket, m.hashm_ntuples, m.hashm_ovflpoint);");
+	L("};");
+	L("");
+	L("struct HashBitmapContent {");
+	F("    u8 bitmap[g_content_len] [[sealed, color(\"%s\")]];", COLOR_YELLOW_DARK);
+	L("};");
+	L("");
+	/* ---- GiST ---- */
+	L("bitfield GistPageFlags {");
+	F("    F_LEAF             : 1;	// 0x%04X", (unsigned int) F_LEAF);
+	F("    F_DELETED          : 1;	// 0x%04X", (unsigned int) F_DELETED);
+	F("    F_TUPLES_DELETED   : 1;	// 0x%04X", (unsigned int) F_TUPLES_DELETED);
+	F("    F_FOLLOW_RIGHT     : 1;	// 0x%04X", (unsigned int) F_FOLLOW_RIGHT);
+	F("    F_HAS_GARBAGE      : 1;	// 0x%04X", (unsigned int) F_HAS_GARBAGE);
+	L("    padding            : 11;");
+	L("} [[format(\"fmt_gist_flags\")]];");
+	L("");
+	L("fn fmt_gist_flags(ref auto f) {");
+	L("    str s = \"\";");
+	L("    if (f.F_LEAF)           s = s + \"F_LEAF|\";");
+	L("    if (f.F_DELETED)        s = s + \"F_DELETED|\";");
+	L("    if (f.F_TUPLES_DELETED) s = s + \"F_TUPLES_DELETED|\";");
+	L("    if (f.F_FOLLOW_RIGHT)   s = s + \"F_FOLLOW_RIGHT|\";");
+	L("    if (f.F_HAS_GARBAGE)    s = s + \"F_HAS_GARBAGE|\";");
+	L("    if (std::string::length(s) == 0) return \"(none)\";");
+	L("    return std::string::substr(s, 0, std::string::length(s) - 1);");
+	L("};");
+	L("");
+	L("struct GISTPageOpaqueData {");
+	emitOff = 0;
+	EFIELD("PageXLogRecPtr", "nsn", (int) offsetof(GISTPageOpaqueData, nsn), 8, COLOR_GREEN_BRIGHT);
+	EFIELD("u32", "rightlink", (int) offsetof(GISTPageOpaqueData, rightlink), 4, ShadeColor(COLOR_GREEN_BRIGHT));
+	EFIELD("GistPageFlags", "flags", (int) offsetof(GISTPageOpaqueData, flags), 2, COLOR_GREEN_BRIGHT);
+	EFIELD("u16", "gist_page_id", (int) offsetof(GISTPageOpaqueData, gist_page_id), 2, ShadeColor(COLOR_GREEN_BRIGHT));
+	L("} [[format(\"fmt_gist_special\")]];");
+	L("");
+	L("fn fmt_gist_special(ref auto s) {");
+	L("    return std::format(\"rightlink={} {}\", s.rightlink, fmt_gist_flags(s.flags));");
+	L("};");
+	L("");
+	/* ---- GIN ---- */
+	L("bitfield GinPageFlags {");
+	F("    GIN_DATA             : 1;	// 0x%04X", (unsigned int) GIN_DATA);
+	F("    GIN_LEAF             : 1;	// 0x%04X", (unsigned int) GIN_LEAF);
+	F("    GIN_DELETED          : 1;	// 0x%04X", (unsigned int) GIN_DELETED);
+	F("    GIN_META             : 1;	// 0x%04X", (unsigned int) GIN_META);
+	F("    GIN_LIST             : 1;	// 0x%04X", (unsigned int) GIN_LIST);
+	F("    GIN_LIST_FULLROW     : 1;	// 0x%04X", (unsigned int) GIN_LIST_FULLROW);
+	F("    GIN_INCOMPLETE_SPLIT : 1;	// 0x%04X", (unsigned int) GIN_INCOMPLETE_SPLIT);
+	F("    GIN_COMPRESSED       : 1;	// 0x%04X", (unsigned int) GIN_COMPRESSED);
+	L("    padding              : 8;");
+	L("} [[format(\"fmt_gin_flags\")]];");
+	L("");
+	L("fn fmt_gin_flags(ref auto f) {");
+	L("    str s = \"\";");
+	L("    if (f.GIN_DATA)             s = s + \"GIN_DATA|\";");
+	L("    if (f.GIN_LEAF)             s = s + \"GIN_LEAF|\";");
+	L("    if (f.GIN_DELETED)          s = s + \"GIN_DELETED|\";");
+	L("    if (f.GIN_META)             s = s + \"GIN_META|\";");
+	L("    if (f.GIN_LIST)             s = s + \"GIN_LIST|\";");
+	L("    if (f.GIN_LIST_FULLROW)     s = s + \"GIN_LIST_FULLROW|\";");
+	L("    if (f.GIN_INCOMPLETE_SPLIT) s = s + \"GIN_INCOMPLETE_SPLIT|\";");
+	L("    if (f.GIN_COMPRESSED)       s = s + \"GIN_COMPRESSED|\";");
+	L("    if (std::string::length(s) == 0) return \"(none)\";");
+	L("    return std::string::substr(s, 0, std::string::length(s) - 1);");
+	L("};");
+	L("");
+	L("struct GinPageOpaqueData {");
+	emitOff = 0;
+	EFIELD("u32", "rightlink", (int) offsetof(GinPageOpaqueData, rightlink), 4, COLOR_GREEN_BRIGHT);
+	EFIELD("u16", "maxoff", (int) offsetof(GinPageOpaqueData, maxoff), 2, ShadeColor(COLOR_GREEN_BRIGHT));
+	EFIELD("GinPageFlags", "flags", (int) offsetof(GinPageOpaqueData, flags), 2, COLOR_GREEN_BRIGHT);
+	L("} [[format(\"fmt_gin_special\")]];");
+	L("");
+	L("fn fmt_gin_special(ref auto s) {");
+	L("    return std::format(\"rightlink={} maxoff={} {}\",");
+	L("                       s.rightlink, s.maxoff, fmt_gin_flags(s.flags));");
+	L("};");
+	L("");
+	L("struct GinMetaPageData {");
+	emitOff = 0;
+	EFIELD("u32", "head", (int) offsetof(GinMetaPageData, head), 4, COLOR_PINK);
+	EFIELD("u32", "tail", (int) offsetof(GinMetaPageData, tail), 4, ShadeColor(COLOR_PINK));
+	EFIELD("u32", "tailFreeSize", (int) offsetof(GinMetaPageData, tailFreeSize), 4, COLOR_PINK);
+	EFIELD("u32", "nPendingPages", (int) offsetof(GinMetaPageData, nPendingPages), 4, ShadeColor(COLOR_PINK));
+	EFIELD("s64", "nPendingHeapTuples", (int) offsetof(GinMetaPageData, nPendingHeapTuples), 8, COLOR_PINK);
+	EFIELD("u32", "nTotalPages", (int) offsetof(GinMetaPageData, nTotalPages), 4, ShadeColor(COLOR_PINK));
+	EFIELD("u32", "nEntryPages", (int) offsetof(GinMetaPageData, nEntryPages), 4, COLOR_PINK);
+	EFIELD("u32", "nDataPages", (int) offsetof(GinMetaPageData, nDataPages), 4, ShadeColor(COLOR_PINK));
+	EFIELD("s64", "nEntries", (int) offsetof(GinMetaPageData, nEntries), 8, COLOR_PINK);
+	EFIELD("s32", "ginVersion", (int) offsetof(GinMetaPageData, ginVersion), 4, ShadeColor(COLOR_PINK));
+	L("} [[format(\"fmt_gin_meta\")]];");
+	L("");
+	L("fn fmt_gin_meta(ref auto m) {");
+	L("    return std::format(\"entries={} entryPages={} dataPages={} version={}\",");
+	L("                       m.nEntries, m.nEntryPages, m.nDataPages, m.ginVersion);");
+	L("};");
+	L("");
+	L("// GIN posting tree internal pages: PostingItem array after the header");
+	L("struct GinPostingItem {");
+	F("    u16 child_bi_hi  [[color(\"%s\")]];", COLOR_BLUE_LIGHT);
+	F("    u16 child_bi_lo  [[color(\"%s\")]];", ShadeColor(COLOR_BLUE_LIGHT));
+	F("    u16 key_bi_hi    [[color(\"%s\")]];", COLOR_WHITE);
+	F("    u16 key_bi_lo    [[color(\"%s\")]];", ShadeColor(COLOR_WHITE));
+	F("    u16 key_posid    [[color(\"%s\")]];", COLOR_WHITE);
+	L("} [[format(\"fmt_gin_posting_item\")]];");
+	L("");
+	L("fn fmt_gin_posting_item(ref auto i) {");
+	L("    return std::format(\"child={} key=({},{})\",");
+	L("                       (i.child_bi_hi << 16) | i.child_bi_lo,");
+	L("                       (i.key_bi_hi << 16) | i.key_bi_lo, i.key_posid);");
+	L("};");
+	L("");
+	L("// GIN posting tree leaf pages: chain of compressed posting list segments");
+	L("struct GinPostingList {");
+	L("    ItemPointerData first;");
+	F("    u16 nbytes [[color(\"%s\")]];", COLOR_YELLOW_DARK);
+	F("    u8 varbyte_tids[nbytes] [[sealed, color(\"%s\")]];", COLOR_ORANGE);
+	L("    padding[(2 - ($ % 2)) % 2];	// SHORTALIGN between segments");
+	L("} [[format(\"fmt_gin_posting_list\")]];");
+	L("");
+	L("fn fmt_gin_posting_list(ref auto l) {");
+	L("    return std::format(\"first={} nbytes={}\", fmt_ctid(l.first), l.nbytes);");
+	L("};");
+	L("");
+		/* ---- SP-GiST ---- */
+	L("bitfield SpGistPageFlags {");
+	F("    SPGIST_META     : 1;	// 0x%04X", (unsigned int) SPGIST_META);
+	F("    SPGIST_DELETED  : 1;	// 0x%04X", (unsigned int) SPGIST_DELETED);
+	F("    SPGIST_LEAF     : 1;	// 0x%04X", (unsigned int) SPGIST_LEAF);
+	F("    SPGIST_NULLS    : 1;	// 0x%04X", (unsigned int) SPGIST_NULLS);
+	L("    padding         : 12;");
+	L("} [[format(\"fmt_spgist_flags\")]];");
+	L("");
+	L("fn fmt_spgist_flags(ref auto f) {");
+	L("    str s = \"\";");
+	L("    if (f.SPGIST_META)    s = s + \"SPGIST_META|\";");
+	L("    if (f.SPGIST_DELETED) s = s + \"SPGIST_DELETED|\";");
+	L("    if (f.SPGIST_LEAF)    s = s + \"SPGIST_LEAF|\";");
+	L("    if (f.SPGIST_NULLS)   s = s + \"SPGIST_NULLS|\";");
+	L("    if (std::string::length(s) == 0) return \"(none)\";");
+	L("    return std::string::substr(s, 0, std::string::length(s) - 1);");
+	L("};");
+	L("");
+	L("struct SpGistPageOpaqueData {");
+	emitOff = 0;
+	EFIELD("SpGistPageFlags", "flags",
+		   (int) offsetof(SpGistPageOpaqueData, flags), 2, COLOR_GREEN_BRIGHT);
+	EFIELD("u16", "nRedirection",
+		   (int) offsetof(SpGistPageOpaqueData, nRedirection), 2, ShadeColor(COLOR_GREEN_BRIGHT));
+	EFIELD("u16", "nPlaceholder",
+		   (int) offsetof(SpGistPageOpaqueData, nPlaceholder), 2, COLOR_GREEN_BRIGHT);
+	EFIELD("u16", "spgist_page_id",
+		   (int) offsetof(SpGistPageOpaqueData, spgist_page_id), 2, ShadeColor(COLOR_GREEN_BRIGHT));
+	L("} [[format(\"fmt_spgist_special\")]];");
+	L("");
+	L("fn fmt_spgist_special(ref auto s) {");
+	L("    return std::format(\"nRedirection={} nPlaceholder={} {}\",");
+	L("                       s.nRedirection, s.nPlaceholder, fmt_spgist_flags(s.flags));");
+	L("};");
+	L("");
+	L("struct SpGistLastUsedPage {");
+	F("    u32 blkno     [[color(\"%s\")]];", COLOR_PINK);
+	F("    s32 freeSpace [[color(\"%s\")]];", ShadeColor(COLOR_PINK));
+	L("} [[format(\"fmt_spgist_lup\")]];");
+	L("");
+	L("fn fmt_spgist_lup(ref auto l) {");
+	L("    return std::format(\"blkno={} freeSpace={}\", l.blkno, l.freeSpace);");
+	L("};");
+	L("");
+	L("struct SpGistMetaPageData {");
+	F("    u32 magicNumber [[color(\"%s\")]];", COLOR_PINK);
+	F("    SpGistLastUsedPage cachedPage[%d];", (int) SPGIST_CACHED_PAGES);
+	L("};");
+	L("");
+	L("fn spgist_state_str(u8 st) {");
+	F("    match (st) {");
+	F("        (%d): return \"SPGIST_LIVE\";", (int) SPGIST_LIVE);
+	F("        (%d): return \"SPGIST_REDIRECT\";", (int) SPGIST_REDIRECT);
+	F("        (%d): return \"SPGIST_DEAD\";", (int) SPGIST_DEAD);
+	F("        (%d): return \"SPGIST_PLACEHOLDER\";", (int) SPGIST_PLACEHOLDER);
+	L("    }");
+	L("    return \"?\";");
+	L("};");
+	L("");
+	L("bitfield SpgInnerHead {");
+	L("    tupstate   : 2;");
+	L("    allTheSame : 1;");
+	L("    nNodes     : 13;");
+	L("    prefixSize : 16;");
+	L("} [[format(\"fmt_spg_inner_head\")]];");
+	L("");
+	L("fn fmt_spg_inner_head(ref auto h) {");
+	L("    return std::format(\"{} allTheSame={} nNodes={} prefixSize={}\",");
+	L("                       spgist_state_str(h.tupstate), h.allTheSame, h.nNodes, h.prefixSize);");
+	L("};");
+	L("");
+	L("// SP-GiST node tuples reuse the IndexTuple layout for downlink labels");
+	L("struct SpgNodeTuple {");
+	L("    ItemPointerData t_tid;");
+	F("    IndexTInfo t_info [[color(\"%s\")]];", COLOR_YELLOW_DARK);
+	L("    if (t_info.size >= 8) {");
+	F("        u8 label[t_info.size - 8] [[sealed, color(\"%s\")]];", COLOR_WHITE);
+	L("    }");
+	L("} [[format(\"fmt_index_tuple\")]];");
+	L("");
+	L("struct SpGistInnerTuple {");
+	L("    u64 stupstart = $;");
+	F("    SpgInnerHead head [[color(\"%s\")]];", COLOR_YELLOW_LIGHT);
+	F("    u16 size [[color(\"%s\")]];", ShadeColor(COLOR_YELLOW_LIGHT));
+	F("    if (head.tupstate == %d) {", (int) SPGIST_LIVE);
+	L("        if (head.prefixSize > 0) {");
+	F("            u8 prefix[head.prefixSize] [[sealed, color(\"%s\")]];", COLOR_WHITE);
+	L("        }");
+	L("        SpgNodeTuple nodes[head.nNodes];");
+	L("    } else if (g_item_end > $) {");
+	F("        u8 contents[g_item_end - $] [[sealed, color(\"%s\")]];", COLOR_BROWN);
+	L("    }");
+	L("} [[format(\"fmt_spg_inner\")]];");
+	L("");
+	L("fn fmt_spg_inner(ref auto t) { return fmt_spg_inner_head(t.head); };");
+	L("");
+	L("bitfield SpgLeafHead {");
+	L("    tupstate : 2;");
+	L("    size     : 30;");
+	L("} [[format(\"fmt_spg_leaf_head\")]];");
+	L("");
+	L("fn fmt_spg_leaf_head(ref auto h) {");
+	L("    return std::format(\"{} size={}\", spgist_state_str(h.tupstate), h.size);");
+	L("};");
+	L("");
+	L("struct SpGistLeafTuple {");
+	L("    u64 stupstart = $;");
+	F("    SpgLeafHead head [[color(\"%s\")]];", COLOR_YELLOW_LIGHT);
+	F("    u16 nextOffset [[color(\"%s\"), format(\"fmt_spg_nextoffset\")]];", COLOR_YELLOW_DARK);
+	L("    ItemPointerData heapPtr;");
+	F("    if (head.tupstate == %d) {", (int) SPGIST_LIVE);
+	L("        if (stupstart + head.size > $ && head.size <= 8192) {");
+	F("            u8 contents[stupstart + head.size - $] [[sealed, color(\"%s\")]];", COLOR_WHITE);
+	L("        }");
+	L("    } else {");
+	F("        u32 xid [[color(\"%s\")]];", COLOR_RED_LIGHT);
+	L("    }");
+	L("} [[format(\"fmt_spg_leaf\")]];");
+	L("");
+	L("fn fmt_spg_nextoffset(auto v) {");
+	L("    return std::format(\"{}{}\", v & 0x7FFF, (v & 0x8000) != 0 ? \" (has nullmask)\" : \"\");");
+	L("};");
+	L("");
+	L("fn fmt_spg_leaf(ref auto t) {");
+	L("    return std::format(\"{} heapPtr={}\", fmt_spg_leaf_head(t.head), fmt_ctid(t.heapPtr));");
+	L("};");
+	L("");
+	/* ---- BRIN ---- */
+	L("bitfield BrinPageFlags {");
+	F("    BRIN_EVACUATE_PAGE : 1;	// 0x%04X", (unsigned int) BRIN_EVACUATE_PAGE);
+	L("    padding            : 15;");
+	L("} [[format(\"fmt_brin_flags\")]];");
+	L("");
+	L("fn fmt_brin_flags(ref auto f) {");
+	L("    if (f.BRIN_EVACUATE_PAGE) return \"BRIN_EVACUATE_PAGE\";");
+	L("    return \"(none)\";");
+	L("};");
+	L("");
+	L("fn brin_pagetype_str(u16 t) {");
+	L("    match (t) {");
+	F("        (0x%04X): return \"BRIN_PAGETYPE_META\";", (unsigned int) BRIN_PAGETYPE_META);
+	F("        (0x%04X): return \"BRIN_PAGETYPE_REVMAP\";", (unsigned int) BRIN_PAGETYPE_REVMAP);
+	F("        (0x%04X): return \"BRIN_PAGETYPE_REGULAR\";", (unsigned int) BRIN_PAGETYPE_REGULAR);
+	L("    }");
+	L("    return \"?\";");
+	L("};");
+	L("");
+	L("struct BrinSpecial {");
+	emitOff = 0;
+	EFIELD("BrinPageFlags", "flags", (int) (MAXALIGN(1) - 2 * sizeof(uint16)), 2,
+		   COLOR_GREEN_BRIGHT);
+	EFIELD("u16", "pagetype", (int) (MAXALIGN(1) - sizeof(uint16)), 2,
+		   ShadeColor(COLOR_GREEN_BRIGHT));
+	L("} [[format(\"fmt_brin_special\")]];");
+	L("");
+	L("fn fmt_brin_special(ref auto s) {");
+	L("    return std::format(\"{} {}\", brin_pagetype_str(s.pagetype), fmt_brin_flags(s.flags));");
+	L("};");
+	L("");
+	L("struct BrinMetaPageData {");
+	emitOff = 0;
+	EFIELD("u32", "brinMagic", (int) offsetof(BrinMetaPageData, brinMagic), 4, COLOR_PINK);
+	EFIELD("u32", "brinVersion", (int) offsetof(BrinMetaPageData, brinVersion), 4, ShadeColor(COLOR_PINK));
+	EFIELD("u32", "pagesPerRange", (int) offsetof(BrinMetaPageData, pagesPerRange), 4, COLOR_PINK);
+	EFIELD("u32", "lastRevmapPage", (int) offsetof(BrinMetaPageData, lastRevmapPage), 4, ShadeColor(COLOR_PINK));
+	L("} [[format(\"fmt_brin_meta\")]];");
+	L("");
+	L("fn fmt_brin_meta(ref auto m) {");
+	L("    return std::format(\"version={} pagesPerRange={} lastRevmapPage={}\",");
+	L("                       m.brinVersion, m.pagesPerRange, m.lastRevmapPage);");
+	L("};");
+	L("");
+	L("struct BrinRevmapContents {");
+	F("    ItemPointerData rm_tids[%d];", (int) REVMAP_PAGE_MAXITEMS);
+	L("};");
+	L("");
+	L("bitfield BrinInfo {");
+	F("    offset               : %d;	// BRIN_OFFSET_MASK 0x%02X",
+	  __builtin_popcount(BRIN_OFFSET_MASK), (unsigned int) BRIN_OFFSET_MASK);
+	L("    padding              : 1;");
+	F("    BRIN_PLACEHOLDER     : 1;	// 0x%02X", (unsigned int) BRIN_PLACEHOLDER_MASK);
+	F("    BRIN_NULLS           : 1;	// 0x%02X", (unsigned int) BRIN_NULLS_MASK);
+	L("} [[format(\"fmt_brin_info\")]];");
+	L("");
+	L("fn fmt_brin_info(ref auto i) {");
+	L("    str s = \"\";");
+	L("    if (i.BRIN_PLACEHOLDER) s = s + \"|BRIN_PLACEHOLDER_MASK\";");
+	L("    if (i.BRIN_NULLS)       s = s + \"|BRIN_NULLS_MASK\";");
+	L("    return std::format(\"BrinTupleDataOffset()={}{}\", i.offset, s);");
+	L("};");
+	L("");
+	L("struct BrinTupleData {");
+	L("    u64 btupstart = $;");
+	F("    u32 bt_blkno [[color(\"%s\")]];", COLOR_BLUE_LIGHT);
+	F("    BrinInfo bt_info [[color(\"%s\")]];", COLOR_YELLOW_DARK);
+	L("    if (bt_info.BRIN_NULLS && btupstart + bt_info.offset > $) {");
+	F("        u8 nullbits[btupstart + bt_info.offset - $] [[sealed, color(\"%s\"), name(\"IndexAttributeBitMapData\")]];",
+	  COLOR_YELLOW_DARK);
+	L("    }");
+	L("    if (g_item_end > btupstart + bt_info.offset) {");
+	L("        padding[btupstart + bt_info.offset - $];");
+	F("        u8 contents[g_item_end - $] [[sealed, color(\"%s\")]];", COLOR_WHITE);
+	L("    }");
+	L("} [[format(\"fmt_brin_tuple\")]];");
+	L("");
+	L("fn fmt_brin_tuple(ref auto t) {");
+	L("    return std::format(\"bt_blkno={} {}\", t.bt_blkno, fmt_brin_info(t.bt_info));");
+	L("};");
+	L("");
+		L("struct RawSpecial {");
+	F("    u8 opaque[%u - g_special_off] [[sealed, color(\"%s\")]];",
+	  (unsigned int) BLCKSZ, COLOR_GREEN_BRIGHT);
+	L("};");
+	L("");
+}
+
+/*
+ * The page itself: header, page-kind classification (a pattern-language
+ * port of the old GetSpecialSectionType()), line pointer slots with
+ * out-of-line tuple placement, metapages, and the special section.
+ */
+static void
+EmitPageStruct(void)
+{
+	unsigned int alignedu32 = MAXALIGN(sizeof(uint32));
+
+	L("// ---------------- line pointer slots ----------------");
+	L("");
+	L("// Slot structs walk the line pointer array (each element consumes one");
+	L("// 4-byte ItemIdData) but present the TUPLE as the primary object: the");
+	L("// placed tuple is the first child, and the line pointer itself is the");
+	L("// last child, for drill-down.  Line pointer fields are peeked up front");
+	L("// so placement can precede the sequential ItemIdData member.");
+	L("struct HeapTupleSlot {");
+	L("    u32 lpraw = std::mem::read_unsigned($, 4);");
+	L("    u32 p_off = lpraw & 0x7FFF;");
+	L("    u8  p_flags = (lpraw >> 15) & 3;");
+	L("    u32 p_len = (lpraw >> 17) & 0x7FFF;");
+	L("    // LP_DEAD heap items can retain storage until pruned; annotate them");
+	L("    if ((p_flags == 1 || p_flags == 3) && p_len != 0) {");
+	F("        g_item_end = (($ / %u) * %u) + p_off + p_len;",
+	  (unsigned int) BLCKSZ, (unsigned int) BLCKSZ);
+	F("        HeapTupleHeaderData htup @ (($ / %u) * %u) + p_off [[no_unique_address]];",
+	  (unsigned int) BLCKSZ, (unsigned int) BLCKSZ);
+	L("    }");
+	L("    ItemIdData lp;");
+	L("} [[format(\"fmt_slot\")]];");
+	L("");
+	L("struct IndexTupleSlot {");
+	L("    u32 lpraw = std::mem::read_unsigned($, 4);");
+	L("    u32 p_off = lpraw & 0x7FFF;");
+	L("    u8  p_flags = (lpraw >> 15) & 3;");
+	L("    u32 p_len = (lpraw >> 17) & 0x7FFF;");
+	L("    // Index AMs use LP_DEAD for dead-but-still-present tuples, so both");
+	L("    // LP_NORMAL and LP_DEAD items have storage (p_len != 0 guards it)");
+	L("    if ((p_flags == 1 || p_flags == 3) && p_len != 0) {");
+	F("        g_item_end = (($ / %u) * %u) + p_off + p_len;",
+	  (unsigned int) BLCKSZ, (unsigned int) BLCKSZ);
+	F("        IndexTupleData itup @ (($ / %u) * %u) + p_off [[no_unique_address]];",
+	  (unsigned int) BLCKSZ, (unsigned int) BLCKSZ);
+	L("    }");
+	L("    ItemIdData lp;");
+	L("} [[format(\"fmt_slot\")]];");
+	L("");
+	L("struct RawItemSlot {");
+	L("    u32 lpraw = std::mem::read_unsigned($, 4);");
+	L("    u32 p_off = lpraw & 0x7FFF;");
+	L("    u8  p_flags = (lpraw >> 15) & 3;");
+	L("    u32 p_len = (lpraw >> 17) & 0x7FFF;");
+	L("    if (p_len != 0 && p_flags != 0) {");
+	F("        u8 item[p_len] @ (($ / %u) * %u) + p_off [[sealed, no_unique_address, color(\"%s\")]];",
+	  (unsigned int) BLCKSZ, (unsigned int) BLCKSZ, COLOR_WHITE);
+	L("    }");
+	L("    ItemIdData lp;");
+	L("} [[format(\"fmt_slot\")]];");
+	L("");
+	L("struct SpgSlot {");
+	L("    u32 lpraw = std::mem::read_unsigned($, 4);");
+	L("    u32 p_off = lpraw & 0x7FFF;");
+	L("    u8  p_flags = (lpraw >> 15) & 3;");
+	L("    u32 p_len = (lpraw >> 17) & 0x7FFF;");
+	L("    if (p_len != 0 && p_flags != 0) {");
+	F("        g_item_end = (($ / %u) * %u) + p_off + p_len;",
+	  (unsigned int) BLCKSZ, (unsigned int) BLCKSZ);
+	L("        if (g_isleaf) {");
+	F("            SpGistLeafTuple sleaf @ (($ / %u) * %u) + p_off [[no_unique_address]];",
+	  (unsigned int) BLCKSZ, (unsigned int) BLCKSZ);
+	L("        } else {");
+	F("            SpGistInnerTuple sinner @ (($ / %u) * %u) + p_off [[no_unique_address]];",
+	  (unsigned int) BLCKSZ, (unsigned int) BLCKSZ);
+	L("        }");
+	L("    }");
+	L("    ItemIdData lp;");
+	L("} [[format(\"fmt_slot\")]];");
+	L("");
+	L("struct BrinSlot {");
+	L("    u32 lpraw = std::mem::read_unsigned($, 4);");
+	L("    u32 p_off = lpraw & 0x7FFF;");
+	L("    u8  p_flags = (lpraw >> 15) & 3;");
+	L("    u32 p_len = (lpraw >> 17) & 0x7FFF;");
+	L("    if (p_len != 0 && p_flags == 1) {");
+	F("        g_item_end = (($ / %u) * %u) + p_off + p_len;",
+	  (unsigned int) BLCKSZ, (unsigned int) BLCKSZ);
+	F("        BrinTupleData btup @ (($ / %u) * %u) + p_off [[no_unique_address]];",
+	  (unsigned int) BLCKSZ, (unsigned int) BLCKSZ);
+	L("    }");
+	L("    ItemIdData lp;");
+	L("} [[format(\"fmt_slot\")]];");
+	L("");
+	L("fn fmt_slot(ref auto s) { return fmt_itemid(s.lp); };");
+	L("");
+	L("// ---------------- pages ----------------");
+	L("");
+	L("fn page_kind_str(u8 kind) {");
+	L("    match (kind) {");
+	F("        (%d): return \"heap\";", KIND_HEAP);
+	F("        (%d): return \"sequence\";", KIND_SEQUENCE);
+	F("        (%d): return \"nbtree\";", KIND_BTREE);
+	F("        (%d): return \"hash\";", KIND_HASH);
+	F("        (%d): return \"GiST\";", KIND_GIST);
+	F("        (%d): return \"GIN\";", KIND_GIN);
+	F("        (%d): return \"SP-GiST\";", KIND_SPGIST);
+	F("        (%d): return \"BRIN\";", KIND_BRIN);
+	L("    }");
+	L("    return \"unknown\";");
+	L("};");
+	L("");
+	L("struct Page {");
+	L("    u64 pagebase = $;");
+	F("    g_blk = ($ / %u) + BASE_BLOCK;", (unsigned int) BLCKSZ);
+	L("    PageHeaderData header;");
+	L("");
+	F("    bool intagrange = (pagebase / %u) >= FIRST_TAG_BLOCK && (pagebase / %u) <= LAST_TAG_BLOCK;",
+	  (unsigned int) BLCKSZ, (unsigned int) BLCKSZ);
+	L("");
+	L("    // ---- page kind classification (GetSpecialSectionType() port) ----");
+	F("    g_kind = %d;", KIND_UNKNOWN);
+	L("    g_special_off = header.pd_special;");
+	F("    u32 specialsize = %u - header.pd_special;", (unsigned int) BLCKSZ);
+	F("    u16 pagetype = std::mem::read_unsigned(pagebase + %u, 2);",
+	  (unsigned int) (BLCKSZ - sizeof(uint16)));
+	L("");
+	F("    bool validpage = header.pd_pagesize_version != 0 && header.pd_special <= %u &&",
+	  (unsigned int) BLCKSZ);
+	F("        header.pd_lower >= %u && header.pd_lower <= %u;",
+	  (unsigned int) sizeof(PageHeaderData), (unsigned int) BLCKSZ);
+	L("    if (validpage) {");
+	L("        if (specialsize == 0) {");
+	F("            g_kind = %d;", KIND_HEAP);
+	L("        }");
+	F("        else if (specialsize == %u && std::mem::read_unsigned(pagebase + header.pd_special, 4) == 0x%04X) {",
+	  alignedu32, (unsigned int) SEQUENCE_MAGIC);
+	F("            g_kind = %d;", KIND_SEQUENCE);
+	L("        }");
+	F("        else if (specialsize == %u && pagetype == 0x%04X) {",
+	  (unsigned int) MAXALIGN(sizeof(SpGistPageOpaqueData)),
+	  (unsigned int) SPGIST_PAGE_ID);
+	F("            g_kind = %d;", KIND_SPGIST);
+	L("        }");
+	F("        else if (specialsize == %u && (pagetype == 0x%04X || pagetype == 0x%04X || pagetype == 0x%04X)) {",
+	  (unsigned int) MAXALIGN(sizeof(BrinSpecialSpace)),
+	  (unsigned int) BRIN_PAGETYPE_META, (unsigned int) BRIN_PAGETYPE_REVMAP,
+	  (unsigned int) BRIN_PAGETYPE_REGULAR);
+	F("            g_kind = %d;", KIND_BRIN);
+	L("        }");
+	F("        else if (specialsize == %u) {",
+	  (unsigned int) MAXALIGN(sizeof(GinPageOpaqueData)));
+	F("            g_kind = %d;", KIND_GIN);
+	L("        }");
+	F("        else if (specialsize == %u && pagetype <= 0x%04X) {",
+	  (unsigned int) MAXALIGN(sizeof(BTPageOpaqueData)),
+	  (unsigned int) MAX_BT_CYCLE_ID);
+	F("            g_kind = %d;", KIND_BTREE);
+	L("        }");
+	F("        else if (specialsize == %u && pagetype == 0x%04X) {",
+	  (unsigned int) MAXALIGN(sizeof(HashPageOpaqueData)),
+	  (unsigned int) HASHO_PAGE_ID);
+	F("            g_kind = %d;", KIND_HASH);
+	L("        }");
+	F("        else if (specialsize == %u && pagetype == 0x%04X) {",
+	  (unsigned int) MAXALIGN(sizeof(GISTPageOpaqueData)),
+	  (unsigned int) GIST_PAGE_ID);
+	F("            g_kind = %d;", KIND_GIST);
+	L("        }");
+	L("    }");
+	L("");
+	L("");
+	L("    // Persist kind/validity as (calculated) members so the naming pass");
+	L("    // can label pages accurately -- in particular so empty/pad pages");
+	L("    // are not mislabeled as heap.");
+	L("    u8 page_kind = g_kind;");
+	L("    bool page_valid = validpage;");
+	L("");
+	L("    // ---- page body ----");
+	L("    if (validpage && intagrange) {");
+	F("        u32 nlinp = (header.pd_lower - %u) / %u;",
+	  (unsigned int) offsetof(PageHeaderData, pd_linp),
+	  (unsigned int) sizeof(ItemIdData));
+	L("");
+	L("        // Per-AM page state, peeked from the special section");
+	F("        bool ismeta = g_blk == 0 && (g_kind == %d || g_kind == %d || g_kind == %d || g_kind == %d || g_kind == %d);",
+	  KIND_BTREE, KIND_HASH, KIND_GIN, KIND_SPGIST, KIND_BRIN);
+	L("        bool skiptuples = false;");
+	L("        bool hashbitmap = false;");
+	L("        bool gindata = false;");
+	L("        u16 amflags = 0;");
+	L("        g_isleaf = false;");
+	F("        if (g_kind == %d) {", KIND_HASH);
+	F("            amflags = std::mem::read_unsigned(pagebase + header.pd_special + %d, 2);",
+	  (int) offsetof(HashPageOpaqueData, hasho_flag));
+	F("            if ((amflags & 0x%04X) != 0) hashbitmap = true;", (unsigned int) LH_BITMAP_PAGE);
+	L("        }");
+	F("        if (g_kind == %d) {", KIND_GIST);
+	F("            amflags = std::mem::read_unsigned(pagebase + header.pd_special + %d, 2);",
+	  (int) offsetof(GISTPageOpaqueData, flags));
+	F("            if ((amflags & 0x%04X) != 0) skiptuples = true;	// F_DELETED", (unsigned int) F_DELETED);
+	L("        }");
+	F("        if (g_kind == %d) {", KIND_SPGIST);
+	F("            amflags = std::mem::read_unsigned(pagebase + header.pd_special + %d, 2);",
+	  (int) offsetof(SpGistPageOpaqueData, flags));
+	F("            if ((amflags & 0x%04X) != 0) skiptuples = true;	// SPGIST_DELETED", (unsigned int) SPGIST_DELETED);
+	F("            if ((amflags & 0x%04X) != 0) g_isleaf = true;", (unsigned int) SPGIST_LEAF);
+	L("        }");
+	F("        if (g_kind == %d) {", KIND_GIN);
+	F("            amflags = std::mem::read_unsigned(pagebase + header.pd_special + %d, 2);",
+	  (int) offsetof(GinPageOpaqueData, flags));
+	F("            if ((amflags & 0x%04X) != 0) skiptuples = true;	// GIN_DELETED", (unsigned int) GIN_DELETED);
+	F("            if ((amflags & 0x%04X) != 0) g_isleaf = true;", (unsigned int) GIN_LEAF);
+	F("            if ((amflags & 0x%04X) != 0) gindata = true;", (unsigned int) GIN_DATA);
+	L("        }");
+	L("");
+	L("        if (ismeta) {");
+	F("            if (g_kind == %d) {", KIND_BTREE);
+	L("                BTMetaPageData btree_meta;");
+	F("            } else if (g_kind == %d) {", KIND_HASH);
+	L("                HashMetaPageData hash_meta;");
+	F("            } else if (g_kind == %d) {", KIND_GIN);
+	L("                GinMetaPageData gin_meta;");
+	F("            } else if (g_kind == %d) {", KIND_SPGIST);
+	L("                SpGistMetaPageData spgist_meta;");
+	F("            } else if (g_kind == %d) {", KIND_BRIN);
+	L("                BrinMetaPageData brin_meta;");
+	L("            }");
+	L("        }");
+	F("        else if (g_kind == %d && hashbitmap) {", KIND_HASH);
+	F("            g_content_len = header.pd_lower - %u;",
+	  (unsigned int) MAXALIGN(sizeof(PageHeaderData)));
+	L("            HashBitmapContent hash_bitmap;");
+	L("        }");
+	F("        else if (g_kind == %d && gindata && !skiptuples) {", KIND_GIN);
+	L("            // Posting tree pages have no line pointer array");
+	L("            if (!g_isleaf) {");
+	F("                u16 ginmaxoff = std::mem::read_unsigned(pagebase + header.pd_special + %d, 2);",
+	  (int) offsetof(GinPageOpaqueData, maxoff));
+	F("                if (ginmaxoff * %d <= %u) {",
+	  (int) sizeof(PostingItem), (unsigned int) BLCKSZ);
+	L("                    GinPostingItem posting_items[ginmaxoff];");
+	L("                }");
+	F("            } else if ((amflags & 0x%04X) != 0) {", (unsigned int) GIN_COMPRESSED);
+	L("                GinPostingList posting_lists[while($ < pagebase + header.pd_lower)];");
+	L("            }");
+	L("        }");
+	F("        else if (skiptuples) {");
+	L("            // deleted page: annotate header/special only");
+	L("        }");
+	F("        else if (g_kind == %d || g_kind == %d) {", KIND_HEAP, KIND_SEQUENCE);
+	L("            HeapTupleSlot linp[nlinp];");
+	L("        }");
+	F("        else if (g_kind == %d && pagetype == 0x%04X) {",
+	  KIND_BRIN, (unsigned int) BRIN_PAGETYPE_REVMAP);
+	L("            BrinRevmapContents revmap;");
+	L("        }");
+	F("        else if (g_kind == %d || g_kind == %d || g_kind == %d || g_kind == %d) {",
+	  KIND_BTREE, KIND_HASH, KIND_GIST, KIND_GIN);
+	L("            IndexTupleSlot linp[nlinp];");
+	L("        }");
+	F("        else if (g_kind == %d) {", KIND_SPGIST);
+	L("            SpgSlot linp[nlinp];");
+	L("        }");
+	F("        else if (g_kind == %d) {", KIND_BRIN);
+	L("            BrinSlot linp[nlinp];");
+	L("        }");
+	F("        else if (g_kind != %d) {", KIND_UNKNOWN);
+	L("            RawItemSlot linp[nlinp];");
+	L("        }");
+	L("");
+	L("        // ---- special section ----");
+	F("        if (g_kind == %d) {", KIND_BTREE);
+	L("            BTPageOpaqueData btree_special @ pagebase + header.pd_special [[no_unique_address]];");
+	L("        }");
+	F("        else if (g_kind == %d) {", KIND_HASH);
+	L("            HashPageOpaqueData hash_special @ pagebase + header.pd_special [[no_unique_address]];");
+	L("        }");
+	F("        else if (g_kind == %d) {", KIND_GIST);
+	L("            GISTPageOpaqueData gist_special @ pagebase + header.pd_special [[no_unique_address]];");
+	L("        }");
+	F("        else if (g_kind == %d) {", KIND_GIN);
+	L("            GinPageOpaqueData gin_special @ pagebase + header.pd_special [[no_unique_address]];");
+	L("        }");
+	F("        else if (g_kind == %d) {", KIND_SPGIST);
+	L("            SpGistPageOpaqueData spgist_special @ pagebase + header.pd_special [[no_unique_address]];");
+	L("        }");
+	F("        else if (g_kind == %d) {", KIND_BRIN);
+	L("            BrinSpecial brin_special @ pagebase + header.pd_special [[no_unique_address]];");
+	L("        }");
+	F("        else if (g_kind == %d) {", KIND_SEQUENCE);
+	L("            SequenceMagic sequence_special @ pagebase + header.pd_special [[no_unique_address]];");
+	L("        }");
+	F("        else if (g_kind != %d && specialsize > 0) {", KIND_HEAP);
+	L("            RawSpecial raw_special @ pagebase + header.pd_special [[no_unique_address]];");
+	L("        }");
+	L("    }");
+	L("");
+	F("    padding[%u - ($ %% %u)];", (unsigned int) BLCKSZ, (unsigned int) BLCKSZ);
+	L("} [[format(\"fmt_page\")]];");
+	L("");
+	L("fn fmt_page(ref auto p) {");
+	L("    return std::format(\"lower={} upper={} special={}\",");
+	L("                       p.header.pd_lower, p.header.pd_upper, p.header.pd_special);");
+	L("};");
+	L("");
+	L("// ---------------- provider cache flush + live sizing ----------------");
+	L("// ImHex's GDB Server provider caches reads (1024 direct-mapped 4KiB");
+	L("// lines, no reload).  pg_hexedit_live_bridge advertises an 8MiB pad");
+	L("// past the relation and tags the pad's last line with a magic value");
+	L("// and the live relation size.  Each evaluation:");
+	L("//   1. flushes the metadata line's cache slot via a pad alias,");
+	L("//   2. reads the live relation size (so growth is tracked),");
+	L("//   3. flushes exactly the slots that can hold relation lines, by");
+	L("//      reading pad addresses that alias them (blockIndex mod 1024).");
+	L("// On plain files there is no pad: every alias lands past the end of");
+	L("// the file and the whole sweep self-disables at zero cost.");
+	L("u64 cf_size = std::mem::size();");
+	L("u64 cf_lines = cf_size / 4096;");
+	L("");
+	L("// (1) make the metadata line's slot fetch fresh");
+	L("if (cf_lines >= 1025) {");
+	L("    std::mem::read_unsigned((cf_lines - 1 - 1024) * 4096, 1);");
+	L("}");
+	L("");
+	L("// (2) live relation size from the bridge tag, else file size");
+	F("u64 g_npages = cf_size / %u;", (unsigned int) BLCKSZ);
+	L("bool cf_bridged = false;");
+	L("if (cf_size >= 4096 &&");
+	L("    std::mem::read_unsigned(cf_size - 4096, 8) == 0x3147524258484750) {");
+	F("    g_npages = std::mem::read_unsigned(cf_size - 4088, 8) / %u;",
+	  (unsigned int) BLCKSZ);
+	L("    cf_bridged = true;");
+	L("}");
+	L("");
+	L("// (3) flush the relation's cache slots through their pad aliases");
+	F("u64 cf_rel_lines = g_npages * %u;", (unsigned int) (BLCKSZ / 4096));
+	L("u64 cf_nflush = cf_rel_lines;");
+	L("if (cf_nflush > 1024) cf_nflush = 1024;");
+	L("u64 cf_p0 = ((cf_rel_lines + 1023) / 1024) * 1024;");
+	L("u64 cf_addr = 0;");
+	L("if (cf_bridged) {");
+	L("    for (u64 cf = 0, cf < cf_nflush, cf += 1) {");
+	L("        cf_addr = (cf_p0 + cf) * 4096;");
+	L("        if (cf_addr < cf_size) {");
+	L("            std::mem::read_unsigned(cf_addr, 1);");
+	L("        }");
+	L("    }");
+	L("} else if (cf_size < 0x800000) {");
+	L("    // Bridge provider created without the padded size?  (Plain small");
+	L("    // files also land here; the note is only relevant to the bridge.)");
+	L("    std::print(\"pg_hexedit: no live-bridge tag found; if this is the GDB provider, re-create it with the padded size the bridge prints (File -> Recent has a pre-configured entry), or re-evaluation will show stale bytes\");");
+	L("}");
+	L("");
+	L("// Page count.  g_npages (from the live bridge's size tag, else the");
+	L("// data-source size) is the primary bound.  As a safety net against a");
+	L("// live provider whose size does not match the bridge, stop at the");
+	L("// bridge's flush-pad sentinel: the bridge fills pad pages with 0xFF, so");
+	L("// pd_pagesize_version reads 0xFFFF there -- a value no real page has.");
+	L("// Real pages, including all-zero uninitialized holes, are kept (0 is");
+	L("// not the sentinel), and plain files never contain the sentinel.");
+	F("Page pages[while(($ / %u) < g_npages && $ + %u <= std::mem::size() &&",
+	  (unsigned int) BLCKSZ, (unsigned int) BLCKSZ);
+	F("                std::mem::read_unsigned($ + %u, 2) != 0xFFFF)] @ 0x00;",
+	  (unsigned int) offsetof(PageHeaderData, pd_pagesize_version));
+	L("");
+}
+
+/*
+ * Naming and coloring pass.  Runs from global scope, where pattern
+ * references only bind to composite patterns via full paths (the stock
+ * elf.hexpat idiom).  Gives every slot its 1-based offset number, every
+ * tuple its own TID as display name and hover comment (like the old tool's
+ * "(blkno,offset)" tag prefix), and line pointers their state colors, with
+ * parity shading so adjacent line pointers stay visually separable.
+ */
+static void
+EmitNamingPass(void)
+{
+	L("// ---------------- naming + coloring pass ----------------");
+	L("");
+	L("u32 lpcolor = 0;");
+	L("u32 pageblk = 0;");
+	L("str pagekind = \"\";");
+	L("bool hastup = false;");
+	L("");
+	L("for (u32 p = 0, p < std::core::member_count(pages), p += 1) {");
+	L("    pageblk = p + BASE_BLOCK;");
+	L("    if (std::core::has_member(pages[p], \"linp\")) {");
+	L("        for (u32 s = 0, s < std::core::member_count(pages[p].linp), s += 1) {");
+	L("            // The slot row carries the tuple's identity; the line");
+	L("            // pointer is the drill-down (its own row sits last inside)");
+	L("            hastup = std::core::has_member(pages[p].linp[s], \"htup\") ||");
+	L("                     std::core::has_member(pages[p].linp[s], \"itup\") ||");
+	L("                     std::core::has_member(pages[p].linp[s], \"sleaf\") ||");
+	L("                     std::core::has_member(pages[p].linp[s], \"sinner\") ||");
+	L("                     std::core::has_member(pages[p].linp[s], \"btup\");");
+	L("            if (hastup) {");
+	L("                std::core::set_display_name(pages[p].linp[s],");
+	L("                    std::format(\"tuple ({},{})\", pageblk, s + 1));");
+	L("                std::core::set_pattern_comment(pages[p].linp[s],");
+	L("                    std::format(\"lp {}\", s + 1));");
+	L("            } else {");
+	L("                std::core::set_display_name(pages[p].linp[s],");
+	L("                    std::format(\"lp {}\", s + 1));");
+	L("            }");
+	L("");
+	L("            // Line pointer state colors (parity-shaded within a state");
+	L("            // so adjacent same-state line pointers remain separable)");
+	L("            if (pages[p].linp[s].lp.lp_flags == 0)");
+	F("                lpcolor = (s & 1) == 0 ? %s : %s;	// LP_UNUSED: muted gray",
+	  AbgrLit(COLOR_GRAY), AbgrLit(ShadeColor(COLOR_GRAY)));
+	L("            else if (pages[p].linp[s].lp.lp_flags == 2)");
+	F("                lpcolor = (s & 1) == 0 ? %s : %s;	// BLUE_DARK",
+	  AbgrLit(COLOR_BLUE_DARK), AbgrLit(ShadeColor(COLOR_BLUE_DARK)));
+	L("            else if (pages[p].linp[s].lp.lp_flags == 3)");
+	F("                lpcolor = (s & 1) == 0 ? %s : %s;	// BROWN",
+	  AbgrLit(COLOR_BROWN), AbgrLit(ShadeColor(COLOR_BROWN)));
+	L("            else");
+	F("                lpcolor = (s & 1) == 0 ? %s : %s;	// BLUE_LIGHT",
+	  AbgrLit(COLOR_BLUE_LIGHT), AbgrLit(ShadeColor(COLOR_BLUE_LIGHT)));
+	L("            std::core::set_pattern_color(pages[p].linp[s].lp, lpcolor);");
+	L("");
+	L("            if (std::core::has_member(pages[p].linp[s], \"htup\"))");
+	L("                std::core::set_pattern_comment(pages[p].linp[s].htup,");
+	L("                    std::format(\"TID ({},{})\", pageblk, s + 1));");
+	L("            if (std::core::has_member(pages[p].linp[s], \"sleaf\"))");
+	L("                std::core::set_pattern_comment(pages[p].linp[s].sleaf,");
+	L("                    std::format(\"leaf tuple ({},{})\", pageblk, s + 1));");
+	L("            if (std::core::has_member(pages[p].linp[s], \"sinner\"))");
+	L("                std::core::set_pattern_comment(pages[p].linp[s].sinner,");
+	L("                    std::format(\"inner tuple ({},{})\", pageblk, s + 1));");
+	L("            if (std::core::has_member(pages[p].linp[s], \"btup\"))");
+	L("                std::core::set_pattern_comment(pages[p].linp[s].btup,");
+	L("                    std::format(\"brin tuple ({},{})\", pageblk, s + 1));");
+	L("            if (std::core::has_member(pages[p].linp[s], \"itup\")) {");
+	L("                if (pages[p].linp[s].lp.lp_flags == 3)");
+	L("                    std::core::set_pattern_comment(pages[p].linp[s].itup,");
+	L("                        std::format(\"index tuple ({},{}) LP_DEAD\", pageblk, s + 1));");
+	L("                else");
+	L("                    std::core::set_pattern_comment(pages[p].linp[s].itup,");
+	L("                        std::format(\"index tuple ({},{})\", pageblk, s + 1));");
+	L("");
+	L("                // nbtree posting list TIDs alternate colors per entry,");
+	L("                // as the old tool did, so runs of TIDs stay readable");
+	L("                if (std::core::has_member(pages[p].linp[s].itup, \"posting_tids\")) {");
+	L("                    for (u32 t = 0, t < std::core::member_count(pages[p].linp[s].itup.posting_tids), t += 1) {");
+	L("                        if (pages[p].linp[s].lp.lp_flags == 3)");
+	F("                            lpcolor = %s;	// LP_DEAD: BROWN", AbgrLit(COLOR_BROWN));
+	L("                        else if ((t & 1) == 0)");
+	F("                            lpcolor = %s;	// RED_LIGHT", AbgrLit(COLOR_RED_LIGHT));
+	L("                        else");
+	F("                            lpcolor = %s;	// GREEN_LIGHT", AbgrLit(COLOR_GREEN_LIGHT));
+	L("                        std::core::set_pattern_color(pages[p].linp[s].itup.posting_tids[t], lpcolor);");
+	L("                    }");
+	L("                }");
+	L("");
+	L("                // LP_DEAD index tuples keep storage; paint the whole");
+	L("                // tuple in the line pointer's dead color, as the old");
+	L("                // tool did with its black-tag/brown-font scheme");
+	L("                if (pages[p].linp[s].lp.lp_flags == 3) {");
+	F("                    std::core::set_pattern_color(pages[p].linp[s].itup, %s);",
+	  AbgrLit(COLOR_BROWN));
+	F("                    std::core::set_pattern_color(pages[p].linp[s].itup.t_tid, %s);",
+	  AbgrLit(COLOR_BROWN));
+	F("                    std::core::set_pattern_color(pages[p].linp[s].itup.t_info, %s);",
+	  AbgrLit(COLOR_BROWN));
+	L("                    if (std::core::has_member(pages[p].linp[s].itup, \"attrs\")) {");
+	for (int k = 0; k < nrelatts; k++)
+	{
+		attClass	class = attclassrel[k];
+		char	   *plname = attplnamerel[k];
+
+		/*
+		 * set_pattern_color binds only to struct and bitfield patterns;
+		 * arrays and primitives decay to values.  Since scalar columns are
+		 * bare members and name/cstring/opaque are bare arrays, only the
+		 * struct-wrapped classes (point, varlena) can be recolored here.
+		 * The rest keep their static hashed color on dead tuples -- the dead
+		 * state is still carried by the line pointer and the tuple header
+		 * (t_tid, t_info), which are recolored above.
+		 */
+		if (class != ATT_CLASS_POINT &&
+			class != ATT_CLASS_VARLENA_TEXT &&
+			class != ATT_CLASS_VARLENA_BIN)
+			continue;
+
+		F("                        if (std::core::has_member(pages[p].linp[s].itup.attrs, \"%s\"))",
+		  plname);
+		F("                            std::core::set_pattern_color(pages[p].linp[s].itup.attrs.%s, %s);",
+		  plname, AbgrLit(COLOR_BROWN));
+	}
+	L("                    }");
+	L("                }");
+	L("            }");
+	L("        }");
+	L("    }");
+	L("");
+	L("    // Page label: derived from what the page actually is.  A page with");
+	L("    // no recognized special section is only \"heap\" if it is a valid");
+	L("    // page classified as heap; invalid/uninitialized pages (e.g. the");
+	L("    // live bridge's flush pad) must not be mislabeled heap.");
+	L("    pagekind = \"unrecognized\";");
+	L("    if (!pages[p].page_valid)");
+	L("        pagekind = \"empty/uninitialized\";");
+	F("    else if (pages[p].page_kind == %d)", KIND_HEAP);
+	L("        pagekind = \"heap\";");
+	L("    else if (std::core::has_member(pages[p], \"btree_meta\"))");
+	L("        pagekind = \"nbtree metapage\";");
+	L("    else if (std::core::has_member(pages[p], \"btree_special\"))");
+	L("        pagekind = std::format(\"nbtree level {}\", pages[p].btree_special.btpo_level);");
+	L("    else if (std::core::has_member(pages[p], \"hash_meta\"))");
+	L("        pagekind = \"hash metapage\";");
+	L("    else if (std::core::has_member(pages[p], \"hash_bitmap\"))");
+	L("        pagekind = \"hash bitmap\";");
+	L("    else if (std::core::has_member(pages[p], \"hash_special\"))");
+	L("        pagekind = std::format(\"hash bucket {}\", pages[p].hash_special.hasho_bucket);");
+	L("    else if (std::core::has_member(pages[p], \"gin_meta\"))");
+	L("        pagekind = \"GIN metapage\";");
+	L("    else if (std::core::has_member(pages[p], \"posting_items\"))");
+	L("        pagekind = \"GIN posting tree internal\";");
+	L("    else if (std::core::has_member(pages[p], \"posting_lists\"))");
+	L("        pagekind = \"GIN posting tree leaf\";");
+	L("    else if (std::core::has_member(pages[p], \"gin_special\"))");
+	L("        pagekind = \"GIN entry tree\";");
+	L("    else if (std::core::has_member(pages[p], \"gist_special\"))");
+	L("        pagekind = \"GiST\";");
+	L("    else if (std::core::has_member(pages[p], \"spgist_meta\"))");
+	L("        pagekind = \"SP-GiST metapage\";");
+	L("    else if (std::core::has_member(pages[p], \"spgist_special\"))");
+	L("        pagekind = \"SP-GiST\";");
+	L("    else if (std::core::has_member(pages[p], \"brin_meta\"))");
+	L("        pagekind = \"BRIN metapage\";");
+	L("    else if (std::core::has_member(pages[p], \"revmap\"))");
+	L("        pagekind = \"BRIN revmap\";");
+	L("    else if (std::core::has_member(pages[p], \"brin_special\"))");
+	L("        pagekind = \"BRIN regular\";");
+	L("    else if (std::core::has_member(pages[p], \"sequence_special\"))");
+	L("        pagekind = \"sequence\";");
+	L("    else if (std::core::has_member(pages[p], \"raw_special\"))");
+	L("        pagekind = \"index\";");
+	L("    std::core::set_display_name(pages[p],");
+	L("        std::format(\"block {} ({})\", pageblk, pagekind));");
+	L("}");
+	L("");
+}
+
 int
 main(int argv, char **argc)
 {
-	/* If there is a parameter list, validate the options */
-	unsigned int validOptions;
-
-	validOptions = (argv < 2) ? OPT_RC_COPYRIGHT : ConsumeOptions(argv, argc);
-
-	/*
-	 * Display valid options if no parameters are received or invalid options
-	 * where encountered
-	 */
-	if (validOptions != OPT_RC_VALID)
-		DisplayOptions(validOptions);
-	else
+	if (!ConsumeOptions(argv, argc))
 	{
-		blockSize = GetBlockSize();
-
-		/*
-		 * On a positive block size, allocate a local buffer to store the
-		 * subsequent blocks, and generate main body of XML tags.
-		 */
-		EmitXmlDocHeader(argv, argc);
-		if (blockSize > 0)
-		{
-			buffer = (char *) pg_malloc(blockSize);
-			EmitXmlBody();
-		}
-		EmitXmlFooter();
+		DisplayOptions();
+		exit(exitCode != 0 ? exitCode : 1);
 	}
 
-	/*
-	 * Finally, print debug output to stderr.  This is a convenient way of
-	 * informing user that options such as -x flag are working more or less as
-	 * expected.
-	 */
-	if ((blockOptions & BLOCK_SKIP_LSN))
-	{
-		if (nblockstagged == 0)
-		{
-			fprintf(stderr, "pg_hexedit warning: -x option skipped every block (is -x option's LSN value %X/%08X too recent?)\n",
-					(uint32) (afterThreshold >> 32), (uint32) afterThreshold);
-		}
-		else
-		{
-			/*
-			 * Handle case where -x option is combined with non-range
-			 * argument.  This combination of options is rather pointless, but
-			 * be consistent and handle it anyway.
-			 */
-			if (blockStart != -1)
-				fprintf(stderr, "pg_hexedit notice: -x option skipped %u blocks from blocks %u - %u (%u blocks tagged)\n",
-						nblocksskipped, blockStart, maxBlockNumber, nblockstagged);
-			else
-				fprintf(stderr, "pg_hexedit notice: -x option skipped %u blocks (%u blocks tagged)\n",
-						nblocksskipped, nblockstagged);
+	EmitProlog(argv, argc);
+	EmitPageBasics();
+	EmitTupleAttrs();
+	EmitHeapStructs();
+	EmitIndexStructs();
+	EmitSpecialStructs();
+	EmitPageStruct();
+	EmitNamingPass();
 
-			fprintf(stderr, "pg_hexedit notice: low watermark LSN among tagged blocks:  %X/%08X (which is page LSN for block %u)\n",
-					(uint32) (minPageLSN >> 32), (uint32) minPageLSN, minPageLSNBlock);
-			fprintf(stderr, "pg_hexedit notice: high watermark LSN among tagged blocks: %X/%08X (which is page LSN for block %u)\n",
-					(uint32)(maxPageLSN >> 32), (uint32) maxPageLSN,
-					maxPageLSNBlock);
-		}
-
-		fprintf(stderr, "pg_hexedit tip: to show the TAG panel in wxHexEditor, click \"View -> TAG Panel\"\n");
-	}
 	if (exitCode == 0)
 		fprintf(stderr, "pg_hexedit notice: PostgreSQL frontend program return code is 0 (success)\n");
 	else
 		fprintf(stderr, "pg_hexedit notice: PostgreSQL frontend program return code is %d (failure)\n",
 				exitCode);
-
-	/* Close out the file and get rid of the allocated block buffer */
-	if (fp)
-		fclose(fp);
-
-	if (buffer)
-		pg_free(buffer);
 
 	exit(exitCode);
 }

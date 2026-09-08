@@ -2,19 +2,13 @@
 #
 # This script contains code that is common to all convenience scripts.
 #
-# Utility scripts mostly consist of some logic for exporting wxHexEditor-format
-# offset cache entries to the OFFSETS environment variable, and/or logic for
-# printing something to stdout that's useful to the user.  Everything else
-# happens here.
+# It generates an ImHex pattern (.hexpat) for the relation using pg_hexedit,
+# with attribute metadata from the system catalogs, and opens the relation
+# file together with the pattern in ImHex.
 #
-# Most convenience scripts set the $OFFSETS env var to something useful for us.
 # Utility scripts must have run "source ./hexedit.cfg" for us.
 
 relname=$1
-
-# Spoof home director, to avoid clobbering real /.wxHexEditor file
-HOME=$(pwd)
-wxconfig="$HOME/.wxHexEditor"
 
 if ! psql --no-psqlrc -c "CHECKPOINT"
 then
@@ -34,45 +28,23 @@ then
   exit 1
 fi
 
-# Put minimal .wxHexEditor registry style config file in place, so old tags are
-# forgotten.  This is also where we generate convenience "Go to Offset" dialog
-# offsets in the registry/cache (this comes from OFFSETS env var).
-echo "Replacing $wxconfig with pg_hexedit optimized settings..."
-cat > "$wxconfig" <<- EOM
-UpdateCheck=0
-FakeBlockLines=1
-FakeBlockSize=8k
-ColourHexBackground=#FFFFFF
-ColourHexBackgroundZebra=#FFFFFF
-UseBytesPerLineLimit=1
-BytesPerLineLimit=$BYTES_PER_LINE_LIMIT
-FontSize=$FONTSIZE
-CharacterEncodingFamily=Code for Information Interchange
-CharacterEncoding=ASCII - American Standard Code for Information Interchange
-ScreenFullScreen=1
-AutoShowTagPanel=0
-GoToOptions=7
-$OFFSETS
-EOM
-
 PGDATA=$(psql --no-psqlrc -tA -c "SELECT setting FROM pg_settings WHERE name = 'data_directory'")
 echo "Determined that data directory is $PGDATA"
 
-# wxHexEditor XML encoding is always UTF-8.  Make sure that attname fields come
-# back as UTF-8.
+# Make sure that attname fields come back as UTF-8, the encoding ImHex
+# expects in pattern source.
 export PGCLIENTENCODING="UTF8"
-if ! ATTRLIST=$(psql --no-psqlrc -tA -c "SELECT string_agg(attlen || ',\"' || attname  || '\",' || attalign::text, ',')
-FROM
-(SELECT * FROM pg_attribute WHERE attrelid = '$relname'::regclass AND attnum > 0 ORDER BY attnum ASC) t;")
+if ! ATTRLIST=$(psql --no-psqlrc -tA -c "SELECT string_agg(attlen || ',\"' || attname  || '\",' || attalign::text || ',' || atttypid, ',' ORDER BY attnum)
+FROM pg_attribute WHERE attrelid = '$relname'::regclass AND attnum > 0;")
 then
-  echo "failed to generate attrlist string for -D option"
+  echo "failed to generate attrlist string for -A option"
   exit 1
 fi
 
 # Check if data file exists locally, download $MAX_BLOCK_TAGS to /tmp if it doesn't
 FULLPATH="$PGDATA/$RFN"
 if [ -f "$FULLPATH" ]; then
-  echo "Running pg_hexedit against $FULLPATH, the first segment in relation $relname..."
+  echo "Annotating $FULLPATH, the first segment in relation $relname..."
   echo "Note: Only blocks $MIN_BLOCK_TAGS - $MAX_BLOCK_TAGS will be annotated, to keep overhead low."
 else
   PAGEINSPECT_INSTALLED=$(psql -XAtc "select count(*) from pg_extension where extname='pageinspect'")
@@ -99,25 +71,62 @@ fi
 # Deliberately put space before pg_hexedit frontend debug output here:
 echo -e "pg_hexedit frontend utility debug/notice output:\n"
 
-# Generate tags at a path that we know wxHexEditor will look for them:
+# Generate the pattern next to the relation file:
 # shellcheck disable=SC2086
-if ! ./pg_hexedit $EXTRAFLAGS -D "$ATTRLIST" -z -R "$MIN_BLOCK_TAGS" "$MAX_BLOCK_TAGS" "$FULLPATH" > "$FULLPATH.tags"
+if ! ./pg_hexedit $EXTRAFLAGS -A "$ATTRLIST" -R "$MIN_BLOCK_TAGS" "$MAX_BLOCK_TAGS" -N "$relname" > "$FULLPATH.hexpat"
 then
-  echo "Error encountered by pg_hexedit. Could not generate all tags."
-  echo "You may still wish to run: $HEXEDITOR $FULLPATH"
-  exit 1
-fi
-
-if [ ! -f "$HEXEDITOR" ]
-then
-  echo "\"$HEXEDITOR\" executable not found"
-  echo "\"$FULLPATH.tags\" annotation file was still created"
+  echo "Error encountered by pg_hexedit. Could not generate pattern."
   exit 1
 fi
 
 # Deliberately put space after pg_hexedit frontend debug output here:
 echo
 
-echo "Opening $FULLPATH with $HEXEDITOR..."
-# Output from wxHexEditor is verbose, and not terribly useful, so we redirect:
-$HEXEDITOR "$FULLPATH" &> /dev/null
+# Install pattern copies into ImHex's user patterns folder.  Generated
+# patterns carry a "#pragma magic" that matches any PostgreSQL page file, so
+# ImHex offers to apply installed patterns whenever a matching file is opened
+# (including in an already-running instance, where the --pattern command line
+# flag would be dropped).  Attribute decoding is inherently per relation, so
+# one copy is installed per relation, named so the picker is unambiguous; a
+# structure-only pattern that is correct for every PostgreSQL relation file
+# is kept alongside them.
+PATTERNDIR=""
+if [ -d "$HOME/Library/Application Support/imhex" ]; then
+  PATTERNDIR="$HOME/Library/Application Support/imhex/patterns"
+elif [ -d "${XDG_DATA_HOME:-$HOME/.local/share}/imhex" ]; then
+  PATTERNDIR="${XDG_DATA_HOME:-$HOME/.local/share}/imhex/patterns"
+fi
+if [ -n "$PATTERNDIR" ]; then
+  mkdir -p "$PATTERNDIR"
+  saferelname=$(printf '%s' "$relname" | tr -c 'A-Za-z0-9._-' '_')
+  # Remove previously installed relation patterns so that ImHex's pattern
+  # picker offers exactly one choice in typical usage.  The structure-only
+  # fallback is kept loadable manually, but its magic is stripped so it
+  # never joins the auto-offer.
+  rm -f "$PATTERNDIR"/pg_hexedit_*.hexpat
+  cp "$FULLPATH.hexpat" "$PATTERNDIR/pg_hexedit_$saferelname.hexpat"
+  ./pg_hexedit -R "$MIN_BLOCK_TAGS" "$MAX_BLOCK_TAGS" -N "structure_only" |
+    grep -v '^#pragma magic' > "$PATTERNDIR/postgresql_page_structure.hexpat"
+  echo "Installed \"pg_hexedit_$saferelname.hexpat\" into"
+  echo "$PATTERNDIR;"
+  echo "ImHex will offer to apply it when a PostgreSQL file is opened."
+fi
+
+if ! command -v "$IMHEX" > /dev/null 2>&1 && [ ! -x "$IMHEX" ]
+then
+  echo "ImHex binary \"$IMHEX\" not found; set \$IMHEX in hexedit.cfg"
+  echo "\"$FULLPATH.hexpat\" pattern file was still created"
+  exit 1
+fi
+
+echo "Opening $FULLPATH with ImHex..."
+if pgrep -f "[Ii]m[Hh]ex" > /dev/null 2>&1
+then
+  echo "Note: an ImHex instance is already running.  ImHex's single-instance"
+  echo "forwarding opens the file but drops the pattern: drag"
+  echo "  $FULLPATH.hexpat"
+  echo "onto the ImHex window (or File -> Import -> Pattern File), then press"
+  echo "the play button in the Pattern Editor to evaluate."
+fi
+# Output from GUI programs is not terribly useful, so we redirect:
+"$IMHEX" --open "$FULLPATH" --pattern "$FULLPATH.hexpat" &> /dev/null &

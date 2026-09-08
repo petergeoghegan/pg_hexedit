@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# relation_hexedit:  Sets generic decile offsets in wxHexEditor cache/registry,
-# before opening relation.  Unlike the other convenience scripts, this works
-# with any kind of relation, and has no dependency on contrib/pageinspect.
+# relation_hexedit:  Annotate any relation and open it in ImHex.  This works
+# with any kind of relation, and has no dependency on contrib/pageinspect
+# (unless the relation file has to be downloaded through psql).
 
 usage() {
   cat <<EOM
@@ -19,27 +19,4 @@ source ./hexedit.cfg
 
 relname=$1
 
-# Generate 9 points that divide 10 deciles in Go to offsets dialog cache.
-# These are offsets into the first segment, not the relation as a whole.
-#
-# Note that the query will return NULL for very small relations, which leaves
-# us without any cached offsets.
-if ! OFFSETS=$(psql --no-psqlrc -tA -c "WITH offsets (block_offset) AS (
-  SELECT unnest(percentile_cont(array[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) WITHIN GROUP (ORDER BY i))::int8 * (2^13)
-  FROM
-  (SELECT i FROM generate_series(1, LEAST(131071, (SELECT (pg_relation_size('$relname'::regclass) / (2^13))::int4) - 1)) i ) s
-),
-nums (num, bb_offset) AS (
-  SELECT (ROW_NUMBER() OVER()) - 1, block_offset
-  FROM
-  offsets ORDER BY BLOCK_OFFSET
-)
-SELECT string_agg('GoToOffset' || num || '=' || bb_offset, chr(10)) FROM nums;")
-then
-  echo "calculating decile offsets failed"
-  exit 1
-fi
-
-export OFFSETS
-echo "Tip: 'Go to Offset' dialog (shortcut: Ctrl + G) will have decile splitter block start positions cached"
 ./__open_relation "$relname"
